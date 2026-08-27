@@ -1,0 +1,12 @@
+.agents/
+work/
+outputs/
+data/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.env
+*.log
+.DS_Store
