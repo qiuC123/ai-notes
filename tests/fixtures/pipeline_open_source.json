@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "id": "open-source-1",
+      "title": "Open source MCP tool release",
+      "summary": "A practical tool for local automation.",
+      "source": "Open Source",
+      "links": {"original": "https://github.example.test/tools/mcp-release"},
+      "publishedAt": "2026-08-27T07:00:00Z",
+      "category": "tool"
+    }
+  ]
+}

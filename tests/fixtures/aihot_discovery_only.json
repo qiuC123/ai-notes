@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "id": "selected-discovery-only",
+      "title": "Aggregator-only discovery item",
+      "summary": "This link does not identify an original publisher.",
+      "source": "AIHOT",
+      "links": {"url": "https://aihot.virxact.com/items/discovery-only"},
+      "publishedAt": "2026-08-27T01:02:03Z",
+      "category": "product"
+    }
+  ]
+}

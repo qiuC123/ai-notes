@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom"><entry>
+<id>http://arxiv.org/abs/2608.12345</id>
+<title>A Useful Agent Paper</title>
+<summary> A paper about reliable agents. </summary>
+<published>2026-08-26T12:00:00Z</published>
+<updated>2026-08-26T12:00:00Z</updated>
+<author><name>A. Researcher</name></author>
+<category term="cs.AI" />
+</entry></feed>

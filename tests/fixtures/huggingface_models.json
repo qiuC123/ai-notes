@@ -1,0 +1,13 @@
+[
+  {
+    "id": "acme/fast-vision",
+    "modelId": "acme/fast-vision",
+    "likes": 42,
+    "trendingScore": 12.5,
+    "downloads": 2048,
+    "tags": ["image-classification", "transformers"],
+    "pipeline_tag": "image-classification",
+    "library_name": "transformers",
+    "createdAt": "2026-08-26T10:00:00.000Z"
+  }
+]

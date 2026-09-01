@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Releases</title><entry>
+<title>v1.2.3</title>
+<link rel="alternate" href="https://github.com/example/project/releases/tag/v1.2.3" />
+<updated>2026-08-27T03:04:05Z</updated>
+<summary>Improves MCP tools.</summary>
+<author><name>Example Org</name></author>
+</entry></feed>

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "v1",
+  "items": [
+    {
+      "id": "selected-1",
+      "title": "OpenAI releases Responses API update",
+      "summary": "Official API feature details.",
+      "source": "AIHOT",
+      "links": {
+        "url": "https://aihot.virxact.com/items/selected-1",
+        "original": "https://openai.com/index/responses-api-update?utm_source=aihot"
+      },
+      "publishedAt": "2026-08-27T01:02:03Z",
+      "category": "product"
+    }
+  ]
+}

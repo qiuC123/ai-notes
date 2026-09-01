@@ -1,0 +1,14 @@
+{
+  "mcp_spec": {"accept": "2024-11-05-final", "reject": "2026-07-28-RC"},
+  "openai_agents_python": {"accept": "v0.22.0", "reject": "v0.23.0-alpha.1"},
+  "langgraph": {"accept": "1.2.11", "reject": "sdk==0.4.4"},
+  "google_adk_python": {"accept": "v2.8.0", "reject": "v2.9.0-rc1"},
+  "nous_hermes_agent": {"accept": "v2026.8.27", "reject": "v2026.9.1-beta"},
+  "anthropic_claude_code": {"accept": "v2.1.252", "reject": "v2.2.0-alpha"},
+  "openai_codex": {"accept": "rust-v0.152.0", "reject": "rust-v0.153.0-alpha.1"},
+  "openhands": {"accept": "v1.16.0", "reject": "v1.17.0-rc1"},
+  "ollama": {"accept": "v0.33.2", "reject": "v0.34.0-rc1"},
+  "vllm": {"accept": "v0.28.0", "reject": "v0.29.0rc1"},
+  "sglang": {"accept": "v0.5.18", "reject": "v0.5.19rc1"},
+  "transformers": {"accept": "v5.16.1", "reject": "v5.17.0.dev0"}
+}

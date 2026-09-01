@@ -1,0 +1,48 @@
+version: 1
+components:
+  audience_value: 25
+  evidence: 20
+  novelty: 15
+  timeliness: 15
+  amesi_fit: 10
+  explainability: 10
+  production_cost_fit: 5
+penalties:
+  discovery_only: -20
+  recent_decision_similarity: -20
+  weak_evidence_language: -15
+  non_workflow_noise: -15
+rules:
+  recent_similarity_threshold: 0.85
+  workflow_keywords:
+    - agent
+    - workflow
+    - api
+    - tool
+    - model
+    - automation
+    - creator
+    - mcp
+    - 智能体
+    - 工作流
+    - 自动化
+    - 模型
+    - 工具
+  weak_evidence_terms:
+    - rumor
+    - rumored
+    - reportedly
+    - allegedly
+    - 据称
+    - 传闻
+    - 听说
+  non_workflow_noise_terms:
+    - funding
+    - fundraise
+    - financing
+    - stock
+    - share price
+    - celebrity
+    - 融资
+    - 股价
+    - 名人

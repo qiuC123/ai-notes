@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "id": "no-link-1",
+      "title": "A source record without a usable link",
+      "summary": "This must never become a ranked candidate.",
+      "source": "Fixture",
+      "links": [],
+      "publishedAt": "2026-08-27T08:00:00Z",
+      "category": "agent"
+    }
+  ]
+}

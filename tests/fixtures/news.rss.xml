@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Example News</title><item>
+<title>Official feature announcement</title>
+<link>https://example.test/news/feature</link>
+<description>A practical feature for creators.</description>
+<pubDate>Wed, 27 Aug 2026 01:02:03 GMT</pubDate>
+<category>product</category>
+</item></channel></rss>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Release notes from modelcontextprotocol</title>
+  <updated>2025-03-26T13:53:30Z</updated>
+  <entry>
+    <id>tag:github.com,2008:Repository/123/2024-11-05-final</id>
+    <updated>2025-03-26T13:53:30Z</updated>
+    <link rel="alternate" type="text/html" href="https://github.com/modelcontextprotocol/modelcontextprotocol/releases/tag/2024-11-05-final"/>
+    <title>2024-11-05 final specification</title>
+    <content type="html">&lt;h2&gt;Changes&lt;/h2&gt;&lt;p&gt;Added OAuth authorization server discovery.&lt;/p&gt;</content>
+    <author><name>modelcontextprotocol</name></author>
+  </entry>
+</feed>

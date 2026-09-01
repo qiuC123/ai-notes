@@ -1,0 +1,82 @@
+version: 1
+clustering:
+  title_threshold: 0.48
+  hours_window: 72
+sources:
+  - id: aihot_selected
+    url: https://aihot.virxact.com/api/v1/items?mode=selected&window=24h&limit=50
+    parser: aihot_selected
+    format: json
+    source_class: aggregator
+    owner: AIHOT
+    evidence_allowed: false
+  - id: aihot_hot_topics
+    url: https://aihot.virxact.com/api/v1/hot-topics
+    parser: aihot_hot_topics
+    format: json
+    source_class: aggregator
+    owner: AIHOT
+    evidence_allowed: false
+  - id: openai_news
+    url: https://openai.com/news/rss.xml
+    parser: rss
+    format: xml
+    source_class: primary_official
+    owner: OpenAI
+    evidence_allowed: true
+  - id: huggingface_blog
+    url: https://huggingface.co/blog/feed.xml
+    parser: rss
+    format: xml
+    source_class: primary_official
+    owner: Hugging Face
+    evidence_allowed: true
+  - id: github_nous_hermes_releases
+    url: https://github.com/NousResearch/hermes-agent/releases.atom
+    parser: atom
+    format: xml
+    source_class: open_source
+    owner: Nous Research
+    evidence_allowed: true
+  - id: github_mcp_servers_releases
+    url: https://github.com/modelcontextprotocol/servers/releases.atom
+    parser: atom
+    format: xml
+    source_class: open_source
+    owner: Model Context Protocol
+    evidence_allowed: true
+  - id: github_openai_python_releases
+    url: https://github.com/openai/openai-python/releases.atom
+    parser: atom
+    format: xml
+    source_class: open_source
+    owner: OpenAI
+    evidence_allowed: true
+  - id: github_transformers_releases
+    url: https://github.com/huggingface/transformers/releases.atom
+    parser: atom
+    format: xml
+    source_class: open_source
+    owner: Hugging Face
+    evidence_allowed: true
+  - id: huggingface_models
+    url: https://huggingface.co/api/models?sort=trendingScore&limit=30
+    parser: huggingface_models
+    format: json
+    source_class: model_ecosystem
+    owner: Hugging Face
+    evidence_allowed: true
+  - id: arxiv_cs_ai
+    url: https://export.arxiv.org/api/query?search_query=cat:cs.AI&start=0&max_results=30&sortBy=submittedDate&sortOrder=descending
+    parser: arxiv_atom
+    format: xml
+    source_class: research
+    owner: arXiv
+    evidence_allowed: true
+  - id: arxiv_cs_cl
+    url: https://export.arxiv.org/api/query?search_query=cat:cs.CL&start=0&max_results=30&sortBy=submittedDate&sortOrder=descending
+    parser: arxiv_atom
+    format: xml
+    source_class: research
+    owner: arXiv
+    evidence_allowed: true

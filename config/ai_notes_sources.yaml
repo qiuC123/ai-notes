@@ -1,0 +1,110 @@
+version: 1
+sources:
+  - id: mcp_spec
+    repository: modelcontextprotocol/modelcontextprotocol
+    category: agent_mcp
+    tier: trial
+    feed_url: https://github.com/modelcontextprotocol/modelcontextprotocol/releases.atom
+    policy_version: "1"
+    accepted_tag_patterns: ['\d{4}-\d{2}-\d{2}(?:-final)?']
+    excluded_tag_patterns: []
+    package_aliases: []
+  - id: openai_agents_python
+    repository: openai/openai-agents-python
+    category: agent_framework
+    tier: trial
+    feed_url: https://github.com/openai/openai-agents-python/releases.atom
+    policy_version: "1"
+    accepted_tag_patterns: ['v\d+\.\d+\.\d+']
+    excluded_tag_patterns: []
+    package_aliases: [openai-agents]
+  - id: langgraph
+    repository: langchain-ai/langgraph
+    category: agent_framework
+    tier: trial
+    feed_url: https://github.com/langchain-ai/langgraph/releases.atom
+    policy_version: "1"
+    accepted_tag_patterns: ['\d+\.\d+\.\d+']
+    excluded_tag_patterns: ['^(?:sdk|cli|checkpoint)']
+    package_aliases: [langgraph]
+  - id: google_adk_python
+    repository: google/adk-python
+    category: agent_framework
+    tier: trial
+    feed_url: https://github.com/google/adk-python/releases.atom
+    policy_version: "1"
+    accepted_tag_patterns: ['v\d+\.\d+\.\d+']
+    excluded_tag_patterns: []
+    package_aliases: [google-adk]
+  - id: nous_hermes_agent
+    repository: NousResearch/hermes-agent
+    category: agent_framework
+    tier: trial
+    feed_url: https://github.com/NousResearch/hermes-agent/releases.atom
+    policy_version: "1"
+    accepted_tag_patterns: ['v\d{4}\.\d{1,2}\.\d{1,2}']
+    excluded_tag_patterns: []
+    package_aliases: [hermes-agent]
+  - id: anthropic_claude_code
+    repository: anthropics/claude-code
+    category: ai_coding
+    tier: trial
+    feed_url: https://github.com/anthropics/claude-code/releases.atom
+    policy_version: "1"
+    accepted_tag_patterns: ['v\d+\.\d+\.\d+']
+    excluded_tag_patterns: []
+    package_aliases: ['@anthropic-ai/claude-code']
+  - id: openai_codex
+    repository: openai/codex
+    category: ai_coding
+    tier: trial
+    feed_url: https://github.com/openai/codex/releases.atom
+    policy_version: "1"
+    accepted_tag_patterns: ['rust-v\d+\.\d+\.\d+']
+    excluded_tag_patterns: []
+    package_aliases: ['@openai/codex']
+  - id: openhands
+    repository: OpenHands/OpenHands
+    category: ai_coding
+    tier: trial
+    feed_url: https://github.com/OpenHands/OpenHands/releases.atom
+    policy_version: "1"
+    accepted_tag_patterns: ['v\d+\.\d+\.\d+']
+    excluded_tag_patterns: []
+    package_aliases: [openhands-ai]
+  - id: ollama
+    repository: ollama/ollama
+    category: local_inference
+    tier: trial
+    feed_url: https://github.com/ollama/ollama/releases.atom
+    policy_version: "1"
+    accepted_tag_patterns: ['v\d+\.\d+\.\d+']
+    excluded_tag_patterns: []
+    package_aliases: [ollama]
+  - id: vllm
+    repository: vllm-project/vllm
+    category: local_inference
+    tier: trial
+    feed_url: https://github.com/vllm-project/vllm/releases.atom
+    policy_version: "1"
+    accepted_tag_patterns: ['v\d+\.\d+\.\d+']
+    excluded_tag_patterns: []
+    package_aliases: [vllm]
+  - id: sglang
+    repository: sgl-project/sglang
+    category: local_inference
+    tier: trial
+    feed_url: https://github.com/sgl-project/sglang/releases.atom
+    policy_version: "1"
+    accepted_tag_patterns: ['v\d+\.\d+\.\d+']
+    excluded_tag_patterns: []
+    package_aliases: [sglang]
+  - id: transformers
+    repository: huggingface/transformers
+    category: local_inference
+    tier: trial
+    feed_url: https://github.com/huggingface/transformers/releases.atom
+    policy_version: "1"
+    accepted_tag_patterns: ['v\d+\.\d+\.\d+']
+    excluded_tag_patterns: []
+    package_aliases: [transformers]

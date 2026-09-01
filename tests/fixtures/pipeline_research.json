@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "id": "research-1",
+      "title": "Research paper for reliable agent evaluation",
+      "summary": "A reproducible benchmark for agent workflows.",
+      "source": "Research",
+      "links": {"original": "https://research.example.test/paper/agent-evaluation"},
+      "publishedAt": "2026-08-27T06:00:00Z",
+      "category": "research"
+    }
+  ]
+}

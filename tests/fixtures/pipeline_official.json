@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "id": "official-1",
+      "title": "Official agent workflow API release",
+      "summary": "A new API for creator workflows.",
+      "source": "Official",
+      "links": {"original": "https://official.example.test/agent-api?utm_source=fixture"},
+      "publishedAt": "2026-08-27T08:00:00Z",
+      "category": "agent"
+    }
+  ]
+}
