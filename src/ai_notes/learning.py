@@ -205,6 +205,66 @@ def _collect_standard_evidence(
     return evidence, missing
 
 
+def _retry_missing_standard_evidence(
+    api: GitHubJsonApi,
+    project: VerifiedGitHubProject,
+    policy: LearningPolicy,
+    evidence: list[dict[str, Any]],
+    missing: list[str],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    retry_readme = any(item.startswith("readme:") for item in missing)
+    retry_tree = any(item.startswith("tree:") for item in missing)
+    if retry_readme:
+        missing = [item for item in missing if not item.startswith("readme:")]
+        evidence = [item for item in evidence if item["kind"] != "readme"]
+        try:
+            readme = read_repository_file(
+                api,
+                project.repository_id,
+                "README.md",
+                project.commit_sha,
+                max_bytes=policy.max_evidence_chars,
+            )
+            evidence.append(
+                _evidence(
+                    "readme",
+                    f"{project.canonical_url}/blob/{project.commit_sha}/README.md",
+                    "README.md",
+                    readme,
+                    project.commit_sha,
+                )
+            )
+        except GitHubError as error:
+            missing.append(f"readme: {type(error).__name__}: {error}")
+
+    if retry_tree:
+        missing = [item for item in missing if not item.startswith("tree:")]
+        evidence = [item for item in evidence if item["kind"] != "tree"]
+        try:
+            tree_payload = api.get_json(f"/repos/{project.repository_id}/git/trees/{project.commit_sha}?recursive=1")
+            if not isinstance(tree_payload, dict) or not isinstance(tree_payload.get("tree"), list):
+                raise GitHubError("GitHub tree response is invalid")
+            paths = [
+                str(item.get("path"))
+                for item in tree_payload["tree"]
+                if isinstance(item, dict) and item.get("type") == "blob" and isinstance(item.get("path"), str)
+            ]
+            if tree_payload.get("truncated"):
+                missing.append("tree: GitHub recursive tree was truncated")
+            evidence.append(
+                _evidence(
+                    "tree",
+                    f"{project.canonical_url}/tree/{project.commit_sha}",
+                    "Repository file tree",
+                    "\n".join(paths[: policy.max_tree_paths]),
+                    project.commit_sha,
+                )
+            )
+        except GitHubError as error:
+            missing.append(f"tree: {type(error).__name__}: {error}")
+    return evidence, missing
+
+
 def _register_project(root: Path, owned_project: dict[str, Any]) -> None:
     path = root / "data" / "learning" / "projects.yaml"
     if path.exists():
@@ -394,6 +454,13 @@ def prepare_learning(
             )
             evidence = list(queue["external_evidence"])
             missing = list(queue["missing_scopes"])
+            evidence, missing = _retry_missing_standard_evidence(
+                api_client,
+                project,
+                policy,
+                evidence,
+                missing,
+            )
             created_at = str(queue["created_at"])
             verified_at = str(queue["verified_target"]["verified_at"])
         else:

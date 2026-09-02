@@ -289,6 +289,37 @@ class LearningPrepareTests(unittest.TestCase):
         self.assertGreaterEqual(len(queue["missing_scopes"]), 2)
         self.assertEqual(["repository"], [item["kind"] for item in queue["external_evidence"]])
 
+    def test_standard_evidence_retry_recovers_readme_and_tree_without_repinning_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "owned"
+            initialize_project(project)
+            write_policy(root)
+            api = FakeGitHubApi(fail_optional=True)
+            first = prepare_learning(
+                root=root,
+                github_url="https://github.com/openai/codex",
+                project_path=project,
+                api=api,
+                now=datetime(2026, 9, 2, 8, 30, tzinfo=UTC),
+            )
+            api.fail_optional = False
+            recovered = prepare_learning(
+                root=root,
+                github_url="https://github.com/openai/codex",
+                project_path=project,
+                api=api,
+                run_id=first.run_id,
+                now=datetime(2026, 9, 2, 8, 31, tzinfo=UTC),
+            )
+            queue = json.loads(recovered.queue_path.read_text(encoding="utf-8"))
+
+        self.assertEqual("partial", first.status)
+        self.assertEqual("success", recovered.status)
+        self.assertEqual([], queue["missing_scopes"])
+        self.assertEqual({"repository", "readme", "tree"}, {item["kind"] for item in queue["external_evidence"]})
+        self.assertEqual(SHA, queue["verified_target"]["commit_sha"])
+
     def test_rate_limit_before_commit_verification_writes_partial_manifest_without_fake_queue(self) -> None:
         class LimitedApi:
             def get_json(self, path: str) -> object:
