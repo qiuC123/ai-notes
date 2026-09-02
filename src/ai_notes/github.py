@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import re
+import zipfile
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import quote, unquote, urljoin, urlparse
@@ -57,6 +59,14 @@ class VerifiedGitHubProject:
 
 class GitHubJsonApi(Protocol):
     def get_json(self, path: str) -> object:
+        ...
+
+
+class GitHubEvidenceFallback(Protocol):
+    def read_file(self, repository_id: str, path: str, commit_sha: str, *, max_bytes: int) -> str:
+        ...
+
+    def list_files(self, repository_id: str, commit_sha: str, *, max_archive_bytes: int) -> list[str]:
         ...
 
 
@@ -134,6 +144,79 @@ class PublicGitHubApi:
             except json.JSONDecodeError as error:
                 raise GitHubError(f"GitHub API returned invalid JSON: {url}") from error
         raise GitHubError("GitHub API exceeded the approved redirect limit")
+
+
+class PublicGitHubArchive:
+    _APPROVED_HOSTS = {"raw.githubusercontent.com", "codeload.github.com"}
+
+    def __init__(self, *, timeout_seconds: float = 60.0, max_redirects: int = 3) -> None:
+        self.timeout_seconds = timeout_seconds
+        self.max_redirects = max_redirects
+
+    def _read_bounded(self, url: str, *, max_bytes: int) -> bytes:
+        for _ in range(self.max_redirects + 1):
+            parsed = urlparse(url)
+            if parsed.scheme != "https" or (parsed.hostname or "").lower() not in self._APPROVED_HOSTS:
+                raise GitHubError(f"GitHub evidence redirect left the approved hosts: {url}")
+            redirect: str | None = None
+            try:
+                with httpx.Client(
+                    timeout=self.timeout_seconds,
+                    follow_redirects=False,
+                    verify=build_verified_ssl_context(),
+                    headers={"User-Agent": "Ai-Notes/0.3 (+https://github.com/openai/codex)"},
+                ) as client:
+                    with client.stream("GET", url) as response:
+                        if response.status_code in {301, 302, 303, 307, 308}:
+                            location = response.headers.get("location")
+                            if not location:
+                                raise GitHubError("GitHub evidence redirect omitted Location")
+                            redirect = urljoin(url, location)
+                        elif response.status_code == 404:
+                            raise GitHubNotFoundError(f"GitHub evidence was not found: {url}")
+                        elif response.status_code in {403, 429}:
+                            raise GitHubPartialError(f"GitHub evidence HTTP {response.status_code}: {url}")
+                        elif response.status_code >= 400:
+                            raise GitHubError(f"GitHub evidence HTTP {response.status_code}: {url}")
+                        else:
+                            chunks: list[bytes] = []
+                            size = 0
+                            for chunk in response.iter_bytes():
+                                size += len(chunk)
+                                if size > max_bytes:
+                                    raise GitHubPartialError(f"GitHub evidence exceeds the configured size limit: {url}")
+                                chunks.append(chunk)
+                            return b"".join(chunks)
+            except (httpx.HTTPError, OSError) as error:
+                raise GitHubPartialError(
+                    f"GitHub evidence request failed: {type(error).__name__}: {error}"
+                ) from error
+            if redirect is not None:
+                url = redirect
+                continue
+        raise GitHubError("GitHub evidence exceeded the approved redirect limit")
+
+    def read_file(self, repository_id: str, path: str, commit_sha: str, *, max_bytes: int) -> str:
+        url = f"https://raw.githubusercontent.com/{repository_id}/{commit_sha}/{quote(path, safe='/')}"
+        payload = self._read_bounded(url, max_bytes=max_bytes)
+        return payload.decode("utf-8", errors="replace")
+
+    def list_files(self, repository_id: str, commit_sha: str, *, max_archive_bytes: int) -> list[str]:
+        url = f"https://codeload.github.com/{repository_id}/zip/{commit_sha}"
+        payload = self._read_bounded(url, max_bytes=max_archive_bytes)
+        try:
+            with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+                paths: list[str] = []
+                for item in archive.infolist():
+                    if item.is_dir():
+                        continue
+                    parts = item.filename.split("/", 1)
+                    if len(parts) != 2 or not parts[1] or ".." in parts[1].split("/"):
+                        continue
+                    paths.append(parts[1])
+        except zipfile.BadZipFile as error:
+            raise GitHubError("GitHub codeload response is not a valid ZIP archive") from error
+        return sorted(set(paths))
 
 
 def _require_object(payload: object, label: str) -> dict[str, Any]:

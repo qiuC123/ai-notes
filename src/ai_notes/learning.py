@@ -13,9 +13,11 @@ import yaml
 from ai_notes.contracts import MANIFEST_SCHEMA, QUEUE_SCHEMA, validate_contract
 from ai_notes.github import (
     GitHubError,
+    GitHubEvidenceFallback,
     GitHubJsonApi,
     GitHubPartialError,
     PublicGitHubApi,
+    PublicGitHubArchive,
     VerifiedGitHubProject,
     parse_github_url,
     parse_pinned_blob_url,
@@ -39,6 +41,7 @@ class LearningPolicy:
     retention_days: int = 30
     max_external_evidence: int = 20
     max_evidence_chars: int = 262_144
+    max_archive_bytes: int = 33_554_432
     max_tree_paths: int = 500
     max_focus_files: int = 100
     recognized_licenses: tuple[str, ...] = ()
@@ -62,6 +65,7 @@ def load_learning_policy(path: Path) -> LearningPolicy:
         retention_days=int(payload.get("retention_days", 30)),
         max_external_evidence=int(payload.get("max_external_evidence", 20)),
         max_evidence_chars=int(payload.get("max_evidence_chars", 262_144)),
+        max_archive_bytes=int(payload.get("max_archive_bytes", 33_554_432)),
         max_tree_paths=int(payload.get("max_tree_paths", 500)),
         max_focus_files=int(payload.get("max_focus_files", 100)),
         recognized_licenses=tuple(str(item) for item in payload.get("recognized_licenses", [])),
@@ -145,8 +149,73 @@ def _source_risk(project: VerifiedGitHubProject, policy: LearningPolicy) -> dict
     }
 
 
+def _read_file(
+    api: GitHubJsonApi,
+    fallback: GitHubEvidenceFallback | None,
+    project: VerifiedGitHubProject,
+    policy: LearningPolicy,
+    path: str,
+) -> str:
+    try:
+        return read_repository_file(
+            api,
+            project.repository_id,
+            path,
+            project.commit_sha,
+            max_bytes=policy.max_evidence_chars,
+        )
+    except GitHubPartialError:
+        if fallback is None:
+            raise
+        return fallback.read_file(
+            project.repository_id,
+            path,
+            project.commit_sha,
+            max_bytes=policy.max_evidence_chars,
+        )
+
+
+def _read_readme(
+    api: GitHubJsonApi,
+    fallback: GitHubEvidenceFallback | None,
+    project: VerifiedGitHubProject,
+    policy: LearningPolicy,
+) -> str:
+    return _read_file(api, fallback, project, policy, "README.md")
+
+
+def _read_tree_paths(
+    api: GitHubJsonApi,
+    fallback: GitHubEvidenceFallback | None,
+    project: VerifiedGitHubProject,
+    policy: LearningPolicy,
+) -> tuple[list[str], bool]:
+    try:
+        tree_payload = api.get_json(f"/repos/{project.repository_id}/git/trees/{project.commit_sha}?recursive=1")
+        if not isinstance(tree_payload, dict) or not isinstance(tree_payload.get("tree"), list):
+            raise GitHubError("GitHub tree response is invalid")
+        paths = [
+            str(item.get("path"))
+            for item in tree_payload["tree"]
+            if isinstance(item, dict) and item.get("type") == "blob" and isinstance(item.get("path"), str)
+        ]
+        return paths, bool(tree_payload.get("truncated"))
+    except GitHubPartialError:
+        if fallback is None:
+            raise
+        return (
+            fallback.list_files(
+                project.repository_id,
+                project.commit_sha,
+                max_archive_bytes=policy.max_archive_bytes,
+            ),
+            False,
+        )
+
+
 def _collect_standard_evidence(
     api: GitHubJsonApi,
+    fallback: GitHubEvidenceFallback | None,
     project: VerifiedGitHubProject,
     policy: LearningPolicy,
 ) -> tuple[list[dict[str, Any]], list[str]]:
@@ -155,13 +224,7 @@ def _collect_standard_evidence(
     ]
     missing: list[str] = []
     try:
-        readme = read_repository_file(
-            api,
-            project.repository_id,
-            "README.md",
-            project.commit_sha,
-            max_bytes=policy.max_evidence_chars,
-        )
+        readme = _read_readme(api, fallback, project, policy)
         evidence.append(
             _evidence(
                 "readme",
@@ -175,15 +238,8 @@ def _collect_standard_evidence(
         missing.append(f"readme: {type(error).__name__}: {error}")
 
     try:
-        tree_payload = api.get_json(f"/repos/{project.repository_id}/git/trees/{project.commit_sha}?recursive=1")
-        if not isinstance(tree_payload, dict) or not isinstance(tree_payload.get("tree"), list):
-            raise GitHubError("GitHub tree response is invalid")
-        paths = [
-            str(item.get("path"))
-            for item in tree_payload["tree"]
-            if isinstance(item, dict) and item.get("type") == "blob" and isinstance(item.get("path"), str)
-        ]
-        if tree_payload.get("truncated"):
+        paths, truncated = _read_tree_paths(api, fallback, project, policy)
+        if truncated:
             missing.append("tree: GitHub recursive tree was truncated")
         tree_text = "\n".join(paths[: policy.max_tree_paths])
         evidence.append(
@@ -207,6 +263,7 @@ def _collect_standard_evidence(
 
 def _retry_missing_standard_evidence(
     api: GitHubJsonApi,
+    fallback: GitHubEvidenceFallback | None,
     project: VerifiedGitHubProject,
     policy: LearningPolicy,
     evidence: list[dict[str, Any]],
@@ -218,13 +275,7 @@ def _retry_missing_standard_evidence(
         missing = [item for item in missing if not item.startswith("readme:")]
         evidence = [item for item in evidence if item["kind"] != "readme"]
         try:
-            readme = read_repository_file(
-                api,
-                project.repository_id,
-                "README.md",
-                project.commit_sha,
-                max_bytes=policy.max_evidence_chars,
-            )
+            readme = _read_readme(api, fallback, project, policy)
             evidence.append(
                 _evidence(
                     "readme",
@@ -241,15 +292,8 @@ def _retry_missing_standard_evidence(
         missing = [item for item in missing if not item.startswith("tree:")]
         evidence = [item for item in evidence if item["kind"] != "tree"]
         try:
-            tree_payload = api.get_json(f"/repos/{project.repository_id}/git/trees/{project.commit_sha}?recursive=1")
-            if not isinstance(tree_payload, dict) or not isinstance(tree_payload.get("tree"), list):
-                raise GitHubError("GitHub tree response is invalid")
-            paths = [
-                str(item.get("path"))
-                for item in tree_payload["tree"]
-                if isinstance(item, dict) and item.get("type") == "blob" and isinstance(item.get("path"), str)
-            ]
-            if tree_payload.get("truncated"):
+            paths, truncated = _read_tree_paths(api, fallback, project, policy)
+            if truncated:
                 missing.append("tree: GitHub recursive tree was truncated")
             evidence.append(
                 _evidence(
@@ -393,6 +437,7 @@ def prepare_learning(
     entry_mode: str = "nominated",
     discovery_input_path: Path | None = None,
     api: GitHubJsonApi | None = None,
+    fallback: GitHubEvidenceFallback | None = None,
     run_id: str | None = None,
     now: datetime | None = None,
 ) -> PrepareResult:
@@ -409,6 +454,7 @@ def prepare_learning(
     manifest_path = output_dir / "learning-run-manifest.json"
     lock_path = resolved_root / "data" / "learning" / "ai-notes-learning.lock"
     api_client = api or PublicGitHubApi()
+    fallback_client = fallback if fallback is not None else (PublicGitHubArchive() if api is None else None)
 
     with RunLock(lock_path):
         if manifest_path.exists():
@@ -456,6 +502,7 @@ def prepare_learning(
             missing = list(queue["missing_scopes"])
             evidence, missing = _retry_missing_standard_evidence(
                 api_client,
+                fallback_client,
                 project,
                 policy,
                 evidence,
@@ -505,7 +552,7 @@ def prepare_learning(
                 _register_project(resolved_root, owned)
                 return PrepareResult(identifier, None, manifest_path, "failed", ())
             source_risk = _source_risk(project, policy)
-            evidence, missing = _collect_standard_evidence(api_client, project, policy)
+            evidence, missing = _collect_standard_evidence(api_client, fallback_client, project, policy)
             created_at = current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
             verified_at = created_at
 
@@ -519,13 +566,7 @@ def prepare_learning(
                 path = parse_pinned_blob_url(include_url, project.repository_id, project.commit_sha)
                 if include_url in existing_urls:
                     continue
-                text = read_repository_file(
-                    api_client,
-                    project.repository_id,
-                    path,
-                    project.commit_sha,
-                    max_bytes=policy.max_evidence_chars,
-                )
+                text = _read_file(api_client, fallback_client, project, policy, path)
                 evidence.append(_evidence("blob", include_url, path, text, project.commit_sha))
                 existing_urls.add(include_url)
             except (GitHubError, ValueError) as error:

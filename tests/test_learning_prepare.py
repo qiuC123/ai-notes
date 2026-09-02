@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,7 +16,14 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from ai_notes.github import GitHubError, GitHubPartialError, PublicGitHubApi, parse_github_url, verify_project
+from ai_notes.github import (
+    GitHubError,
+    GitHubPartialError,
+    PublicGitHubApi,
+    PublicGitHubArchive,
+    parse_github_url,
+    verify_project,
+)
 from ai_notes.learning import prepare_learning
 
 
@@ -73,6 +82,19 @@ class FakeGitHubApi:
                 raise GitHubPartialError("rate limit")
             return {"truncated": False, "tree": [{"type": "blob", "path": "README.md"}]}
         raise AssertionError(f"Unexpected GitHub API path: {path}")
+
+
+class FakeEvidenceFallback:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def read_file(self, repository_id: str, path: str, commit_sha: str, *, max_bytes: int) -> str:
+        self.calls.append(f"read:{repository_id}:{path}:{commit_sha}:{max_bytes}")
+        return "# Codex\nCoding agent."
+
+    def list_files(self, repository_id: str, commit_sha: str, *, max_archive_bytes: int) -> list[str]:
+        self.calls.append(f"tree:{repository_id}:{commit_sha}:{max_archive_bytes}")
+        return ["README.md", "docs/architecture.md"]
 
 
 def initialize_project(path: Path) -> None:
@@ -234,6 +256,79 @@ class LearningPrepareTests(unittest.TestCase):
             with self.assertRaises(GitHubError):
                 PublicGitHubApi().get_json("/repos/openai/codex")
 
+    def test_public_archive_rejects_redirect_and_enforces_bounded_stream(self) -> None:
+        class Response:
+            def __init__(self, status_code: int, *, headers: dict[str, str] | None = None, chunks: list[bytes] | None = None) -> None:
+                self.status_code = status_code
+                self.headers = headers or {}
+                self._chunks = chunks or []
+
+            def __enter__(self) -> "Response":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def iter_bytes(self):
+                yield from self._chunks
+
+        class Client:
+            def __init__(self, response: Response) -> None:
+                self.response = response
+
+            def __enter__(self) -> "Client":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def stream(self, method: str, url: str) -> Response:
+                return self.response
+
+        redirect = Response(302, headers={"location": "https://evil.example/archive.zip"})
+        with patch("ai_notes.github.httpx.Client", return_value=Client(redirect)):
+            with self.assertRaisesRegex(GitHubError, "approved hosts"):
+                PublicGitHubArchive().read_file("openai/codex", "README.md", SHA, max_bytes=100)
+
+        oversized = Response(200, chunks=[b"123", b"456"])
+        with patch("ai_notes.github.httpx.Client", return_value=Client(oversized)):
+            with self.assertRaisesRegex(GitHubPartialError, "size limit"):
+                PublicGitHubArchive().read_file("openai/codex", "README.md", SHA, max_bytes=5)
+
+    def test_public_archive_lists_files_without_extracting_zip(self) -> None:
+        payload = io.BytesIO()
+        with zipfile.ZipFile(payload, "w") as archive:
+            archive.writestr(f"codex-{SHA}/README.md", "readme")
+            archive.writestr(f"codex-{SHA}/docs/architecture.md", "architecture")
+
+        class Response:
+            status_code = 200
+            headers: dict[str, str] = {}
+
+            def __enter__(self) -> "Response":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def iter_bytes(self):
+                yield payload.getvalue()
+
+        class Client:
+            def __enter__(self) -> "Client":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def stream(self, method: str, url: str) -> Response:
+                return Response()
+
+        with patch("ai_notes.github.httpx.Client", return_value=Client()):
+            files = PublicGitHubArchive().list_files("openai/codex", SHA, max_archive_bytes=10_000)
+
+        self.assertEqual(["README.md", "docs/architecture.md"], files)
+
     def test_prepare_pins_commit_writes_bounded_queue_and_does_not_copy_owned_source(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -288,6 +383,59 @@ class LearningPrepareTests(unittest.TestCase):
         self.assertEqual("partial", result.status)
         self.assertGreaterEqual(len(queue["missing_scopes"]), 2)
         self.assertEqual(["repository"], [item["kind"] for item in queue["external_evidence"]])
+
+    def test_fixed_commit_archive_fallback_recovers_optional_api_rate_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "owned"
+            initialize_project(project)
+            write_policy(root)
+            fallback = FakeEvidenceFallback()
+
+            result = prepare_learning(
+                root=root,
+                github_url="https://github.com/openai/codex",
+                project_path=project,
+                api=FakeGitHubApi(fail_optional=True),
+                fallback=fallback,
+                now=datetime(2026, 9, 2, 8, 30, tzinfo=UTC),
+            )
+            queue = json.loads(result.queue_path.read_text(encoding="utf-8"))
+
+        self.assertEqual("success", result.status)
+        self.assertEqual([], queue["missing_scopes"])
+        self.assertEqual({"repository", "readme", "tree"}, {item["kind"] for item in queue["external_evidence"]})
+        self.assertEqual(2, len(fallback.calls))
+
+    def test_fixed_commit_fallback_recovers_pinned_include_rate_limit(self) -> None:
+        class IncludeLimitedApi(FakeGitHubApi):
+            def get_json(self, path: str) -> object:
+                if path == f"/repos/openai/codex/contents/docs/architecture.md?ref={SHA}":
+                    raise GitHubPartialError("rate limit")
+                return super().get_json(path)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "owned"
+            initialize_project(project)
+            write_policy(root)
+            fallback = FakeEvidenceFallback()
+            include = f"https://github.com/openai/codex/blob/{SHA}/docs/architecture.md"
+
+            result = prepare_learning(
+                root=root,
+                github_url="https://github.com/openai/codex",
+                project_path=project,
+                include_urls=(include,),
+                api=IncludeLimitedApi(),
+                fallback=fallback,
+                now=datetime(2026, 9, 2, 8, 30, tzinfo=UTC),
+            )
+            queue = json.loads(result.queue_path.read_text(encoding="utf-8"))
+
+        self.assertEqual("success", result.status)
+        self.assertIn("blob", {item["kind"] for item in queue["external_evidence"]})
+        self.assertTrue(any(call.startswith("read:openai/codex:docs/architecture.md") for call in fallback.calls))
 
     def test_standard_evidence_retry_recovers_readme_and_tree_without_repinning_commit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
