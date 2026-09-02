@@ -261,6 +261,32 @@ class LearningPrepareTests(unittest.TestCase):
         self.assertIsNone(manifest["queue_sha256"])
         self.assertIn("rate limit", manifest["missing_scopes"][0])
 
+    def test_deterministic_verification_error_writes_failed_manifest_without_fake_queue(self) -> None:
+        class BrokenApi:
+            def get_json(self, path: str) -> object:
+                raise GitHubError("invalid verified response")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "owned"
+            initialize_project(project)
+            write_policy(root)
+
+            result = prepare_learning(
+                root=root,
+                github_url="https://github.com/openai/codex",
+                project_path=project,
+                api=BrokenApi(),
+                now=datetime(2026, 9, 2, 8, 30, tzinfo=UTC),
+            )
+            manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+        self.assertEqual("failed", result.status)
+        self.assertIsNone(result.queue_path)
+        self.assertEqual("failed", manifest["status"])
+        self.assertEqual([], manifest["missing_scopes"])
+        self.assertIn("invalid verified response", manifest["validation_errors"][0])
+
     def test_include_requires_exact_verified_commit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -227,24 +227,26 @@ def _register_project(root: Path, owned_project: dict[str, Any]) -> None:
     write_bytes_atomic(path, rendered.encode("utf-8"))
 
 
-def _write_unprepared_partial_manifest(
-    *, root: Path, path: Path, run_id: str, created_at: str, policy: LearningPolicy, reason: str
+def _write_unprepared_manifest(
+    *, path: Path, run_id: str, created_at: str, policy: LearningPolicy, status: str, reason: str
 ) -> None:
+    if status not in {"partial", "failed"}:
+        raise ValueError(f"Unsupported unprepared manifest status: {status}")
     retained = datetime.fromisoformat(created_at.replace("Z", "+00:00")) + timedelta(days=policy.retention_days)
     payload = {
         "schema_version": MANIFEST_SCHEMA,
         "run_id": run_id,
         "started_at": created_at,
         "finished_at": created_at,
-        "status": "partial",
+        "status": status,
         "healthy_no_connection": False,
         "policy_version": policy.policy_version,
         "queue_path": f"outputs/learning/{run_id}/learning-queue.json",
         "decisions_path": None,
         "queue_sha256": None,
         "decisions_sha256": None,
-        "missing_scopes": [reason],
-        "validation_errors": [],
+        "missing_scopes": [reason] if status == "partial" else [],
+        "validation_errors": [reason] if status == "failed" else [],
         "retained_until": retained.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
     }
     validate_contract(MANIFEST_SCHEMA, payload)
@@ -318,16 +320,31 @@ def prepare_learning(
                 output_dir.mkdir(parents=True, exist_ok=True)
                 write_bytes_atomic(output_dir / "created-at.txt", (created_at + "\n").encode("utf-8"))
                 reason = f"verified_target: {type(error).__name__}: {error}"
-                _write_unprepared_partial_manifest(
-                    root=resolved_root,
+                _write_unprepared_manifest(
                     path=manifest_path,
                     run_id=identifier,
                     created_at=created_at,
                     policy=policy,
+                    status="partial",
                     reason=reason,
                 )
                 _register_project(resolved_root, owned)
                 return PrepareResult(identifier, None, manifest_path, "partial", (reason,))
+            except (GitHubError, ValueError) as error:
+                created_at = current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                write_bytes_atomic(output_dir / "created-at.txt", (created_at + "\n").encode("utf-8"))
+                reason = f"verified_target: {type(error).__name__}: {error}"
+                _write_unprepared_manifest(
+                    path=manifest_path,
+                    run_id=identifier,
+                    created_at=created_at,
+                    policy=policy,
+                    status="failed",
+                    reason=reason,
+                )
+                _register_project(resolved_root, owned)
+                return PrepareResult(identifier, None, manifest_path, "failed", ())
             source_risk = _source_risk(project, policy)
             evidence, missing = _collect_standard_evidence(api_client, project, policy)
             created_at = current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")

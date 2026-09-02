@@ -55,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
                     ensure_ascii=False,
                 )
             )
-            return 0 if result.status == "success" else 2
+            return 0 if result.status == "success" else (2 if result.status == "partial" else 1)
         if args.decisions is not None:
             result = finalize_learning(
                 root=root,

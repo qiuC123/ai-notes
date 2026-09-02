@@ -47,6 +47,28 @@ class LearningCliTests(unittest.TestCase):
         self.assertEqual(64, len(payload["queue_sha256"]))
         prepare.assert_called_once()
 
+    def test_prepare_maps_failed_manifest_to_exit_one(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "learning-run-manifest.json"
+            stdout = io.StringIO()
+            with patch(
+                "ai_notes.__main__.prepare_learning",
+                return_value=PrepareResult(RUN_ID, None, manifest, "failed", ()),
+            ), redirect_stdout(stdout):
+                code = main(
+                    [
+                        "prepare-learning",
+                        "https://github.com/openai/codex",
+                        "--project",
+                        ".",
+                        "--root",
+                        directory,
+                    ]
+                )
+
+        self.assertEqual(1, code)
+        self.assertEqual("failed", json.loads(stdout.getvalue())["status"])
+
     def test_finalize_decisions_maps_review_failure_to_exit_one(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             manifest = Path(directory) / "manifest.json"
