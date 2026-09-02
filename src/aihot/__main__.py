@@ -24,13 +24,15 @@ def _positive_int(value: str) -> int:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Collect and verify high-quality AI release information with Ai Notes.")
     subcommands = parser.add_subparsers(dest="command", required=True)
-    daily = subcommands.add_parser("daily", help="run Collect → Hermes Review → Finalize for one day")
+    daily = subcommands.add_parser("daily", help="run Collect → Codex Review → Finalize for one day")
     daily.add_argument("--date", default=_default_date(), type=date.fromisoformat, help="UTC run date in YYYY-MM-DD form")
     daily.add_argument("--root", default=Path.cwd(), type=Path, help="repository root containing config/")
+    daily.add_argument("--decisions", type=Path, help="Codex-produced decisions JSON for the prepared queue")
     backtest = subcommands.add_parser("backtest", help="run a complete historical source review")
     backtest.add_argument("--date", default=_default_date(), type=date.fromisoformat, help="UTC end date")
     backtest.add_argument("--days", default=90, type=_positive_int)
     backtest.add_argument("--root", default=Path.cwd(), type=Path)
+    backtest.add_argument("--decisions", type=Path, help="Codex-produced decisions JSON for eligible releases")
     evaluate = subcommands.add_parser("evaluate", help="evaluate a completed online source trial")
     evaluate.add_argument("--start-date", required=True, type=date.fromisoformat)
     evaluate.add_argument("--days", default=14, type=_positive_int)
@@ -43,11 +45,15 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root.resolve()
     try:
         if args.command == "daily":
-            result = build_default_ai_notes_pipeline(root).run(args.date.isoformat())
+            result = build_default_ai_notes_pipeline(
+                root, decisions_path=args.decisions.resolve() if args.decisions else None
+            ).run(args.date.isoformat())
             print(f"Wrote {result.accepted_information_path}")
             return 0 if result.status == "success" else (2 if result.status == "partial" else 1)
         if args.command == "backtest":
-            report = build_default_backtester(root).run(as_of=args.date.isoformat(), days=args.days)
+            report = build_default_backtester(
+                root, decisions_path=args.decisions.resolve() if args.decisions else None
+            ).run(as_of=args.date.isoformat(), days=args.days)
             print(f"Reviewed {report['eligible_count']} eligible historical releases")
             return 0 if all(item["coverage_complete"] for item in report["sources"]) else 2
         if args.command == "evaluate":

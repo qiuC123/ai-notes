@@ -11,7 +11,7 @@ from typing import Protocol
 
 from aihot.http import PublicHttpFetcher
 from aihot.release_ledger import ReleaseLedger, detect_atom_gap
-from aihot.release_review import HermesCliReviewer, finalize_decisions, review_in_batches
+from aihot.release_review import DecisionFileReviewer, PendingDecisionReviewer, finalize_decisions, review_in_batches
 from aihot.release_sources import (
     GitHubReleaseRestBackfiller,
     ReleaseRecord,
@@ -461,21 +461,21 @@ class AiNotesPipeline:
         return AiNotesRunResult(queue_path, decisions_path, accepted_path, markdown_path, manifest_path, status)
 
 
-def build_default_ai_notes_pipeline(root: Path) -> AiNotesPipeline:
+def build_default_ai_notes_pipeline(root: Path, *, decisions_path: Path | None = None) -> AiNotesPipeline:
     http = PublicHttpFetcher()
     sources = load_release_sources(root / "config" / "ai_notes_sources.yaml")
     return AiNotesPipeline(
         root=root,
         sources=sources,
         fetcher=http,
-        reviewer=HermesCliReviewer(),
+        reviewer=DecisionFileReviewer(decisions_path) if decisions_path is not None else PendingDecisionReviewer(),
         backfiller=GitHubReleaseRestBackfiller(fetcher=http, cache_dir=root / "data" / "rest-cache"),
         security_fetcher=GitHubAdvisoryFetcher(http=http),
         require_baseline=True,
     )
 
 
-def build_default_backtester(root: Path) -> HistoricalBacktester:
+def build_default_backtester(root: Path, *, decisions_path: Path | None = None) -> HistoricalBacktester:
     http = PublicHttpFetcher()
     return HistoricalBacktester(
         root=root,
@@ -486,5 +486,5 @@ def build_default_backtester(root: Path) -> HistoricalBacktester:
             max_pages=50,
             cache_dir=root / "data" / "backtests" / "rest-cache",
         ),
-        reviewer=HermesCliReviewer(timeout_seconds=600),
+        reviewer=DecisionFileReviewer(decisions_path) if decisions_path is not None else PendingDecisionReviewer(),
     )

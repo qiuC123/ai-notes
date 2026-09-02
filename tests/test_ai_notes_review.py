@@ -1,16 +1,25 @@
 from __future__ import annotations
 
 import sys
+import json
+import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from aihot.release_review import HermesCliReviewer, ReviewValidationError, finalize_decisions, review_in_batches
+from aihot.release_review import (
+    DecisionFileReviewer,
+    PendingDecisionReviewer,
+    ReviewExecutionError,
+    ReviewValidationError,
+    finalize_decisions,
+    review_in_batches,
+)
 from aihot.release_sources import ReleaseRecord
+from aihot.ai_notes import build_default_ai_notes_pipeline
 
 
 def release() -> ReleaseRecord:
@@ -57,38 +66,35 @@ class ReleaseReviewTests(unittest.TestCase):
         self.assertEqual("accept", decisions[0]["decision"])
         self.assertEqual(release().release_key, decisions[0]["release_key"])
 
-    def test_hermes_reviewer_invokes_verified_zero_tool_oneshot_contract(self) -> None:
-        captured: dict[str, object] = {}
+    def test_pending_reviewer_stops_at_artifact_boundary_without_calling_a_model(self) -> None:
+        self.assertEqual({"decisions": []}, PendingDecisionReviewer().review([]))
+        with self.assertRaises(ReviewExecutionError):
+            PendingDecisionReviewer().review([release()])
 
-        def runner(command: list[str], **kwargs: object) -> object:
-            captured["call_count"] = int(captured.get("call_count", 0)) + 1
-            captured["command"] = command
-            prompt_path = Path(command[command.index("--query-file") + 1])
-            prompt = prompt_path.read_text(encoding="utf-8")
-            captured["prompt"] = prompt
-            output = (
-                '{"available_tool_names":[]}\n'
-                if "available_tool_names" in prompt
-                else '{"decisions": []}\n'
-            )
-            return SimpleNamespace(
-                returncode=0,
-                stdout="Warning: Unknown toolsets: __no_tools__\nsession_id: test\n" + output,
-                stderr="",
-            )
+    def test_decision_file_reviewer_selects_exact_bounded_batch(self) -> None:
+        payload = {
+            "decisions": [
+                {
+                    "release_key": release().release_key,
+                    "decision": "reject",
+                    "change_types": [],
+                    "substantive_changes": [],
+                    "decision_reason": "Maintenance only.",
+                    "pending_verification": [],
+                }
+            ]
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "decisions.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            result = DecisionFileReviewer(path).review([release()])
 
-        reviewer = HermesCliReviewer(runner=runner)
-        payload = reviewer.review([])
+        self.assertEqual(payload, result)
 
-        command = captured["command"]
-        self.assertIn("__no_tools__", command)
-        self.assertIn("--safe-mode", command)
-        self.assertIn("--max-turns", command)
-        self.assertEqual(2, captured["call_count"])
-        self.assertEqual({"decisions": []}, payload)
-        self.assertIn("untrusted", str(captured["prompt"]).lower())
-        self.assertIn('"substantive_changes"', str(captured["prompt"]))
-        self.assertIn("pending_verification must be a JSON array", str(captured["prompt"]))
+    def test_default_release_pipeline_stops_for_codex_decisions_without_hermes_runtime(self) -> None:
+        pipeline = build_default_ai_notes_pipeline(ROOT)
+
+        self.assertIsInstance(pipeline.reviewer, PendingDecisionReviewer)
 
     def test_review_queue_is_split_into_bounded_batches(self) -> None:
         records = [

@@ -4,7 +4,7 @@ import json
 import os
 import re
 import tempfile
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -66,6 +66,17 @@ class HistoricalBacktester:
                 }
             )
 
+        output_dir = self.root / "outputs" / "backtests" / f"{as_of}-{days}d"
+        _write_text_atomic(
+            output_dir / "review-queue.json",
+            json.dumps(
+                {"as_of": as_of, "days": days, "records": [asdict(record) for record in eligible]},
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+        )
         raw_decisions = review_in_batches(self.reviewer, eligible) if eligible else {"decisions": []}
         decisions = finalize_decisions(eligible, raw_decisions)
         rows_by_source = {row["source_id"]: row for row in source_rows}
@@ -86,7 +97,6 @@ class HistoricalBacktester:
             "sources": source_rows,
             "decisions": decisions,
         }
-        output_dir = self.root / "outputs" / "backtests" / f"{as_of}-{days}d"
         _write_text_atomic(
             output_dir / "backtest.json", json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         )
