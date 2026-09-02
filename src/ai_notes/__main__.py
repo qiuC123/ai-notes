@@ -11,6 +11,7 @@ from ai_notes.review import (
     list_pending_feedback,
     list_watched_projects,
     record_feedback,
+    record_experiment_result,
     validate_learning_decisions,
 )
 from ai_notes.storage import sha256_file
@@ -50,6 +51,13 @@ def _parser() -> argparse.ArgumentParser:
 
     feedback = commands.add_parser("feedback-status", help="list successful runs awaiting explicit feedback")
     feedback.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
+
+    experiment_result = commands.add_parser(
+        "record-experiment-result", help="validate and append an approved experiment result"
+    )
+    experiment_result.add_argument("run_id")
+    experiment_result.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
+    experiment_result.add_argument("--result", required=True, type=Path, help="experiment-result.v1 JSON")
     return parser
 
 
@@ -108,6 +116,25 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "feedback-status":
             print(json.dumps({"runs": list_pending_feedback(root)}, ensure_ascii=False))
+            return 0
+        if args.command == "record-experiment-result":
+            result = record_experiment_result(
+                root=root,
+                run_id=args.run_id,
+                input_result_path=args.result.resolve(),
+            )
+            print(
+                json.dumps(
+                    {
+                        "run_id": result.run_id,
+                        "relation_id": result.relation_id,
+                        "recorded": result.recorded,
+                        "result_sha256": result.result_sha256,
+                        "downstream_status": "awaiting_user_confirmation",
+                    },
+                    ensure_ascii=False,
+                )
+            )
             return 0
         if args.decisions is not None:
             result = finalize_learning(

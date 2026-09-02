@@ -16,9 +16,11 @@ from ai_notes.review import (
     list_pending_feedback,
     list_watched_projects,
     record_feedback,
+    record_experiment_result,
     validate_learning_decisions,
 )
 from ai_notes.storage import project_fingerprint, sha256_bytes, sha256_file, write_json_atomic
+from ai_notes.trial import evaluate_trial
 
 
 RUN_ID = "20260902T083000Z-0123abcd"
@@ -192,7 +194,197 @@ def decisions(queue_path: Path, project: Path, *, with_connection: bool = True, 
     return payload
 
 
+def experiment_result(queue_path: Path, project: Path) -> dict[str, object]:
+    queue = json.loads(queue_path.read_text(encoding="utf-8"))
+    fingerprint = project_fingerprint(project)
+    return {
+        "schema_version": "experiment-result.v1",
+        "run_id": RUN_ID,
+        "relation_id": RELATION_ID,
+        "external_commit_sha": queue["verified_target"]["commit_sha"],
+        "approved_owned_project_state": {
+            "repository_id": queue["owned_project"]["repository_id"],
+            "git_head": fingerprint["git_head"],
+            "working_tree_fingerprint": fingerprint["working_tree_fingerprint"],
+        },
+        "completed_at": "2026-09-02T09:00:00Z",
+        "criterion_results": [
+            {
+                "criterion": "Every claim has matching evidence.",
+                "status": "pass",
+                "evidence": "The targeted contract and ledger tests passed.",
+            }
+        ],
+        "retrospective": {
+            "wrong_premise": None,
+            "process_blind_spot": "The approved handoff had no result return path.",
+            "next_step_candidate": "Ask the user whether this should change project guidance.",
+        },
+    }
+
+
 class LearningReviewTests(unittest.TestCase):
+    def test_experiment_result_binds_approval_and_appends_once_without_downstream_effects(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_policy(root)
+            project, queue_path = write_prepared_run(root)
+            decision_path = root / "decision-input.json"
+            write_json_atomic(decision_path, decisions(queue_path, project))
+            finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=decision_path, now=NOW)
+            record_feedback(root=root, run_id=RUN_ID, feedback="experiment", now=NOW)
+            ledger_path = root / "data" / "learning" / "ledger.jsonl"
+            original_ledger = ledger_path.read_bytes()
+            original_events = [json.loads(line) for line in original_ledger.decode().splitlines()]
+            original_trial_status = evaluate_trial(root).as_dict()
+            agents_path = root / "AGENTS.md"
+            agents_path.write_text("# Test project rules\n", encoding="utf-8")
+            original_agents = agents_path.read_bytes()
+            input_path = root / "experiment-result.json"
+            write_json_atomic(input_path, experiment_result(queue_path, project))
+
+            first = record_experiment_result(
+                root=root,
+                run_id=RUN_ID,
+                input_result_path=input_path,
+                now=datetime(2026, 9, 2, 9, 1, tzinfo=UTC),
+            )
+            replay = record_experiment_result(
+                root=root,
+                run_id=RUN_ID,
+                input_result_path=input_path,
+                now=datetime(2026, 9, 2, 9, 2, tzinfo=UTC),
+            )
+            final_ledger = ledger_path.read_bytes()
+            events = [json.loads(line) for line in final_ledger.decode().splitlines()]
+            final_trial_status = evaluate_trial(root).as_dict()
+            final_watches = list_watched_projects(root)
+            final_agents = agents_path.read_bytes()
+
+        self.assertTrue(first.recorded)
+        self.assertFalse(replay.recorded)
+        self.assertEqual(first.result_sha256, replay.result_sha256)
+        self.assertTrue(final_ledger.startswith(original_ledger))
+        self.assertEqual(original_events, events[:2])
+        self.assertEqual(3, len(events))
+        self.assertEqual("experiment_result_recorded", events[-1]["event"])
+        self.assertEqual(SHA, events[-1]["result"]["external_commit_sha"])
+        self.assertEqual(
+            "awaiting_user_confirmation",
+            events[-1]["downstream_state"]["status"],
+        )
+        self.assertEqual([], events[-1]["downstream_state"]["automatic_effects"])
+        self.assertEqual([], final_watches)
+        self.assertEqual(original_trial_status, final_trial_status)
+        self.assertEqual(original_agents, final_agents)
+
+    def test_experiment_result_rejects_unapproved_or_mismatched_binding_and_criteria(self) -> None:
+        mutations = {
+            "run": lambda payload: payload.update({"run_id": "20260902T083000Z-aaaaaaaa"}),
+            "relation": lambda payload: payload.update({"relation_id": "rel-aaaaaaaaaaaa"}),
+            "external commit": lambda payload: payload.update({"external_commit_sha": "a" * 40}),
+            "owned repository": lambda payload: payload["approved_owned_project_state"].update(
+                {"repository_id": "different/owned-project"}
+            ),
+            "approved git head": lambda payload: payload["approved_owned_project_state"].update(
+                {"git_head": "b" * 40}
+            ),
+            "approved worktree": lambda payload: payload["approved_owned_project_state"].update(
+                {"working_tree_fingerprint": "c" * 64}
+            ),
+            "criterion": lambda payload: payload["criterion_results"][0].update(
+                {"criterion": "A rewritten condition."}
+            ),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                write_policy(root)
+                project, queue_path = write_prepared_run(root)
+                decision_path = root / "decision-input.json"
+                write_json_atomic(decision_path, decisions(queue_path, project))
+                finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=decision_path, now=NOW)
+                record_feedback(root=root, run_id=RUN_ID, feedback="experiment", now=NOW)
+                ledger_path = root / "data" / "learning" / "ledger.jsonl"
+                original = ledger_path.read_bytes()
+                payload = experiment_result(queue_path, project)
+                mutate(payload)
+                input_path = root / "experiment-result.json"
+                write_json_atomic(input_path, payload)
+
+                with self.assertRaises(ValueError):
+                    record_experiment_result(
+                        root=root,
+                        run_id=RUN_ID,
+                        input_result_path=input_path,
+                        now=datetime(2026, 9, 2, 9, 1, tzinfo=UTC),
+                    )
+
+                self.assertEqual(original, ledger_path.read_bytes())
+
+    def test_conflicting_experiment_result_fails_closed_without_replacing_first_result(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_policy(root)
+            project, queue_path = write_prepared_run(root)
+            decision_path = root / "decision-input.json"
+            write_json_atomic(decision_path, decisions(queue_path, project))
+            finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=decision_path, now=NOW)
+            record_feedback(root=root, run_id=RUN_ID, feedback="experiment", now=NOW)
+            input_path = root / "experiment-result.json"
+            payload = experiment_result(queue_path, project)
+            write_json_atomic(input_path, payload)
+            record_experiment_result(
+                root=root,
+                run_id=RUN_ID,
+                input_result_path=input_path,
+                now=datetime(2026, 9, 2, 9, 1, tzinfo=UTC),
+            )
+            ledger_path = root / "data" / "learning" / "ledger.jsonl"
+            first_result = ledger_path.read_bytes()
+            payload["criterion_results"][0]["status"] = "fail"
+            payload["criterion_results"][0]["evidence"] = "A later conflicting interpretation."
+            write_json_atomic(input_path, payload)
+
+            with self.assertRaisesRegex(ValueError, "cannot be replaced"):
+                record_experiment_result(
+                    root=root,
+                    run_id=RUN_ID,
+                    input_result_path=input_path,
+                    now=datetime(2026, 9, 2, 9, 1, tzinfo=UTC),
+                )
+
+            final_result = ledger_path.read_bytes()
+
+        self.assertEqual(first_result, final_result)
+
+    def test_experiment_result_rejects_completion_outside_approval_and_recording_window(self) -> None:
+        for completed_at in ("2026-09-02T08:30:00Z", "2026-09-02T09:02:00Z"):
+            with self.subTest(completed_at=completed_at), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                write_policy(root)
+                project, queue_path = write_prepared_run(root)
+                decision_path = root / "decision-input.json"
+                write_json_atomic(decision_path, decisions(queue_path, project))
+                finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=decision_path, now=NOW)
+                record_feedback(root=root, run_id=RUN_ID, feedback="experiment", now=NOW)
+                ledger_path = root / "data" / "learning" / "ledger.jsonl"
+                original = ledger_path.read_bytes()
+                payload = experiment_result(queue_path, project)
+                payload["completed_at"] = completed_at
+                input_path = root / "experiment-result.json"
+                write_json_atomic(input_path, payload)
+
+                with self.assertRaisesRegex(ValueError, "completed_at"):
+                    record_experiment_result(
+                        root=root,
+                        run_id=RUN_ID,
+                        input_result_path=input_path,
+                        now=datetime(2026, 9, 2, 9, 1, tzinfo=UTC),
+                    )
+
+                self.assertEqual(original, ledger_path.read_bytes())
+
     def test_validation_preflight_uses_full_contracts_without_writing_run_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

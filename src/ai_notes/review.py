@@ -13,6 +13,7 @@ import yaml
 
 from ai_notes.contracts import (
     DECISIONS_SCHEMA,
+    EXPERIMENT_RESULT_SCHEMA,
     MANIFEST_SCHEMA,
     QUEUE_SCHEMA,
     ContractValidationError,
@@ -22,6 +23,7 @@ from ai_notes.learning import load_learning_policy
 from ai_notes.storage import (
     RunLock,
     append_jsonl_atomic,
+    canonical_json_bytes,
     project_fingerprint,
     resolve_within,
     sha256_bytes,
@@ -74,6 +76,14 @@ class FeedbackResult:
     feedback: str
     recorded: bool
     relation_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ExperimentResult:
+    run_id: str
+    relation_id: str
+    recorded: bool
+    result_sha256: str
 
 
 def _relation_snapshot(connection: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -387,6 +397,104 @@ def _ledger_events(path: Path) -> list[dict[str, Any]]:
         if isinstance(payload, dict):
             events.append(payload)
     return events
+
+
+def record_experiment_result(
+    *,
+    root: Path,
+    run_id: str,
+    input_result_path: Path,
+    now: datetime | None = None,
+) -> ExperimentResult:
+    resolved_root = root.resolve()
+    current = now or datetime.now(UTC)
+    lock_path = resolved_root / "data" / "learning" / "ai-notes-learning.lock"
+    with RunLock(lock_path):
+        payload = validate_contract(
+            EXPERIMENT_RESULT_SCHEMA,
+            json.loads(input_result_path.read_text(encoding="utf-8")),
+        )
+        if payload["run_id"] != run_id:
+            raise ValueError("Experiment result run_id does not match the requested learning run")
+
+        ledger_path = resolved_root / "data" / "learning" / "ledger.jsonl"
+        events = _ledger_events(ledger_path)
+        relation_id = str(payload["relation_id"])
+        approvals = [
+            event
+            for event in events
+            if event.get("event") == "feedback_recorded"
+            and event.get("feedback") == "experiment"
+            and event.get("run_id") == run_id
+            and event.get("relation_id") == relation_id
+            and isinstance(event.get("experiment_state"), dict)
+            and event["experiment_state"].get("status") == "approved_for_handoff"
+        ]
+        if len(approvals) != 1:
+            raise ValueError("Experiment result requires exactly one approved handoff for the run and relation")
+        approval = approvals[0]
+        state = approval["experiment_state"]
+
+        expected_binding = {
+            "external_commit_sha": state.get("external_commit_sha"),
+            "approved_owned_project_state": {
+                "repository_id": state.get("owned_project_repository_id"),
+                "git_head": state.get("owned_project_git_head"),
+                "working_tree_fingerprint": state.get("owned_project_working_tree_fingerprint"),
+            },
+        }
+        for key, expected in expected_binding.items():
+            if payload[key] != expected:
+                raise ValueError(f"Experiment result {key} does not match the approved handoff")
+
+        try:
+            approved_at = datetime.fromisoformat(str(approval["recorded_at"]).replace("Z", "+00:00"))
+            completed_at = datetime.fromisoformat(str(payload["completed_at"]).replace("Z", "+00:00"))
+        except (KeyError, ValueError) as error:
+            raise ValueError("Experiment result and approved handoff require valid audit timestamps") from error
+        if approved_at.tzinfo is None or completed_at.tzinfo is None:
+            raise ValueError("Experiment result and approved handoff timestamps require time zones")
+        if completed_at < approved_at:
+            raise ValueError("Experiment result completed_at cannot precede the approved handoff")
+        if completed_at > current.astimezone(UTC):
+            raise ValueError("Experiment result completed_at cannot be later than the recording time")
+
+        approved_criteria = state.get("success_criteria")
+        reported_criteria = [item["criterion"] for item in payload["criterion_results"]]
+        if reported_criteria != approved_criteria:
+            raise ValueError("Experiment result must report every approved success criterion exactly once and in order")
+
+        result_sha256 = sha256_bytes(canonical_json_bytes(payload))
+        prior_results = [
+            event
+            for event in events
+            if event.get("event") == "experiment_result_recorded"
+            and event.get("run_id") == run_id
+            and event.get("relation_id") == relation_id
+        ]
+        if prior_results:
+            if len(prior_results) == 1 and prior_results[0].get("result_sha256") == result_sha256:
+                return ExperimentResult(run_id, relation_id, False, result_sha256)
+            raise ValueError("Recorded experiment result cannot be replaced with a conflicting result")
+
+        append_jsonl_atomic(
+            ledger_path,
+            {
+                "event": "experiment_result_recorded",
+                "recorded_at": current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                "run_id": run_id,
+                "relation_id": relation_id,
+                "repository": state.get("repository"),
+                "approval_event_sha256": sha256_bytes(canonical_json_bytes(approval)),
+                "result_sha256": result_sha256,
+                "result": payload,
+                "downstream_state": {
+                    "status": "awaiting_user_confirmation",
+                    "automatic_effects": [],
+                },
+            },
+        )
+        return ExperimentResult(run_id, relation_id, True, result_sha256)
 
 
 def list_watched_projects(root: Path) -> list[dict[str, Any]]:

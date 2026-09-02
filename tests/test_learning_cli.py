@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from ai_notes.__main__ import main
 from ai_notes.learning import PrepareResult
-from ai_notes.review import FeedbackResult, FinalizeResult, ValidationResult
+from ai_notes.review import ExperimentResult, FeedbackResult, FinalizeResult, ValidationResult
 
 
 RUN_ID = "20260902T083000Z-0123abcd"
@@ -151,6 +151,32 @@ class LearningCliTests(unittest.TestCase):
 
         self.assertEqual(0, code)
         self.assertEqual(RUN_ID, json.loads(stdout.getvalue())["runs"][0]["run_id"])
+
+    def test_record_experiment_result_reports_append_and_confirmation_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            input_path = Path(directory) / "result.json"
+            input_path.write_text("{}\n", encoding="utf-8")
+            stdout = io.StringIO()
+            with patch(
+                "ai_notes.__main__.record_experiment_result",
+                return_value=ExperimentResult(RUN_ID, "rel-0123456789ab", True, "c" * 64),
+            ) as record, redirect_stdout(stdout):
+                code = main(
+                    [
+                        "record-experiment-result",
+                        RUN_ID,
+                        "--root",
+                        directory,
+                        "--result",
+                        str(input_path),
+                    ]
+                )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, code)
+        self.assertTrue(payload["recorded"])
+        self.assertEqual("awaiting_user_confirmation", payload["downstream_status"])
+        record.assert_called_once()
 
     def test_runtime_error_is_reported_without_traceback(self) -> None:
         stderr = io.StringIO()

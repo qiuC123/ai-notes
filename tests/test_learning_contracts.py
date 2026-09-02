@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from ai_notes.contracts import (
     DECISIONS_SCHEMA,
+    EXPERIMENT_RESULT_SCHEMA,
     MANIFEST_SCHEMA,
     QUEUE_SCHEMA,
     ContractValidationError,
@@ -128,11 +129,68 @@ def valid_manifest() -> dict[str, object]:
     }
 
 
+def valid_experiment_result() -> dict[str, object]:
+    return {
+        "schema_version": EXPERIMENT_RESULT_SCHEMA,
+        "run_id": RUN_ID,
+        "relation_id": "rel-0123456789ab",
+        "external_commit_sha": SHA40,
+        "approved_owned_project_state": {
+            "repository_id": "ai-notes",
+            "git_head": SHA40,
+            "working_tree_fingerprint": SHA64,
+        },
+        "completed_at": "2026-09-02T09:00:00Z",
+        "criterion_results": [
+            {
+                "criterion": "Every approved criterion is evaluated.",
+                "status": "pass",
+                "evidence": "The focused test passed.",
+            }
+        ],
+        "retrospective": {
+            "wrong_premise": None,
+            "process_blind_spot": "The original flow had no result return path.",
+            "next_step_candidate": "Ask the user whether to adopt the finding.",
+        },
+    }
+
+
 class LearningContractTests(unittest.TestCase):
     def test_all_v1_contracts_accept_strict_valid_payloads(self) -> None:
         self.assertEqual(RUN_ID, validate_contract(QUEUE_SCHEMA, valid_queue())["run_id"])
         self.assertEqual(RUN_ID, validate_contract(DECISIONS_SCHEMA, valid_decisions())["run_id"])
         self.assertEqual(RUN_ID, validate_contract(MANIFEST_SCHEMA, valid_manifest())["run_id"])
+        self.assertEqual(
+            RUN_ID,
+            validate_contract(EXPERIMENT_RESULT_SCHEMA, valid_experiment_result())["run_id"],
+        )
+
+    def test_experiment_result_requires_explicit_outcomes_and_separate_retrospective_categories(self) -> None:
+        for status in ("pass", "fail", "inconclusive"):
+            with self.subTest(status=status):
+                payload = valid_experiment_result()
+                payload["criterion_results"][0]["status"] = status
+                self.assertEqual(
+                    status,
+                    validate_contract(EXPERIMENT_RESULT_SCHEMA, payload)["criterion_results"][0]["status"],
+                )
+
+        payload = valid_experiment_result()
+        payload["approved_owned_project_state"]["git_head"] = None
+        self.assertIsNone(
+            validate_contract(EXPERIMENT_RESULT_SCHEMA, payload)["approved_owned_project_state"]["git_head"]
+        )
+
+        payload = valid_experiment_result()
+        payload["criterion_results"][0]["status"] = "maybe"
+        with self.assertRaises(ContractValidationError):
+            validate_contract(EXPERIMENT_RESULT_SCHEMA, payload)
+
+        payload = valid_experiment_result()
+        del payload["retrospective"]["process_blind_spot"]
+        with self.assertRaises(ContractValidationError):
+            validate_contract(EXPERIMENT_RESULT_SCHEMA, payload)
 
     def test_contracts_reject_unknown_fields(self) -> None:
         payload = valid_queue()
