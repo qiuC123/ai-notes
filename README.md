@@ -23,7 +23,7 @@ GitHub Release 只是“需要重新学习这个项目”的变化信号。真�
 
 三次人工提名分别学习 `openai/codex`、`thomvaill/log4brains` 和 `clarity-digital-development/tworkflow`。后两次只借鉴“ADR 状态与替代关系校验”和“实验复盘反哺下一轮学习”，没有安装外部工具、复制 Skill 或运行仓库代码。
 
-三次主动发现分别选择 `vectorian-rs/chizu`、`divyanshu-iitian/ContextFlux` 和 `LucasSantana-Dev/shelfmark`。第三次从 6 个候选中深读 5 个，只借鉴“冻结留出集与排序回归门禁”，不接入外部记忆库或模型。一次跨行引用错误被审计为双侧证据错误，修正后的新运行通过；所有运行都只读取固定版本公开证据，没有安装或执行外部项目。`log4brains` 和 `tworkflow` 已获得用户“做实验”反馈并进入实验移交状态，正反馈为 2/6；其余四次成功运行仍等待明确反馈。
+三次主动发现分别选择 `vectorian-rs/chizu`、`divyanshu-iitian/ContextFlux` 和 `LucasSantana-Dev/shelfmark`。第三次从 6 个候选中深读 5 个，只借鉴“冻结留出集与排序回归门禁”，不接入外部记忆库或模型。一次跨行引用错误被审计为双侧证据错误，修正后的新运行通过；所有运行都只读取固定版本公开证据，没有安装或执行外部项目。`log4brains` 和 `tworkflow` 的两个最小实验已经完成，结果均逐项通过并以 `awaiting_user_confirmation` 追加到账本，正反馈为 2/6；其余四次成功运行仍等待明确反馈。
 
 设计与术语：
 

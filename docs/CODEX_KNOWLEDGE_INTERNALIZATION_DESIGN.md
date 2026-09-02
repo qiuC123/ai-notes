@@ -246,14 +246,14 @@ Codex 调用这些内部命令，用户只需要在共学主对话中提交 GitH
 - Release Codex 决策文件边界和确定性 Finalize；
 - 原文证据校验、账本和审计产物。
 - `ai_notes` 手动共学包及 prepare/finalize 内部命令；
-- 三个 v1 共学 Schema、四种运行状态和三十天运行产物保留；
+- 四个 v1 共学 Schema、四种运行状态和三十天运行产物保留；
 - GitHub 仓库/Release/PR/Issue/tree 固定版本解析；
 - 双侧证据、许可证风险、自有文件指纹和明确反馈校验；
 - 人工 GitHub URL 提名对应的单项目 prepare/finalize 入口；
 - 授权项目登记、Git HEAD/工作区快照绑定和越界读取阻断；
 - 四类明确反馈、关联冷却事件和不把沉默推断为反馈的账本边界；
 - 正反馈后的紧凑关联快照、明确关注 commit 游标和实验交接契约；
-- YAML 策略、JSONL 运行账本、JSON 证据快照和三个版本化 Schema；
+- YAML 策略、JSONL 运行账本、JSON 证据快照和四个版本化 Schema；
 - GitHub 限额 `partial` 降级、确定性错误 `failed` 审计和安全重试；
 - 手动主动发现的 20 个初筛、5 个深读、80/20 预算 provenance 与长期准入指标；
 - 主动发现最终项目的三十天成功运行冷却，并在网络请求前失败关闭；
@@ -261,6 +261,8 @@ Codex 调用这些内部命令，用户只需要在共学主对话中提交 GitH
 - `review_failed` 判断在保留失败事件后允许修正重试，已成功 Finalize 的判断仍不可替换；
 - 与 Finalize 共用严格校验规则但不写运行状态的 `validate-learning` 预检；
 - 只列出成功运行且尚无明确反馈的 `feedback-status` 待办视图；
+- 只读 ADR 状态/替代关系清单，以及重复编号、未知状态和替代错链校验；
+- 与实验批准状态严格绑定、只追加且等待用户确认的 `experiment-result.v1` 结果回传；
 - 十次手动运行的 10/3/3/6/≤1 自动化准入状态计算；
 - Codex 作为唯一语义 Agent，Python 只负责采集、状态和证据校验。
 
@@ -278,7 +280,6 @@ Codex 调用这些内部命令，用户只需要在共学主对话中提交 GitH
 - 主动发现候选排序方法的重复验证和固定 Skill；
 - Fork 独有修改的显式学习模式；
 - 旧来源重新准入和每日多样性约束；
-- 最小验证实验；
 - 项目理解过期检测和学习优先级调整。
 
-第一条 `openai/codex` → Ai Notes 试跑曾因补抓深层 Skill 文件耗尽匿名 GitHub API 限额而诚实标记为 `partial`。额度恢复后，运行 `20260902T084445Z-09d89053` 在 commit `eb10d91e48ccbd0930427461fb392337addb1ac0` 上完成无缺失的双侧证据 Finalize，计为第一次人工提名运行。第一次主动发现严格筛选 20 个候选、深读 5 个并按 16/4 分配直接与相邻探索；运行 `20260902T090033Z-baa96ba7` 在 `vectorian-rs/chizu` commit `604b4f970dddbe3bae815c8b61852f710fe7077a` 上通过固定 commit 后备补足标准证据。第二次主动发现从 16 个直接相关候选中深读 5 个；运行 `20260902T094518Z-9f527371` 在 `divyanshu-iitian/ContextFlux` commit `80b175c1a4f5d491504f9ce4ef00110dc23dcd90` 上提出“显式任务预算与选择轨迹”的关联实验。第三次主动发现从 6 个候选中深读 5 个；首次判断因跨行引用不连续被审计为双侧证据错误，保留失败运行后，新运行 `20260902T095813Z-83d1827f` 在 `LucasSantana-Dev/shelfmark` commit `2b69103268ce532cd45382b483589e46015a30f8` 上通过，提出“冻结留出集与排序回归门禁”的关联实验。第二、第三次人工提名运行分别在 `thomvaill/log4brains` commit `17e32021a8c5130386f17e921d4efa6da7709a66` 和 `clarity-digital-development/tworkflow` commit `48948f290682fe2b410940f5351472b10a1e0508` 上通过，提出“ADR 状态与替代关系校验”和“实验复盘反哺下一轮学习”两个小实验；用户已明确选择“做实验”，两者进入绑定双方版本的实验移交状态。六次成功运行都没有安装或执行外部项目。当前进度为 6/10、人工提名 3/3、主动发现 3/3、正反馈 2/6、双侧证据错误 1；最后只有在准入门槛通过且用户批准后才创建 Skill 和每日任务。
+第一条 `openai/codex` → Ai Notes 试跑曾因补抓深层 Skill 文件耗尽匿名 GitHub API 限额而诚实标记为 `partial`。额度恢复后，运行 `20260902T084445Z-09d89053` 在 commit `eb10d91e48ccbd0930427461fb392337addb1ac0` 上完成无缺失的双侧证据 Finalize，计为第一次人工提名运行。第一次主动发现严格筛选 20 个候选、深读 5 个并按 16/4 分配直接与相邻探索；运行 `20260902T090033Z-baa96ba7` 在 `vectorian-rs/chizu` commit `604b4f970dddbe3bae815c8b61852f710fe7077a` 上通过固定 commit 后备补足标准证据。第二次主动发现从 16 个直接相关候选中深读 5 个；运行 `20260902T094518Z-9f527371` 在 `divyanshu-iitian/ContextFlux` commit `80b175c1a4f5d491504f9ce4ef00110dc23dcd90` 上提出“显式任务预算与选择轨迹”的关联实验。第三次主动发现从 6 个候选中深读 5 个；首次判断因跨行引用不连续被审计为双侧证据错误，保留失败运行后，新运行 `20260902T095813Z-83d1827f` 在 `LucasSantana-Dev/shelfmark` commit `2b69103268ce532cd45382b483589e46015a30f8` 上通过，提出“冻结留出集与排序回归门禁”的关联实验。第二、第三次人工提名运行分别在 `thomvaill/log4brains` commit `17e32021a8c5130386f17e921d4efa6da7709a66` 和 `clarity-digital-development/tworkflow` commit `48948f290682fe2b410940f5351472b10a1e0508` 上通过，提出“ADR 状态与替代关系校验”和“实验复盘反哺下一轮学习”两个小实验；两个实验分别以提交 `1024758` 和 `281be49` 合入，合并态 140 项测试通过，结果均逐项通过并以 `awaiting_user_confirmation` 追加到账本。六次成功运行都没有安装或执行外部项目。当前进度为 6/10、人工提名 3/3、主动发现 3/3、正反馈 2/6、双侧证据错误 1；最后只有在准入门槛通过且用户批准后才创建 Skill 和每日任务。
