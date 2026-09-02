@@ -9,6 +9,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 
+import yaml
+
 from ai_notes.contracts import (
     DECISIONS_SCHEMA,
     MANIFEST_SCHEMA,
@@ -20,6 +22,7 @@ from ai_notes.learning import load_learning_policy
 from ai_notes.storage import (
     RunLock,
     append_jsonl_atomic,
+    project_fingerprint,
     resolve_within,
     sha256_bytes,
     sha256_file,
@@ -140,6 +143,20 @@ def _validate_cross_contracts(root: Path, queue: dict[str, Any], decisions: dict
         raise ContractValidationError("A decision without a relation cannot suggest ignore or experiment")
 
     owned_root = Path(queue["owned_project"]["root"]).resolve()
+    registry_path = root / "data" / "learning" / "projects.yaml"
+    registry = yaml.safe_load(registry_path.read_text(encoding="utf-8")) if registry_path.exists() else {}
+    registered_paths = {
+        str(Path(item["path"]).resolve())
+        for item in registry.get("projects", [])
+        if isinstance(item, dict) and isinstance(item.get("path"), str)
+    } if isinstance(registry, dict) else set()
+    if str(owned_root) not in registered_paths:
+        raise ContractValidationError(f"Owned project is not present in the local authorization registry: {owned_root}")
+    current_project = project_fingerprint(owned_root)
+    if current_project["git_head"] != queue["owned_project"]["git_head"]:
+        raise ContractValidationError("Owned-project Git HEAD changed after the learning queue was prepared")
+    if current_project["working_tree_fingerprint"] != queue["owned_project"]["working_tree_fingerprint"]:
+        raise ContractValidationError("Owned-project working tree changed after the learning queue was prepared")
     for connection in connections:
         for reference in connection["owned_project_problem"]["evidence"]:
             path = resolve_within(owned_root, reference["path"])

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -10,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from ai_notes.storage import sha256_bytes, sha256_file, write_json_atomic
+from ai_notes.storage import project_fingerprint, sha256_bytes, sha256_file, write_json_atomic
 from ai_notes.review import finalize_learning, record_feedback
 
 
@@ -34,6 +35,24 @@ def write_prepared_run(root: Path, *, learning_only: bool = False) -> tuple[Path
     project.mkdir()
     owned_file = project / "README.md"
     owned_file.write_text("# Ai Notes\n\nGitHub co-learning is not implemented yet.\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(project)], check=True)
+    subprocess.run(["git", "-C", str(project), "add", "README.md"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(project),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "initial",
+        ],
+        check=True,
+    )
+    fingerprint = project_fingerprint(project)
     evidence_text = "Codex is a coding agent that runs locally and can inspect a repository."
     queue = {
         "schema_version": "learning-queue.v1",
@@ -72,11 +91,11 @@ def write_prepared_run(root: Path, *, learning_only: bool = False) -> tuple[Path
             }
         ],
         "owned_project": {
-            "name": "owned",
-            "root": str(project.resolve()),
-            "repository_id": "owned",
-            "git_head": SHA,
-            "working_tree_fingerprint": "2" * 64,
+            "name": fingerprint["name"],
+            "root": fingerprint["root"],
+            "repository_id": fingerprint["repository_id"],
+            "git_head": fingerprint["git_head"],
+            "working_tree_fingerprint": fingerprint["working_tree_fingerprint"],
             "focus_files": [
                 {"path": "README.md", "sha256": sha256_file(owned_file), "size": owned_file.stat().st_size}
             ],
@@ -86,6 +105,12 @@ def write_prepared_run(root: Path, *, learning_only: bool = False) -> tuple[Path
     output = root / "outputs" / "learning" / RUN_ID
     queue_path = output / "learning-queue.json"
     write_json_atomic(queue_path, queue)
+    registry = root / "data" / "learning" / "projects.yaml"
+    registry.parent.mkdir(parents=True)
+    registry.write_text(
+        f"projects:\n  - name: owned\n    path: '{project.resolve()}'\n    repository_id: owned\n    reason: test\n",
+        encoding="utf-8",
+    )
     return project, queue_path
 
 
@@ -257,7 +282,21 @@ class LearningReviewTests(unittest.TestCase):
             result = finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=input_path, now=NOW)
 
         self.assertEqual("review_failed", result.status)
-        self.assertIn("evidence changed", result.validation_errors[0])
+        self.assertIn("working tree changed", result.validation_errors[0])
+
+    def test_unregistered_owned_project_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_policy(root)
+            project, queue_path = write_prepared_run(root)
+            (root / "data" / "learning" / "projects.yaml").unlink()
+            input_path = root / "decision-input.json"
+            write_json_atomic(input_path, decisions(queue_path, project))
+
+            result = finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=input_path, now=NOW)
+
+        self.assertEqual("review_failed", result.status)
+        self.assertIn("authorization registry", result.validation_errors[0])
 
     def test_learning_only_source_blocks_experiment(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
