@@ -62,6 +62,13 @@ class FinalizeResult:
 
 
 @dataclass(frozen=True, slots=True)
+class ValidationResult:
+    run_id: str
+    queue_sha256: str
+    decisions_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class FeedbackResult:
     run_id: str
     feedback: str
@@ -215,6 +222,19 @@ def _validate_cross_contracts(root: Path, queue: dict[str, Any], decisions: dict
             raise ContractValidationError("Learning-only decisions cannot suggest an experiment")
         if any(connection["experiment"] is not None for connection in connections):
             raise ContractValidationError("Learning-only connections cannot define an experiment")
+
+
+def validate_learning_decisions(*, root: Path, run_id: str, input_decisions_path: Path) -> ValidationResult:
+    resolved_root = root.resolve()
+    queue_path = resolved_root / "outputs" / "learning" / run_id / "learning-queue.json"
+    if not queue_path.exists():
+        raise ValueError(f"Prepared learning queue does not exist: {run_id}")
+    queue_hash = sha256_file(queue_path)
+    queue = validate_contract(QUEUE_SCHEMA, json.loads(queue_path.read_text(encoding="utf-8")))
+    raw_decisions = input_decisions_path.read_bytes()
+    decisions = validate_contract(DECISIONS_SCHEMA, json.loads(raw_decisions.decode("utf-8")))
+    _validate_cross_contracts(resolved_root, queue, decisions, queue_hash)
+    return ValidationResult(run_id, queue_hash, sha256_bytes(raw_decisions))
 
 
 def finalize_learning(

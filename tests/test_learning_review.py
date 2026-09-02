@@ -11,8 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from ai_notes.review import finalize_learning, list_watched_projects, record_feedback, validate_learning_decisions
 from ai_notes.storage import project_fingerprint, sha256_bytes, sha256_file, write_json_atomic
-from ai_notes.review import finalize_learning, list_watched_projects, record_feedback
 
 
 RUN_ID = "20260902T083000Z-0123abcd"
@@ -187,6 +187,23 @@ def decisions(queue_path: Path, project: Path, *, with_connection: bool = True, 
 
 
 class LearningReviewTests(unittest.TestCase):
+    def test_validation_preflight_uses_full_contracts_without_writing_run_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_policy(root)
+            project, queue_path = write_prepared_run(root)
+            input_path = root / "decision-input.json"
+            write_json_atomic(input_path, decisions(queue_path, project))
+
+            result = validate_learning_decisions(root=root, run_id=RUN_ID, input_decisions_path=input_path)
+
+            self.assertEqual(RUN_ID, result.run_id)
+            self.assertEqual(sha256_file(queue_path), result.queue_sha256)
+            self.assertEqual(sha256_file(input_path), result.decisions_sha256)
+            self.assertFalse((queue_path.parent / "learning-run-manifest.json").exists())
+            self.assertFalse((queue_path.parent / "learning-decisions.json").exists())
+            self.assertFalse((root / "data" / "learning" / "ledger.jsonl").exists())
+
     def test_finalize_validates_dual_evidence_writes_manifest_and_operational_ledger(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

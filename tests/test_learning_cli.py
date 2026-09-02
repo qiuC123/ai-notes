@@ -14,13 +14,40 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from ai_notes.__main__ import main
 from ai_notes.learning import PrepareResult
-from ai_notes.review import FeedbackResult, FinalizeResult
+from ai_notes.review import FeedbackResult, FinalizeResult, ValidationResult
 
 
 RUN_ID = "20260902T083000Z-0123abcd"
 
 
 class LearningCliTests(unittest.TestCase):
+    def test_validate_learning_reports_hashes_without_finalizing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            input_path = Path(directory) / "input.json"
+            input_path.write_text("{}\n", encoding="utf-8")
+            stdout = io.StringIO()
+            with patch(
+                "ai_notes.__main__.validate_learning_decisions",
+                return_value=ValidationResult(RUN_ID, "a" * 64, "b" * 64),
+            ) as validate, redirect_stdout(stdout):
+                code = main(
+                    [
+                        "validate-learning",
+                        RUN_ID,
+                        "--root",
+                        directory,
+                        "--decisions",
+                        str(input_path),
+                    ]
+                )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, code)
+        self.assertEqual("valid", payload["status"])
+        self.assertEqual("a" * 64, payload["queue_sha256"])
+        self.assertEqual("b" * 64, payload["decisions_sha256"])
+        validate.assert_called_once()
+
     def test_prepare_prints_machine_readable_handoff_and_partial_exit_code(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             queue = Path(directory) / "learning-queue.json"
