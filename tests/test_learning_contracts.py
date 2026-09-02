@@ -81,8 +81,18 @@ def valid_decisions() -> dict[str, object]:
         "queue_sha256": SHA64,
         "project_understanding": {
             "problem": "帮助开发者使用 Agent 完成编码工作。",
-            "core_abstractions": [{"claim": "任务由 Agent 执行。", "evidence_ids": ["ext-0123456789ab"]}],
-            "architecture": [{"claim": "CLI 是主要入口。", "evidence_ids": ["ext-0123456789ab"]}],
+            "core_abstractions": [
+                {
+                    "claim": "任务由 Agent 执行。",
+                    "evidence": [{"evidence_id": "ext-0123456789ab", "quote": "Codex is a coding agent."}],
+                }
+            ],
+            "architecture": [
+                {
+                    "claim": "CLI 是主要入口。",
+                    "evidence": [{"evidence_id": "ext-0123456789ab", "quote": "Codex is a coding agent."}],
+                }
+            ],
             "non_applicable_conditions": [],
         },
         "risks": {
