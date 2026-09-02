@@ -1,0 +1,329 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import secrets
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from ai_notes.contracts import QUEUE_SCHEMA, validate_contract
+from ai_notes.github import (
+    GitHubError,
+    GitHubJsonApi,
+    GitHubPartialError,
+    PublicGitHubApi,
+    VerifiedGitHubProject,
+    parse_github_url,
+    parse_pinned_blob_url,
+    read_repository_file,
+    verify_project,
+)
+from ai_notes.storage import (
+    RunLock,
+    focus_files,
+    project_fingerprint,
+    prune_learning_artifacts,
+    sha256_bytes,
+    utc_now,
+    write_bytes_atomic,
+    write_json_atomic,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class LearningPolicy:
+    policy_version: str = "1"
+    retention_days: int = 30
+    max_external_evidence: int = 20
+    max_evidence_chars: int = 262_144
+    max_tree_paths: int = 500
+    max_focus_files: int = 100
+    recognized_licenses: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class PrepareResult:
+    run_id: str
+    queue_path: Path
+    status: str
+    missing_scopes: tuple[str, ...]
+
+
+def load_learning_policy(path: Path) -> LearningPolicy:
+    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Learning policy must be a YAML object")
+    return LearningPolicy(
+        policy_version=str(payload.get("policy_version", "1")),
+        retention_days=int(payload.get("retention_days", 30)),
+        max_external_evidence=int(payload.get("max_external_evidence", 20)),
+        max_evidence_chars=int(payload.get("max_evidence_chars", 262_144)),
+        max_tree_paths=int(payload.get("max_tree_paths", 500)),
+        max_focus_files=int(payload.get("max_focus_files", 100)),
+        recognized_licenses=tuple(str(item) for item in payload.get("recognized_licenses", [])),
+    )
+
+
+def _new_run_id(now: datetime, github_url: str, project: Path) -> str:
+    timestamp = now.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+    entropy = secrets.token_hex(8)
+    suffix = hashlib.sha256(f"{github_url}\n{project.resolve()}\n{entropy}".encode("utf-8")).hexdigest()[:8]
+    return f"{timestamp}-{suffix}"
+
+
+def _evidence(kind: str, url: str, title: str, text: str, commit_sha: str | None) -> dict[str, Any]:
+    text_hash = sha256_bytes(text.encode("utf-8"))
+    identity = f"{kind}\n{url}\n{commit_sha or ''}\n{text_hash}"
+    return {
+        "evidence_id": "ext-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12],
+        "kind": kind,
+        "official_url": url,
+        "commit_sha": commit_sha,
+        "title": title[:500] or kind,
+        "text": text,
+        "text_sha256": text_hash,
+    }
+
+
+def _repository_summary(project: VerifiedGitHubProject) -> str:
+    metadata = project.metadata
+    fields = {
+        "full_name": metadata.get("full_name"),
+        "description": metadata.get("description"),
+        "homepage": metadata.get("homepage"),
+        "default_branch": metadata.get("default_branch"),
+        "archived": metadata.get("archived"),
+        "fork": metadata.get("fork"),
+        "topics": metadata.get("topics") if isinstance(metadata.get("topics"), list) else [],
+        "language": metadata.get("language"),
+        "license": metadata.get("license"),
+    }
+    return json.dumps(fields, ensure_ascii=False, indent=2, sort_keys=True)
+
+
+def _target_text(project: VerifiedGitHubProject) -> tuple[str, str] | None:
+    payload = project.target_payload
+    if payload is None:
+        return None
+    if project.input.kind == "release":
+        title = str(payload.get("name") or payload.get("tag_name") or "Release")
+        body = str(payload.get("body") or "")
+    else:
+        title = str(payload.get("title") or project.input.kind)
+        body = str(payload.get("body") or "")
+    text = json.dumps({"title": title, "body": body, "state": payload.get("state")}, ensure_ascii=False, indent=2)
+    return title, text
+
+
+def _source_risk(project: VerifiedGitHubProject, policy: LearningPolicy) -> dict[str, Any]:
+    metadata = project.metadata
+    license_payload = metadata.get("license")
+    spdx = license_payload.get("spdx_id") if isinstance(license_payload, dict) else None
+    if not isinstance(spdx, str) or spdx in {"", "NOASSERTION", "OTHER"}:
+        spdx = None
+    reasons: list[str] = []
+    if project.fork_redirected:
+        reasons.append("fork_redirected_to_upstream")
+    if bool(metadata.get("archived")):
+        reasons.append("archived_repository")
+    if spdx is None:
+        reasons.append("license_unknown")
+    elif policy.recognized_licenses and spdx not in policy.recognized_licenses:
+        reasons.append("license_requires_review")
+    learning_only = any(reason in {"archived_repository", "license_unknown", "license_requires_review"} for reason in reasons)
+    return {
+        "fork": project.fork_redirected,
+        "upstream_repository": project.upstream_repository,
+        "archived": bool(metadata.get("archived")),
+        "license_spdx": spdx,
+        "learning_only": learning_only,
+        "reasons": reasons,
+    }
+
+
+def _collect_standard_evidence(
+    api: GitHubJsonApi,
+    project: VerifiedGitHubProject,
+    policy: LearningPolicy,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    evidence = [
+        _evidence("repository", project.canonical_url, "Repository metadata", _repository_summary(project), project.commit_sha)
+    ]
+    missing: list[str] = []
+    try:
+        readme = read_repository_file(
+            api,
+            project.repository_id,
+            "README.md",
+            project.commit_sha,
+            max_bytes=policy.max_evidence_chars,
+        )
+        evidence.append(
+            _evidence(
+                "readme",
+                f"{project.canonical_url}/blob/{project.commit_sha}/README.md",
+                "README.md",
+                readme,
+                project.commit_sha,
+            )
+        )
+    except GitHubError as error:
+        missing.append(f"readme: {type(error).__name__}: {error}")
+
+    try:
+        tree_payload = api.get_json(f"/repos/{project.repository_id}/git/trees/{project.commit_sha}?recursive=1")
+        if not isinstance(tree_payload, dict) or not isinstance(tree_payload.get("tree"), list):
+            raise GitHubError("GitHub tree response is invalid")
+        paths = [
+            str(item.get("path"))
+            for item in tree_payload["tree"]
+            if isinstance(item, dict) and item.get("type") == "blob" and isinstance(item.get("path"), str)
+        ]
+        if tree_payload.get("truncated"):
+            missing.append("tree: GitHub recursive tree was truncated")
+        tree_text = "\n".join(paths[: policy.max_tree_paths])
+        evidence.append(
+            _evidence(
+                "tree",
+                f"{project.canonical_url}/tree/{project.commit_sha}",
+                "Repository file tree",
+                tree_text,
+                project.commit_sha,
+            )
+        )
+    except GitHubError as error:
+        missing.append(f"tree: {type(error).__name__}: {error}")
+
+    target = _target_text(project)
+    if target is not None:
+        title, text = target
+        evidence.append(_evidence(project.input.kind, project.object_url, title, text, project.commit_sha))
+    return evidence, missing
+
+
+def _register_project(root: Path, owned_project: dict[str, Any]) -> None:
+    path = root / "data" / "learning" / "projects.yaml"
+    if path.exists():
+        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    else:
+        payload = {}
+    if not isinstance(payload, dict) or not isinstance(payload.get("projects", []), list):
+        raise ValueError("Local project registry is invalid")
+    projects = [item for item in payload.get("projects", []) if isinstance(item, dict)]
+    canonical = str(owned_project["root"])
+    entry = {
+        "name": owned_project["name"],
+        "path": canonical,
+        "repository_id": owned_project["repository_id"],
+        "reason": "First authorized Ai Notes co-learning project",
+    }
+    projects = [item for item in projects if item.get("path") != canonical]
+    projects.append(entry)
+    rendered = yaml.safe_dump({"projects": projects}, allow_unicode=True, sort_keys=True)
+    write_bytes_atomic(path, rendered.encode("utf-8"))
+
+
+def prepare_learning(
+    *,
+    root: Path,
+    github_url: str,
+    project_path: Path,
+    include_urls: tuple[str, ...] = (),
+    api: GitHubJsonApi | None = None,
+    run_id: str | None = None,
+    now: datetime | None = None,
+) -> PrepareResult:
+    resolved_root = root.resolve()
+    resolved_project = project_path.resolve()
+    policy = load_learning_policy(resolved_root / "config" / "ai_notes_learning.yaml")
+    current = now or datetime.now(UTC)
+    identifier = run_id or _new_run_id(current, github_url, resolved_project)
+    output_dir = resolved_root / "outputs" / "learning" / identifier
+    raw_dir = resolved_root / "data" / "learning" / "raw" / identifier
+    queue_path = output_dir / "learning-queue.json"
+    manifest_path = output_dir / "learning-run-manifest.json"
+    lock_path = resolved_root / "data" / "learning" / "ai-notes-learning.lock"
+    api_client = api or PublicGitHubApi()
+
+    with RunLock(lock_path):
+        if manifest_path.exists():
+            raise ValueError(f"Finalized learning run cannot be extended: {identifier}")
+        prune_learning_artifacts(resolved_root, as_of=current.date(), retention_days=policy.retention_days)
+        owned = project_fingerprint(resolved_project)
+        owned["focus_files"] = focus_files(resolved_project, limit=policy.max_focus_files)
+
+        if run_id is not None:
+            if not queue_path.exists():
+                raise ValueError(f"Learning run does not exist: {identifier}")
+            queue = validate_contract(QUEUE_SCHEMA, json.loads(queue_path.read_text(encoding="utf-8")))
+            if queue["input"]["url"] != github_url or Path(queue["owned_project"]["root"]).resolve() != resolved_project:
+                raise ValueError("Existing run input or owned project does not match")
+            project = verify_project(api_client, parse_github_url(github_url))
+            if project.commit_sha != queue["verified_target"]["commit_sha"]:
+                raise ValueError("Existing run target moved; start a new run instead of changing its verified commit")
+            evidence = list(queue["external_evidence"])
+            missing = list(queue["missing_scopes"])
+            created_at = str(queue["created_at"])
+        else:
+            project = verify_project(api_client, parse_github_url(github_url))
+            evidence, missing = _collect_standard_evidence(api_client, project, policy)
+            created_at = current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+        existing_urls = {str(item["official_url"]) for item in evidence}
+        for include_url in include_urls:
+            if len(evidence) >= policy.max_external_evidence:
+                missing.append("include: maximum external evidence count reached")
+                break
+            try:
+                path = parse_pinned_blob_url(include_url, project.repository_id, project.commit_sha)
+                if include_url in existing_urls:
+                    continue
+                text = read_repository_file(
+                    api_client,
+                    project.repository_id,
+                    path,
+                    project.commit_sha,
+                    max_bytes=policy.max_evidence_chars,
+                )
+                evidence.append(_evidence("blob", include_url, path, text, project.commit_sha))
+                existing_urls.add(include_url)
+            except (GitHubError, ValueError) as error:
+                missing.append(f"include {include_url}: {type(error).__name__}: {error}")
+
+        queue = {
+            "schema_version": QUEUE_SCHEMA,
+            "run_id": identifier,
+            "created_at": created_at,
+            "policy_version": policy.policy_version,
+            "input": {
+                "url": github_url,
+                "kind": project.input.kind,
+                "canonical_repository": project.repository_id,
+                "canonical_url": project.canonical_url,
+            },
+            "verified_target": {
+                "commit_sha": project.commit_sha,
+                "ref": project.ref,
+                "object_url": project.object_url,
+                "verified_at": current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            },
+            "source_risk": _source_risk(project, policy),
+            "external_evidence": evidence,
+            "owned_project": owned,
+            "missing_scopes": sorted(set(missing)),
+        }
+        validate_contract(QUEUE_SCHEMA, queue)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        marker = created_at + "\n"
+        write_bytes_atomic(output_dir / "created-at.txt", marker.encode("utf-8"))
+        write_bytes_atomic(raw_dir / "created-at.txt", marker.encode("utf-8"))
+        write_json_atomic(queue_path, queue)
+        write_json_atomic(raw_dir / "external-evidence.json", {"evidence": evidence})
+        _register_project(resolved_root, owned)
+        status = "partial" if missing else "success"
+        return PrepareResult(identifier, queue_path, status, tuple(sorted(set(missing))))

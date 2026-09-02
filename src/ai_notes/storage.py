@@ -84,13 +84,24 @@ def _git(project: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
+def _git_optional(project: Path, *args: str) -> str | None:
+    completed = subprocess.run(
+        ["git", "-C", str(project), *args],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+    )
+    return completed.stdout.strip() if completed.returncode == 0 and completed.stdout.strip() else None
+
+
 def project_fingerprint(project: Path) -> dict[str, str | None]:
     root = project.resolve()
     git_root = Path(_git(root, "rev-parse", "--show-toplevel")).resolve()
     if git_root != root:
         raise ValueError(f"Authorized project must be its Git root: {root}")
     head = _git(root, "rev-parse", "HEAD")
-    repository_id = _git(root, "config", "--get", "remote.origin.url") or root.name
+    repository_id = _git_optional(root, "config", "--get", "remote.origin.url") or root.name
     status = _git(root, "status", "--porcelain=v1", "--untracked-files=all")
     return {
         "name": root.name,

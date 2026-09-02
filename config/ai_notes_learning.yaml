@@ -1,0 +1,13 @@
+policy_version: "1"
+retention_days: 30
+max_external_evidence: 20
+max_evidence_chars: 262144
+max_tree_paths: 500
+max_focus_files: 100
+recognized_licenses:
+  - Apache-2.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - ISC
+  - MIT
+  - MPL-2.0
