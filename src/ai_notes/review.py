@@ -401,6 +401,57 @@ def list_watched_projects(root: Path) -> list[dict[str, Any]]:
     return [watches[key] for key in sorted(watches)]
 
 
+def list_pending_feedback(root: Path) -> list[dict[str, Any]]:
+    resolved_root = root.resolve()
+    events = _ledger_events(resolved_root / "data" / "learning" / "ledger.jsonl")
+    completed = {
+        str(event["run_id"]): event
+        for event in events
+        if event.get("event") == "learning_finalized"
+        and event.get("status") == "success"
+        and isinstance(event.get("run_id"), str)
+    }
+    recorded = {
+        str(event["run_id"])
+        for event in events
+        if event.get("event") == "feedback_recorded" and isinstance(event.get("run_id"), str)
+    }
+    pending: list[dict[str, Any]] = []
+    for run_id, event in sorted(completed.items()):
+        if run_id in recorded:
+            continue
+        decisions_path = resolved_root / "outputs" / "learning" / run_id / "learning-decisions.json"
+        if not decisions_path.exists():
+            pending.append(
+                {
+                    "run_id": run_id,
+                    "repository": event.get("repository"),
+                    "entry_mode": event.get("entry_mode", "nominated"),
+                    "relation_id": None,
+                    "title": None,
+                    "next_actions": [],
+                    "decision_available": False,
+                }
+            )
+            continue
+        decisions = validate_contract(
+            DECISIONS_SCHEMA, json.loads(decisions_path.read_text(encoding="utf-8"))
+        )
+        connection = decisions["connections"][0] if decisions["connections"] else None
+        pending.append(
+            {
+                "run_id": run_id,
+                "repository": event.get("repository"),
+                "entry_mode": event.get("entry_mode", "nominated"),
+                "relation_id": connection["relation_id"] if connection else None,
+                "title": connection["title"] if connection else None,
+                "next_actions": list(decisions["next_actions"]),
+                "decision_available": True,
+            }
+        )
+    return pending
+
+
 def record_feedback(
     *,
     root: Path,

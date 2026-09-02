@@ -143,6 +143,15 @@ class LearningCliTests(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertEqual("openai/codex", json.loads(stdout.getvalue())["projects"][0]["repository"])
 
+    def test_feedback_status_lists_runs_awaiting_explicit_feedback(self) -> None:
+        stdout = io.StringIO()
+        pending = [{"run_id": RUN_ID, "repository": "openai/codex"}]
+        with patch("ai_notes.__main__.list_pending_feedback", return_value=pending), redirect_stdout(stdout):
+            code = main(["feedback-status", "--root", "."])
+
+        self.assertEqual(0, code)
+        self.assertEqual(RUN_ID, json.loads(stdout.getvalue())["runs"][0]["run_id"])
+
     def test_runtime_error_is_reported_without_traceback(self) -> None:
         stderr = io.StringIO()
         with patch("ai_notes.__main__.prepare_learning", side_effect=ValueError("bad URL")), redirect_stderr(stderr):

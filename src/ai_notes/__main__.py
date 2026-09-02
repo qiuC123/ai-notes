@@ -8,6 +8,7 @@ from pathlib import Path
 from ai_notes.learning import prepare_learning
 from ai_notes.review import (
     finalize_learning,
+    list_pending_feedback,
     list_watched_projects,
     record_feedback,
     validate_learning_decisions,
@@ -46,6 +47,9 @@ def _parser() -> argparse.ArgumentParser:
 
     watches = commands.add_parser("watch-status", help="list explicitly watched external projects")
     watches.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
+
+    feedback = commands.add_parser("feedback-status", help="list successful runs awaiting explicit feedback")
+    feedback.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
     return parser
 
 
@@ -101,6 +105,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if result.eligible_for_automation else 2
         if args.command == "watch-status":
             print(json.dumps({"projects": list_watched_projects(root)}, ensure_ascii=False))
+            return 0
+        if args.command == "feedback-status":
+            print(json.dumps({"runs": list_pending_feedback(root)}, ensure_ascii=False))
             return 0
         if args.decisions is not None:
             result = finalize_learning(

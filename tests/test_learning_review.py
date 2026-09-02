@@ -11,7 +11,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from ai_notes.review import finalize_learning, list_watched_projects, record_feedback, validate_learning_decisions
+from ai_notes.review import (
+    finalize_learning,
+    list_pending_feedback,
+    list_watched_projects,
+    record_feedback,
+    validate_learning_decisions,
+)
 from ai_notes.storage import project_fingerprint, sha256_bytes, sha256_file, write_json_atomic
 
 
@@ -236,6 +242,27 @@ class LearningReviewTests(unittest.TestCase):
 
         self.assertEqual("success", result.status)
         self.assertTrue(result.healthy_no_connection)
+
+    def test_pending_feedback_lists_successful_runs_until_feedback_is_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_policy(root)
+            project, queue_path = write_prepared_run(root)
+            input_path = root / "decision-input.json"
+            write_json_atomic(input_path, decisions(queue_path, project))
+            finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=input_path, now=NOW)
+
+            pending = list_pending_feedback(root)
+            record_feedback(root=root, run_id=RUN_ID, feedback="continue", now=NOW)
+            resolved = list_pending_feedback(root)
+
+        self.assertEqual(1, len(pending))
+        self.assertEqual(RUN_ID, pending[0]["run_id"])
+        self.assertEqual("openai/codex", pending[0]["repository"])
+        self.assertEqual(RELATION_ID, pending[0]["relation_id"])
+        self.assertIn("continue", pending[0]["next_actions"])
+        self.assertTrue(pending[0]["decision_available"])
+        self.assertEqual([], resolved)
 
     def test_mismatched_external_quote_is_review_failed_and_keeps_queue(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
