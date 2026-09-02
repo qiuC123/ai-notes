@@ -39,6 +39,7 @@ from ai_notes.storage import (
 class LearningPolicy:
     policy_version: str = "1"
     retention_days: int = 30
+    project_cooldown_days: int = 30
     max_external_evidence: int = 20
     max_evidence_chars: int = 262_144
     max_archive_bytes: int = 33_554_432
@@ -63,6 +64,7 @@ def load_learning_policy(path: Path) -> LearningPolicy:
     return LearningPolicy(
         policy_version=str(payload.get("policy_version", "1")),
         retention_days=int(payload.get("retention_days", 30)),
+        project_cooldown_days=int(payload.get("project_cooldown_days", 30)),
         max_external_evidence=int(payload.get("max_external_evidence", 20)),
         max_evidence_chars=int(payload.get("max_evidence_chars", 262_144)),
         max_archive_bytes=int(payload.get("max_archive_bytes", 33_554_432)),
@@ -402,6 +404,35 @@ def _load_discovery_provenance(path: Path, github_url: str) -> dict[str, Any]:
     }
 
 
+def _recent_successful_run(root: Path, repository_id: str, current: datetime, cooldown_days: int) -> str | None:
+    ledger_path = root / "data" / "learning" / "ledger.jsonl"
+    if not ledger_path.exists():
+        return None
+    cutoff = current.astimezone(UTC) - timedelta(days=cooldown_days)
+    for number, line in enumerate(ledger_path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        payload = json.loads(line)
+        if not isinstance(payload, dict):
+            raise ValueError(f"Learning ledger line {number} is not a JSON object")
+        if (
+            payload.get("event") != "learning_finalized"
+            or payload.get("status") != "success"
+            or str(payload.get("repository", "")).casefold() != repository_id.casefold()
+        ):
+            continue
+        recorded = payload.get("recorded_at")
+        if not isinstance(recorded, str):
+            raise ValueError(f"Learning ledger success event on line {number} has no recorded_at")
+        try:
+            timestamp = datetime.fromisoformat(recorded.replace("Z", "+00:00")).astimezone(UTC)
+        except ValueError as error:
+            raise ValueError(f"Learning ledger line {number} has invalid recorded_at") from error
+        if timestamp >= cutoff:
+            return str(payload.get("run_id") or "unknown")
+    return None
+
+
 def _write_unprepared_manifest(
     *, path: Path, run_id: str, created_at: str, policy: LearningPolicy, status: str, reason: str
 ) -> None:
@@ -516,6 +547,17 @@ def prepare_learning(
                     if discovery_input_path is None:
                         raise ValueError("Active discovery requires a bounded discovery provenance JSON file")
                     discovery = _load_discovery_provenance(discovery_input_path, github_url)
+                    prior_run = _recent_successful_run(
+                        resolved_root,
+                        discovery["selected_repository"],
+                        current,
+                        policy.project_cooldown_days,
+                    )
+                    if prior_run is not None:
+                        raise ValueError(
+                            "Active discovery selected a repository still inside the project cooldown: "
+                            f"{discovery['selected_repository']} (prior run {prior_run})"
+                        )
                 else:
                     if discovery_input_path is not None:
                         raise ValueError("Nominated learning runs cannot include discovery provenance")

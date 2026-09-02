@@ -98,7 +98,7 @@ python -m ai_notes finalize-learning <run-id> --feedback experiment
 python -m ai_notes watch-status --root .
 ```
 
-Codex 主动发现时还会提供内部 `--entry-mode discovered --discovery <json>` provenance；程序强制搜索词最多五个、元数据候选最多二十个、深读最多五个，并限制相邻探索不超过 20%。用户不需要手工编写该文件。
+Codex 主动发现时还会提供内部 `--entry-mode discovered --discovery <json>` provenance；程序强制搜索词最多五个、元数据候选最多二十个、深读最多五个，并限制相邻探索不超过 20%。三十天内已经成功学习的项目不能再次作为主动发现最终选择，避免重复项目刷高验证计数。用户不需要手工编写该文件。
 
 十次手动验证期间可审计自动化准入状态：
 

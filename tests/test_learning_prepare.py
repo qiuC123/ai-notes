@@ -643,6 +643,46 @@ class LearningPrepareTests(unittest.TestCase):
         self.assertEqual("failed", exceeded.status)
         self.assertIn("20%", exceeded_manifest["validation_errors"][0])
 
+    def test_discovered_run_rejects_recently_successful_project_before_network_access(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "owned"
+            initialize_project(project)
+            write_policy(root)
+            provenance = root / "discovery.json"
+            write_discovery(provenance)
+            ledger = root / "data" / "learning" / "ledger.jsonl"
+            ledger.parent.mkdir(parents=True)
+            ledger.write_text(
+                json.dumps(
+                    {
+                        "event": "learning_finalized",
+                        "recorded_at": "2026-09-01T08:30:00Z",
+                        "run_id": "prior-run",
+                        "repository": "openai/codex",
+                        "status": "success",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            api = FakeGitHubApi()
+
+            result = prepare_learning(
+                root=root,
+                github_url="https://github.com/openai/codex",
+                project_path=project,
+                entry_mode="discovered",
+                discovery_input_path=provenance,
+                api=api,
+                now=datetime(2026, 9, 2, 8, 30, tzinfo=UTC),
+            )
+            manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+        self.assertEqual("failed", result.status)
+        self.assertIn("cooldown", manifest["validation_errors"][0])
+        self.assertEqual([], api.paths)
+
 
 if __name__ == "__main__":
     unittest.main()
