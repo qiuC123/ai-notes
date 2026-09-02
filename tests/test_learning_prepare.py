@@ -281,6 +281,50 @@ class LearningPrepareTests(unittest.TestCase):
         self.assertEqual("partial", result.status)
         self.assertIn("exact commit SHA", result.missing_scopes[0])
 
+    def test_successful_include_retry_clears_its_previous_partial_scope(self) -> None:
+        class RetryApi(FakeGitHubApi):
+            def __init__(self) -> None:
+                super().__init__()
+                self.include_attempts = 0
+
+            def get_json(self, path: str) -> object:
+                if path == f"/repos/openai/codex/contents/docs/architecture.md?ref={SHA}":
+                    self.include_attempts += 1
+                    if self.include_attempts == 1:
+                        raise GitHubPartialError("temporary rate limit")
+                return super().get_json(path)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "owned"
+            initialize_project(project)
+            write_policy(root)
+            include = f"https://github.com/openai/codex/blob/{SHA}/docs/architecture.md"
+            api = RetryApi()
+            first = prepare_learning(
+                root=root,
+                github_url="https://github.com/openai/codex",
+                project_path=project,
+                include_urls=(include,),
+                api=api,
+                now=datetime(2026, 9, 2, 8, 30, tzinfo=UTC),
+            )
+            recovered = prepare_learning(
+                root=root,
+                github_url="https://github.com/openai/codex",
+                project_path=project,
+                include_urls=(include,),
+                api=api,
+                run_id=first.run_id,
+                now=datetime(2026, 9, 2, 8, 31, tzinfo=UTC),
+            )
+            queue = json.loads(recovered.queue_path.read_text(encoding="utf-8"))
+
+        self.assertEqual("partial", first.status)
+        self.assertEqual("success", recovered.status)
+        self.assertEqual([], queue["missing_scopes"])
+        self.assertIn("blob", {item["kind"] for item in queue["external_evidence"]})
+
 
 if __name__ == "__main__":
     unittest.main()

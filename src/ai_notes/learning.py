@@ -335,6 +335,7 @@ def prepare_learning(
 
         existing_urls = {str(item["official_url"]) for item in evidence}
         for include_url in include_urls:
+            missing = [item for item in missing if not item.startswith(f"include {include_url}:")]
             if len(evidence) >= policy.max_external_evidence:
                 missing.append("include: maximum external evidence count reached")
                 break
