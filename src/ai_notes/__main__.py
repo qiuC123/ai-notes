@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 
+from ai_notes.adr import inventory_adrs
 from ai_notes.learning import prepare_learning
 from ai_notes.review import (
     finalize_learning,
@@ -58,6 +59,9 @@ def _parser() -> argparse.ArgumentParser:
     experiment_result.add_argument("run_id")
     experiment_result.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
     experiment_result.add_argument("--result", required=True, type=Path, help="experiment-result.v1 JSON")
+
+    adrs = commands.add_parser("adr-status", help="list and validate local architecture decisions")
+    adrs.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
     return parser
 
 
@@ -135,6 +139,10 @@ def main(argv: list[str] | None = None) -> int:
                     ensure_ascii=False,
                 )
             )
+            return 0
+        if args.command == "adr-status":
+            records = inventory_adrs(root)
+            print(json.dumps({"adrs": [record.as_dict() for record in records]}, ensure_ascii=False))
             return 0
         if args.decisions is not None:
             result = finalize_learning(
