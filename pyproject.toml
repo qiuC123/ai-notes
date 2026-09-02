@@ -9,6 +9,7 @@ description = "Auditable high-quality AI release acquisition with staged Hermes 
 requires-python = ">=3.11"
 dependencies = [
   "httpx>=0.28,<0.29",
+  "jsonschema>=4,<5",
   "PyYAML>=6,<7",
 ]
 
@@ -17,3 +18,6 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+ai_notes = ["schemas/*.json"]

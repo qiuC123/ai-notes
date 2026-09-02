@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "learning-queue.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run_id", "created_at", "policy_version", "input", "verified_target", "source_risk", "external_evidence", "owned_project", "missing_scopes"],
+  "properties": {
+    "schema_version": {"const": "learning-queue.v1"},
+    "run_id": {"type": "string", "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "policy_version": {"type": "string", "minLength": 1},
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "kind", "canonical_repository", "canonical_url"],
+      "properties": {
+        "url": {"type": "string", "format": "uri"},
+        "kind": {"enum": ["repository", "release", "pull", "issue", "tree"]},
+        "canonical_repository": {"type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$"},
+        "canonical_url": {"type": "string", "format": "uri"}
+      }
+    },
+    "verified_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit_sha", "ref", "object_url", "verified_at"],
+      "properties": {
+        "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "ref": {"type": "string", "minLength": 1},
+        "object_url": {"type": "string", "format": "uri"},
+        "verified_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "source_risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fork", "upstream_repository", "archived", "license_spdx", "learning_only", "reasons"],
+      "properties": {
+        "fork": {"type": "boolean"},
+        "upstream_repository": {"type": ["string", "null"]},
+        "archived": {"type": "boolean"},
+        "license_spdx": {"type": ["string", "null"]},
+        "learning_only": {"type": "boolean"},
+        "reasons": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+      }
+    },
+    "external_evidence": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["evidence_id", "kind", "official_url", "commit_sha", "title", "text", "text_sha256"],
+        "properties": {
+          "evidence_id": {"type": "string", "pattern": "^ext-[0-9a-f]{12}$"},
+          "kind": {"enum": ["repository", "readme", "release", "pull", "issue", "tree", "blob"]},
+          "official_url": {"type": "string", "format": "uri"},
+          "commit_sha": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+          "title": {"type": "string", "minLength": 1, "maxLength": 500},
+          "text": {"type": "string", "maxLength": 262144},
+          "text_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "owned_project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "root", "repository_id", "git_head", "working_tree_fingerprint", "focus_files"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "root": {"type": "string", "minLength": 1},
+        "repository_id": {"type": "string", "minLength": 1},
+        "git_head": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+        "working_tree_fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "focus_files": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256", "size"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "size": {"type": "integer", "minimum": 0, "maximum": 2097152}
+            }
+          }
+        }
+      }
+    },
+    "missing_scopes": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+  }
+}
