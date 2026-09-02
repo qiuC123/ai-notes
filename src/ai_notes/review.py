@@ -69,6 +69,20 @@ class FeedbackResult:
     relation_id: str | None
 
 
+def _relation_snapshot(connection: dict[str, Any] | None) -> dict[str, Any] | None:
+    if connection is None:
+        return None
+    return {
+        "relation_id": connection["relation_id"],
+        "title": connection["title"],
+        "hypothesis": connection["hypothesis"],
+        "external_capability_claim": connection["external_capability"]["claim"],
+        "owned_project_problem_status": connection["owned_project_problem"]["status"],
+        "owned_project_problem_claim": connection["owned_project_problem"]["claim"],
+        "expected_benefit": connection["expected_benefit"],
+    }
+
+
 def normalize_evidence(value: str) -> str:
     return _SPACE.sub(" ", unicodedata.normalize("NFKC", html.unescape(value or ""))).strip()
 
@@ -349,6 +363,18 @@ def _ledger_events(path: Path) -> list[dict[str, Any]]:
     return events
 
 
+def list_watched_projects(root: Path) -> list[dict[str, Any]]:
+    events = _ledger_events(root.resolve() / "data" / "learning" / "ledger.jsonl")
+    watches: dict[str, dict[str, Any]] = {}
+    for event in events:
+        if event.get("event") != "feedback_recorded" or event.get("feedback") != "watch":
+            continue
+        state = event.get("watch_state")
+        if isinstance(state, dict) and state.get("enabled") is True and isinstance(state.get("repository"), str):
+            watches[state["repository"]] = dict(state)
+    return [watches[key] for key in sorted(watches)]
+
+
 def record_feedback(
     *,
     root: Path,
@@ -383,7 +409,8 @@ def _record_feedback_unlocked(
     if manifest["status"] not in {"success", "partial"}:
         raise ValueError("Feedback requires a successfully finalized learning run")
     connections = decisions["connections"]
-    relation_id = connections[0]["relation_id"] if connections else None
+    connection = connections[0] if connections else None
+    relation_id = connection["relation_id"] if connection else None
     if feedback in {"ignore", "experiment"} and relation_id is None:
         raise ValueError(f"{feedback} feedback requires a concrete relation")
     if feedback == "experiment" and connections[0]["experiment"] is None:
@@ -399,6 +426,32 @@ def _record_feedback_unlocked(
         "feedback": feedback,
         "relation_id": relation_id,
         "repository": queue["input"]["canonical_repository"],
+        "relation_snapshot": _relation_snapshot(connection) if feedback in {"continue", "watch", "experiment"} else None,
+        "watch_state": (
+            {
+                "enabled": True,
+                "repository": queue["input"]["canonical_repository"],
+                "canonical_url": queue["input"]["canonical_url"],
+                "last_checked_commit_sha": queue["verified_target"]["commit_sha"],
+                "last_checked_at": current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+            }
+            if feedback == "watch"
+            else None
+        ),
+        "experiment_state": (
+            {
+                "status": "approved_for_handoff",
+                "objective": connection["experiment"]["objective"],
+                "success_criteria": connection["experiment"]["success_criteria"],
+                "repository": queue["input"]["canonical_repository"],
+                "external_commit_sha": queue["verified_target"]["commit_sha"],
+                "owned_project_repository_id": queue["owned_project"]["repository_id"],
+                "owned_project_git_head": queue["owned_project"]["git_head"],
+                "owned_project_working_tree_fingerprint": queue["owned_project"]["working_tree_fingerprint"],
+            }
+            if feedback == "experiment"
+            else None
+        ),
         "cooldown_until": (
             (current.astimezone(UTC) + timedelta(days=30)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
             if feedback == "ignore"

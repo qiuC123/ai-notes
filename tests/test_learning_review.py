@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from ai_notes.storage import project_fingerprint, sha256_bytes, sha256_file, write_json_atomic
-from ai_notes.review import finalize_learning, record_feedback
+from ai_notes.review import finalize_learning, list_watched_projects, record_feedback
 
 
 RUN_ID = "20260902T083000Z-0123abcd"
@@ -368,7 +368,39 @@ class LearningReviewTests(unittest.TestCase):
         self.assertFalse(replay.recorded)
         self.assertEqual(RELATION_ID, first.relation_id)
         self.assertEqual("2026-10-02T08:31:00Z", events[-1]["cooldown_until"])
+        self.assertIsNone(events[-1]["relation_snapshot"])
+        self.assertIsNone(events[-1]["watch_state"])
+        self.assertIsNone(events[-1]["experiment_state"])
         self.assertEqual(2, len(events))
+
+    def test_positive_feedback_persists_only_compact_watch_or_experiment_handoff_state(self) -> None:
+        for feedback in ("watch", "experiment"):
+            with self.subTest(feedback=feedback), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                write_policy(root)
+                project, queue_path = write_prepared_run(root)
+                input_path = root / "decision-input.json"
+                write_json_atomic(input_path, decisions(queue_path, project))
+                finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=input_path, now=NOW)
+
+                record_feedback(root=root, run_id=RUN_ID, feedback=feedback, now=NOW)
+                events = [
+                    json.loads(line)
+                    for line in (root / "data" / "learning" / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
+                ]
+                event = events[-1]
+
+                self.assertEqual("Use a repository-aware co-learning task", event["relation_snapshot"]["title"])
+                self.assertNotIn("evidence_id", json.dumps(event, ensure_ascii=False))
+                if feedback == "watch":
+                    self.assertEqual(SHA, event["watch_state"]["last_checked_commit_sha"])
+                    self.assertIsNone(event["experiment_state"])
+                    self.assertEqual("openai/codex", list_watched_projects(root)[0]["repository"])
+                else:
+                    self.assertEqual("approved_for_handoff", event["experiment_state"]["status"])
+                    self.assertEqual("Generate one evidence-gated learning card.", event["experiment_state"]["objective"])
+                    self.assertIsNone(event["watch_state"])
+                    self.assertEqual([], list_watched_projects(root))
 
     def test_experiment_feedback_requires_a_validated_experiment(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -252,6 +252,7 @@ Codex 调用这些内部命令，用户只需要在共学主对话中提交 GitH
 - 人工 GitHub URL 提名对应的单项目 prepare/finalize 入口；
 - 授权项目登记、Git HEAD/工作区快照绑定和越界读取阻断；
 - 四类明确反馈、关联冷却事件和不把沉默推断为反馈的账本边界；
+- 正反馈后的紧凑关联快照、明确关注 commit 游标和实验交接契约；
 - YAML 策略、JSONL 运行账本、JSON 证据快照和三个版本化 Schema；
 - GitHub 限额 `partial` 降级、确定性错误 `failed` 审计和安全重试；
 - 手动主动发现的 20 个初筛、5 个深读、80/20 预算 provenance 与长期准入指标；

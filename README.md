@@ -92,6 +92,12 @@ python -m ai_notes finalize-learning <run-id> --feedback experiment
 
 用户不需要直接运行这些命令；在共学主对话中提交 GitHub 地址即可。共学卡片只在对话中展示，本地保留严格 JSON 契约、运行清单和必要证据快照。
 
+只有明确正反馈才会把紧凑关联快照写入长期账本。`watch` 同时保存最后核验 commit 作为监控游标，`experiment` 保存经批准的实验目标、成功标准和双侧项目指纹，等待独立任务接手；两者都不保存源码、外部原文或对话。当前关注项可用内部命令审计：
+
+```bash
+python -m ai_notes watch-status --root .
+```
+
 Codex 主动发现时还会提供内部 `--entry-mode discovered --discovery <json>` provenance；程序强制搜索词最多五个、元数据候选最多二十个、深读最多五个，并限制相邻探索不超过 20%。用户不需要手工编写该文件。
 
 十次手动验证期间可审计自动化准入状态：

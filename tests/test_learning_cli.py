@@ -105,6 +105,17 @@ class LearningCliTests(unittest.TestCase):
         self.assertTrue(json.loads(stdout.getvalue())["recorded"])
         feedback.assert_called_once()
 
+    def test_watch_status_lists_only_explicit_persistent_watches(self) -> None:
+        stdout = io.StringIO()
+        with patch(
+            "ai_notes.__main__.list_watched_projects",
+            return_value=[{"repository": "openai/codex", "enabled": True}],
+        ), redirect_stdout(stdout):
+            code = main(["watch-status", "--root", "."])
+
+        self.assertEqual(0, code)
+        self.assertEqual("openai/codex", json.loads(stdout.getvalue())["projects"][0]["repository"])
+
     def test_runtime_error_is_reported_without_traceback(self) -> None:
         stderr = io.StringIO()
         with patch("ai_notes.__main__.prepare_learning", side_effect=ValueError("bad URL")), redirect_stderr(stderr):

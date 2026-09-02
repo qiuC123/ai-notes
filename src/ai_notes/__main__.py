@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from ai_notes.learning import prepare_learning
-from ai_notes.review import finalize_learning, record_feedback
+from ai_notes.review import finalize_learning, list_watched_projects, record_feedback
 from ai_notes.storage import sha256_file
 from ai_notes.trial import evaluate_trial
 
@@ -33,6 +33,9 @@ def _parser() -> argparse.ArgumentParser:
 
     trial = commands.add_parser("trial-status", help="report whether manual validation permits automation")
     trial.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
+
+    watches = commands.add_parser("watch-status", help="list explicitly watched external projects")
+    watches.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
     return parser
 
 
@@ -68,6 +71,9 @@ def main(argv: list[str] | None = None) -> int:
             result = evaluate_trial(root)
             print(json.dumps(result.as_dict(), ensure_ascii=False))
             return 0 if result.eligible_for_automation else 2
+        if args.command == "watch-status":
+            print(json.dumps({"projects": list_watched_projects(root)}, ensure_ascii=False))
+            return 0
         if args.decisions is not None:
             result = finalize_learning(
                 root=root,
