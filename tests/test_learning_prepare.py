@@ -8,11 +8,13 @@ import tempfile
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from ai_notes.github import GitHubPartialError, parse_github_url, verify_project
+from ai_notes.github import GitHubError, GitHubPartialError, PublicGitHubApi, parse_github_url, verify_project
 from ai_notes.learning import prepare_learning
 
 
@@ -136,6 +138,50 @@ class LearningPrepareTests(unittest.TestCase):
         self.assertTrue(project.fork_redirected)
         self.assertEqual("someone/codex", project.input.repository_id)
 
+    def test_release_pr_issue_and_tree_inputs_resolve_to_exact_commits(self) -> None:
+        class ObjectApi:
+            def get_json(self, path: str) -> object:
+                mapping: dict[str, object] = {
+                    "/repos/openai/codex": repository_payload(),
+                    "/repos/openai/codex/releases/tags/v1": {"tag_name": "v1", "target_commitish": "main", "body": "Release"},
+                    "/repos/openai/codex/pulls/12": {"title": "PR", "body": "Change", "state": "open", "base": {"sha": "2" * 40}},
+                    "/repos/openai/codex/issues/34": {"title": "Issue", "body": "Problem", "state": "open"},
+                    "/repos/openai/codex/commits/main": {"sha": SHA},
+                    "/repos/openai/codex/commits/feature%2Ftest": {"sha": "3" * 40},
+                }
+                if path not in mapping:
+                    raise AssertionError(path)
+                return mapping[path]
+
+        expected = {
+            "https://github.com/openai/codex/releases/tag/v1": SHA,
+            "https://github.com/openai/codex/pull/12": "2" * 40,
+            "https://github.com/openai/codex/issues/34": SHA,
+            "https://github.com/openai/codex/tree/feature/test": "3" * 40,
+        }
+        for url, commit in expected.items():
+            self.assertEqual(commit, verify_project(ObjectApi(), parse_github_url(url)).commit_sha)
+
+    def test_public_api_rejects_redirect_to_non_github_host_before_following(self) -> None:
+        response = SimpleNamespace(
+            status_code=302,
+            headers={"location": "https://evil.example/steal"},
+        )
+
+        class Client:
+            def __enter__(self) -> "Client":
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+            def get(self, url: str) -> object:
+                return response
+
+        with patch("ai_notes.github.httpx.Client", return_value=Client()):
+            with self.assertRaises(GitHubError):
+                PublicGitHubApi().get_json("/repos/openai/codex")
+
     def test_prepare_pins_commit_writes_bounded_queue_and_does_not_copy_owned_source(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -188,6 +234,32 @@ class LearningPrepareTests(unittest.TestCase):
         self.assertEqual("partial", result.status)
         self.assertGreaterEqual(len(queue["missing_scopes"]), 2)
         self.assertEqual(["repository"], [item["kind"] for item in queue["external_evidence"]])
+
+    def test_rate_limit_before_commit_verification_writes_partial_manifest_without_fake_queue(self) -> None:
+        class LimitedApi:
+            def get_json(self, path: str) -> object:
+                raise GitHubPartialError("anonymous rate limit exhausted")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "owned"
+            initialize_project(project)
+            write_policy(root)
+
+            result = prepare_learning(
+                root=root,
+                github_url="https://github.com/openai/codex",
+                project_path=project,
+                api=LimitedApi(),
+                now=datetime(2026, 9, 2, 8, 30, tzinfo=UTC),
+            )
+            manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+        self.assertEqual("partial", result.status)
+        self.assertIsNone(result.queue_path)
+        self.assertEqual("partial", manifest["status"])
+        self.assertIsNone(manifest["queue_sha256"])
+        self.assertIn("rate limit", manifest["missing_scopes"][0])
 
     def test_include_requires_exact_verified_commit(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -17,7 +17,7 @@ from ai_notes.contracts import (
     ContractValidationError,
     validate_contract,
 )
-from ai_notes.storage import append_jsonl_atomic, prune_learning_artifacts, resolve_within
+from ai_notes.storage import RunLock, append_jsonl_atomic, prune_learning_artifacts, resolve_within
 
 
 RUN_ID = "20260902T083000Z-0123abcd"
@@ -166,6 +166,15 @@ class LearningContractTests(unittest.TestCase):
 
         self.assertEqual([{"event": "one"}, {"event": "two"}], events)
         self.assertEqual(["data/learning/raw/old-run"], removed)
+
+    def test_learning_lock_fails_closed_when_another_run_is_active(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            lock_path = Path(directory) / "learning.lock"
+            with RunLock(lock_path):
+                with self.assertRaises(RuntimeError):
+                    with RunLock(lock_path):
+                        pass
+            self.assertFalse(lock_path.exists())
 
 
 if __name__ == "__main__":

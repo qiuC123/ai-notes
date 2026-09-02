@@ -65,16 +65,32 @@ python -m venv .venv
 PYTHONPATH=src python -m aihot --help
 ```
 
-## 目标共学接口（尚未实现）
+## 共学接口
 
-新共学功能进入 `ai_notes` Python 包，现有 `aihot` 暂时作为遗留 Release 采集模块保留。Codex 计划编排两条内部命令：
+新共学功能进入 `ai_notes` Python 包，现有 `aihot` 暂时作为遗留 Release 采集模块保留。Codex 编排两条内部命令：
 
 ```bash
 python -m ai_notes prepare-learning <github-url> --project .
 python -m ai_notes finalize-learning <run-id> --decisions <file>
 ```
 
-用户不需要直接运行这些命令；在共学主对话中提交 GitHub 地址即可。以上接口仍处于设计状态，当前仓库尚未提供 `ai_notes` 包。
+需要补充同一仓库的深层证据时，先从队列取得固定 commit，再追加固定版本的 GitHub blob 地址：
+
+```bash
+python -m ai_notes prepare-learning <github-url> --project . --run-id <run-id> \
+  --include https://github.com/<owner>/<repo>/blob/<commit>/<path>
+```
+
+Codex 完成判断后调用 Finalize；只有用户明确反馈时，才追加操作账本：
+
+```bash
+python -m ai_notes finalize-learning <run-id> --feedback continue
+python -m ai_notes finalize-learning <run-id> --feedback ignore
+python -m ai_notes finalize-learning <run-id> --feedback watch
+python -m ai_notes finalize-learning <run-id> --feedback experiment
+```
+
+用户不需要直接运行这些命令；在共学主对话中提交 GitHub 地址即可。共学卡片只在对话中展示，本地保留严格 JSON 契约、运行清单和必要证据快照。
 
 ## 每日运行
 

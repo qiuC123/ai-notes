@@ -4,13 +4,13 @@ import hashlib
 import json
 import secrets
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from ai_notes.contracts import QUEUE_SCHEMA, validate_contract
+from ai_notes.contracts import MANIFEST_SCHEMA, QUEUE_SCHEMA, validate_contract
 from ai_notes.github import (
     GitHubError,
     GitHubJsonApi,
@@ -28,7 +28,6 @@ from ai_notes.storage import (
     project_fingerprint,
     prune_learning_artifacts,
     sha256_bytes,
-    utc_now,
     write_bytes_atomic,
     write_json_atomic,
 )
@@ -48,7 +47,8 @@ class LearningPolicy:
 @dataclass(frozen=True, slots=True)
 class PrepareResult:
     run_id: str
-    queue_path: Path
+    queue_path: Path | None
+    manifest_path: Path | None
     status: str
     missing_scopes: tuple[str, ...]
 
@@ -227,6 +227,30 @@ def _register_project(root: Path, owned_project: dict[str, Any]) -> None:
     write_bytes_atomic(path, rendered.encode("utf-8"))
 
 
+def _write_unprepared_partial_manifest(
+    *, root: Path, path: Path, run_id: str, created_at: str, policy: LearningPolicy, reason: str
+) -> None:
+    retained = datetime.fromisoformat(created_at.replace("Z", "+00:00")) + timedelta(days=policy.retention_days)
+    payload = {
+        "schema_version": MANIFEST_SCHEMA,
+        "run_id": run_id,
+        "started_at": created_at,
+        "finished_at": created_at,
+        "status": "partial",
+        "healthy_no_connection": False,
+        "policy_version": policy.policy_version,
+        "queue_path": f"outputs/learning/{run_id}/learning-queue.json",
+        "decisions_path": None,
+        "queue_sha256": None,
+        "decisions_sha256": None,
+        "missing_scopes": [reason],
+        "validation_errors": [],
+        "retained_until": retained.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+    }
+    validate_contract(MANIFEST_SCHEMA, payload)
+    write_json_atomic(path, payload)
+
+
 def prepare_learning(
     *,
     root: Path,
@@ -262,16 +286,52 @@ def prepare_learning(
             queue = validate_contract(QUEUE_SCHEMA, json.loads(queue_path.read_text(encoding="utf-8")))
             if queue["input"]["url"] != github_url or Path(queue["owned_project"]["root"]).resolve() != resolved_project:
                 raise ValueError("Existing run input or owned project does not match")
-            project = verify_project(api_client, parse_github_url(github_url))
-            if project.commit_sha != queue["verified_target"]["commit_sha"]:
-                raise ValueError("Existing run target moved; start a new run instead of changing its verified commit")
+            parsed_input = parse_github_url(github_url)
+            source_risk = dict(queue["source_risk"])
+            project = VerifiedGitHubProject(
+                input=parsed_input,
+                repository_id=str(queue["input"]["canonical_repository"]),
+                canonical_url=str(queue["input"]["canonical_url"]),
+                commit_sha=str(queue["verified_target"]["commit_sha"]),
+                ref=str(queue["verified_target"]["ref"]),
+                object_url=str(queue["verified_target"]["object_url"]),
+                metadata={
+                    "full_name": queue["input"]["canonical_repository"],
+                    "default_branch": queue["verified_target"]["ref"],
+                    "archived": source_risk["archived"],
+                    "fork": source_risk["fork"],
+                    "license": {"spdx_id": source_risk["license_spdx"]},
+                },
+                target_payload=None,
+                fork_redirected=bool(source_risk["fork"]),
+                upstream_repository=source_risk["upstream_repository"],
+            )
             evidence = list(queue["external_evidence"])
             missing = list(queue["missing_scopes"])
             created_at = str(queue["created_at"])
+            verified_at = str(queue["verified_target"]["verified_at"])
         else:
-            project = verify_project(api_client, parse_github_url(github_url))
+            try:
+                project = verify_project(api_client, parse_github_url(github_url))
+            except GitHubPartialError as error:
+                created_at = current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                write_bytes_atomic(output_dir / "created-at.txt", (created_at + "\n").encode("utf-8"))
+                reason = f"verified_target: {type(error).__name__}: {error}"
+                _write_unprepared_partial_manifest(
+                    root=resolved_root,
+                    path=manifest_path,
+                    run_id=identifier,
+                    created_at=created_at,
+                    policy=policy,
+                    reason=reason,
+                )
+                _register_project(resolved_root, owned)
+                return PrepareResult(identifier, None, manifest_path, "partial", (reason,))
+            source_risk = _source_risk(project, policy)
             evidence, missing = _collect_standard_evidence(api_client, project, policy)
             created_at = current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+            verified_at = created_at
 
         existing_urls = {str(item["official_url"]) for item in evidence}
         for include_url in include_urls:
@@ -309,9 +369,9 @@ def prepare_learning(
                 "commit_sha": project.commit_sha,
                 "ref": project.ref,
                 "object_url": project.object_url,
-                "verified_at": current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                "verified_at": verified_at,
             },
-            "source_risk": _source_risk(project, policy),
+            "source_risk": source_risk,
             "external_evidence": evidence,
             "owned_project": owned,
             "missing_scopes": sorted(set(missing)),
@@ -326,4 +386,4 @@ def prepare_learning(
         write_json_atomic(raw_dir / "external-evidence.json", {"evidence": evidence})
         _register_project(resolved_root, owned)
         status = "partial" if missing else "success"
-        return PrepareResult(identifier, queue_path, status, tuple(sorted(set(missing))))
+        return PrepareResult(identifier, queue_path, None, status, tuple(sorted(set(missing))))
