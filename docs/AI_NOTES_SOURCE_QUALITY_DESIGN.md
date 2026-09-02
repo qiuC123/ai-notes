@@ -2,9 +2,11 @@
 
 Status: Implemented and smoke-verified — full 12-source content backtest and 14-day trial not started
 Date: 2026-08-31
-Owner: 用户 / Hermes
+Owner: 用户 / Codex
 Domain language: [`CONTEXT.md`](../CONTEXT.md)
 Architecture decision: [`ADR 0001`](adr/0001-release-atom-staged-review-and-source-governance.md)
+
+> 2026-09-02 定位更新：本文继续描述已经实现的信息获取子系统，不再代表 Ai Notes 的完整产品边界。完整目标已扩展为 Codex 技术知识发现与内化，见 [`CODEX_KNOWLEDGE_INTERNALIZATION_DESIGN.md`](CODEX_KNOWLEDGE_INTERNALIZATION_DESIGN.md) 和 [`ADR 0002`](adr/0002-codex-knowledge-internalization-boundary.md)。下文“当前阶段不负责知识融合/记忆同步”仅描述 0.2 实现范围。本文中的 Hermes Review 是现有代码事实，目标架构已由 [`ADR 0007`](adr/0007-replace-hermes-runtime-with-codex-review.md) 取代；迁移完成前不得把“已决定移除”误写成“代码已移除”。
 
 ## 1. 目标
 

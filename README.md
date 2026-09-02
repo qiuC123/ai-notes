@@ -1,10 +1,40 @@
 # Ai Notes
 
-Ai Notes 是一个本地、高质量、可审计的 AI 信息获取系统。当前阶段只监控经过批准的开源 AI 项目官方发布，执行确定性过滤、Hermes 实质变化判断和确定性证据校验；它不做自媒体选题、知识融合、长期记忆同步或自动发布。
+Ai Notes 是一个面向个人 Codex 的 GitHub 项目共学与连接发现系统。它持续发现值得学习的项目，和 Codex 一起理解项目解决的问题、架构、能力与演进，再对照你正在开发的项目，寻找可以复用、迁移、集成或启发新设计的关联机会。
+
+## 产品定位
+
+Ai Notes 的目标不是积累更多 Release 资讯，而是形成一个可验证的项目学习闭环：
+
+```text
+发现项目 → 理解项目 → 跟踪实质变化 → 对照自有项目 → 提出关联机会 → 小实验验证 → 在 Codex 对话中复盘
+```
+
+GitHub Release 只是“需要重新学习这个项目”的变化信号。真正的学习对象还包括官方文档、代码结构、核心接口、设计取舍以及解释这些取舍的 Issue 和 PR。
+
+知识按用途进入不同载体：
+
+- 只有经用户明确要求沉淀或经实验确认的事实和技术认识，才写入版本化知识文档；日常分析不自动落盘；
+- 经过手动验证且由用户明确批准的可重复方法，才沉淀为 Codex Skill；Skill 的创建和更新不自动发生；
+- 必须稳定遵守的项目规则才进入 `AGENTS.md`；
+- Codex 本地记忆完全由 Codex 从正常对话中自动提取；Ai Notes 不读、不写、不检查，也不主动控制记忆生成。
+
+当前 0.2 版本只实现了这个闭环中的“官方 Release 采集、过滤、审查和证据校验”。该版本仍调用历史 Hermes reviewer；目标架构已决定移除 Hermes 运行时依赖，改由 Codex 在共学任务中完成语义判断，Python 保留确定性采集和证据校验。替代流程验证完成前，现有代码只作为可回退的遗留实现保留。项目理解、自有项目画像、关联机会、验证实验和知识对话尚未实现，不能把现有 `accepted-information` 产物视为已经完成项目学习。
+
+第一条待实现闭环以 Ai Notes 自身作为自有项目、`openai/codex` 作为外部学习项目：Codex 核验明确版本并生成一张共学卡片，最多提出一个有双侧证据的关联机会，再接收用户的明确反馈。它跑通之前不扩展每日自动化和多项目管理。
 
 设计与术语：
 
+- `docs/CODEX_KNOWLEDGE_INTERNALIZATION_DESIGN.md`
 - `docs/AI_NOTES_SOURCE_QUALITY_DESIGN.md`
+- `docs/adr/0009-separate-co-learning-core-from-legacy-pipeline.md`
+- `docs/adr/0008-manual-learning-card-vertical-slice.md`
+- `docs/adr/0007-replace-hermes-runtime-with-codex-review.md`
+- `docs/adr/0006-user-controlled-skill-and-runtime-boundary.md`
+- `docs/adr/0005-evidence-gated-connection-brief.md`
+- `docs/adr/0004-bounded-dual-entry-discovery.md`
+- `docs/adr/0003-github-project-learning-and-connection.md`
+- `docs/adr/0002-codex-knowledge-internalization-boundary.md`
 - `docs/adr/0001-release-atom-staged-review-and-source-governance.md`
 - `CONTEXT.md`
 
@@ -16,7 +46,7 @@ Ai Notes 是一个本地、高质量、可审计的 AI 信息获取系统。当�
 - AI 编程：Claude Code、Codex、OpenHands；
 - 本地推理与部署：Ollama、vLLM、SGLang、Transformers。
 
-每个来源使用 GitHub 官方 `releases.atom`，并有项目专属 tag 规则。nightly、alpha、beta、RC、preview、dev 在进入 Hermes 前被确定性排除。GitHub 全球安全公告是独立来源，只接受能映射到注册项目/包的 reviewed high/critical 公告。
+每个来源使用 GitHub 官方 `releases.atom`，并有项目专属 tag 规则。nightly、alpha、beta、RC、preview、dev 在进入当前 0.2 的遗留 Hermes reviewer 前被确定性排除。GitHub 全球安全公告是独立来源，只接受能映射到注册项目/包的 reviewed high/critical 公告。
 
 ## 安装
 
@@ -35,6 +65,17 @@ python -m venv .venv
 PYTHONPATH=src python -m aihot --help
 ```
 
+## 目标共学接口（尚未实现）
+
+新共学功能进入 `ai_notes` Python 包，现有 `aihot` 暂时作为遗留 Release 采集模块保留。Codex 计划编排两条内部命令：
+
+```bash
+python -m ai_notes prepare-learning <github-url> --project .
+python -m ai_notes finalize-learning <run-id> --decisions <file>
+```
+
+用户不需要直接运行这些命令；在共学主对话中提交 GitHub 地址即可。以上接口仍处于设计状态，当前仓库尚未提供 `ai_notes` 包。
+
 ## 每日运行
 
 ```bash
@@ -50,6 +91,8 @@ PYTHONPATH=src python -m aihot daily --date 2026-09-01 --root .
 3. Finalize：严格校验 JSON Schema 和逐项原文证据，再更新账本和产物。
 
 Hermes 输出中的 Release 内容始终被标记为不可信数据。若零工具 reviewer 无法运行，状态为 `review_failed`，队列保留供重试。
+
+以上是 0.2 遗留运行方式，不是目标架构。重构后仍保留 Collect/Review/Finalize 契约，但 Review 由当前 Codex 共学任务完成，不再启动 Hermes CLI。
 
 ### 运行状态
 

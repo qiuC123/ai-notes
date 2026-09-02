@@ -1,6 +1,6 @@
 # Use Release Atom discovery, staged review, and governed source promotion
 
-Status: Accepted
+Status: Partially superseded by [`ADR 0007`](0007-replace-hermes-runtime-with-codex-review.md); collection and governance remain accepted
 Date: 2026-08-31
 Related design: [`Ai Notes 高质量 AI 信息源优化设计`](../AI_NOTES_SOURCE_QUALITY_DESIGN.md)
 
