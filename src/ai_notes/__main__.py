@@ -21,6 +21,7 @@ def _parser() -> argparse.ArgumentParser:
     prepare.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
     prepare.add_argument("--include", action="append", default=[], help="pinned same-repository GitHub blob URL")
     prepare.add_argument("--entry-mode", choices=["nominated", "discovered"], default="nominated")
+    prepare.add_argument("--discovery", type=Path, help="bounded active-discovery provenance JSON")
     prepare.add_argument("--run-id", help="extend an unfinalized run with additional evidence")
 
     finalize = commands.add_parser("finalize-learning", help="validate decisions or record explicit user feedback")
@@ -46,6 +47,7 @@ def main(argv: list[str] | None = None) -> int:
                 project_path=args.project,
                 include_urls=tuple(args.include),
                 entry_mode=args.entry_mode,
+                discovery_input_path=args.discovery.resolve() if args.discovery else None,
                 run_id=args.run_id,
             )
             print(

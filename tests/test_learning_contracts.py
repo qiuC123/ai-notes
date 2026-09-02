@@ -34,6 +34,7 @@ def valid_queue() -> dict[str, object]:
         "input": {
             "url": "https://github.com/openai/codex",
             "entry_mode": "nominated",
+            "discovery": None,
             "kind": "repository",
             "canonical_repository": "openai/codex",
             "canonical_url": "https://github.com/openai/codex",

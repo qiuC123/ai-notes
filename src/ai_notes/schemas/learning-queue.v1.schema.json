@@ -12,10 +12,60 @@
     "input": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["url", "entry_mode", "kind", "canonical_repository", "canonical_url"],
+      "required": ["url", "entry_mode", "discovery", "kind", "canonical_repository", "canonical_url"],
       "properties": {
         "url": {"type": "string", "format": "uri"},
         "entry_mode": {"enum": ["nominated", "discovered"]},
+        "discovery": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["search_queries", "screened_candidates", "deep_read_repositories", "selected_repository"],
+              "properties": {
+                "search_queries": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 5,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["query", "lane"],
+                    "properties": {
+                      "query": {"type": "string", "minLength": 1, "maxLength": 500},
+                      "lane": {"enum": ["direct", "adjacent"]}
+                    }
+                  }
+                },
+                "screened_candidates": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 20,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["repository", "url", "lane", "description"],
+                    "properties": {
+                      "repository": {"type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$"},
+                      "url": {"type": "string", "format": "uri"},
+                      "lane": {"enum": ["direct", "adjacent"]},
+                      "description": {"type": "string", "maxLength": 1000}
+                    }
+                  }
+                },
+                "deep_read_repositories": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 5,
+                  "uniqueItems": true,
+                  "items": {"type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$"}
+                },
+                "selected_repository": {"type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$"}
+              }
+            }
+          ]
+        },
         "kind": {"enum": ["repository", "release", "pull", "issue", "tree"]},
         "canonical_repository": {"type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$"},
         "canonical_url": {"type": "string", "format": "uri"}

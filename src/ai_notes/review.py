@@ -309,6 +309,24 @@ def finalize_learning(
                 "run_id": run_id,
                 "repository": queue["input"]["canonical_repository"],
                 "entry_mode": queue["input"]["entry_mode"],
+                "discovery_metrics": (
+                    {
+                        "search_query_count": len(queue["input"]["discovery"]["search_queries"]),
+                        "screened_candidate_count": len(queue["input"]["discovery"]["screened_candidates"]),
+                        "deep_read_count": len(queue["input"]["discovery"]["deep_read_repositories"]),
+                        "direct_candidate_count": sum(
+                            item["lane"] == "direct"
+                            for item in queue["input"]["discovery"]["screened_candidates"]
+                        ),
+                        "adjacent_candidate_count": sum(
+                            item["lane"] == "adjacent"
+                            for item in queue["input"]["discovery"]["screened_candidates"]
+                        ),
+                        "selected_repository": queue["input"]["discovery"]["selected_repository"],
+                    }
+                    if queue["input"]["discovery"] is not None
+                    else None
+                ),
                 "commit_sha": queue["verified_target"]["commit_sha"],
                 "status": status,
                 "relation_ids": [item["relation_id"] for item in decisions["connections"]],

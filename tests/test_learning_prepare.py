@@ -114,6 +114,58 @@ recognized_licenses: [Apache-2.0, MIT]
     )
 
 
+def write_discovery(path: Path, *, adjacent_count: int = 1, selected: str = "openai/codex") -> None:
+    candidates = [
+        {
+            "repository": "openai/codex",
+            "url": "https://github.com/openai/codex",
+            "lane": "direct",
+            "description": "A coding agent",
+        },
+        {
+            "repository": "example/one",
+            "url": "https://github.com/example/one",
+            "lane": "direct",
+            "description": "Direct candidate one",
+        },
+        {
+            "repository": "example/two",
+            "url": "https://github.com/example/two",
+            "lane": "direct",
+            "description": "Direct candidate two",
+        },
+        {
+            "repository": "example/three",
+            "url": "https://github.com/example/three",
+            "lane": "direct",
+            "description": "Direct candidate three",
+        },
+    ]
+    for index in range(adjacent_count):
+        candidates.append(
+            {
+                "repository": f"adjacent/project-{index}",
+                "url": f"https://github.com/adjacent/project-{index}",
+                "lane": "adjacent",
+                "description": "Adjacent candidate",
+            }
+        )
+    path.write_text(
+        json.dumps(
+            {
+                "search_queries": [
+                    {"query": "coding agent repository", "lane": "direct"},
+                    {"query": "architecture decisions", "lane": "adjacent"},
+                ],
+                "screened_candidates": candidates,
+                "deep_read_repositories": [item["repository"] for item in candidates[:5]],
+                "selected_repository": selected,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 class LearningPrepareTests(unittest.TestCase):
     def test_github_input_parser_accepts_supported_objects_and_rejects_non_github_hosts(self) -> None:
         cases = {
@@ -209,6 +261,7 @@ class LearningPrepareTests(unittest.TestCase):
 
         self.assertEqual("success", result.status)
         self.assertEqual("nominated", queue["input"]["entry_mode"])
+        self.assertIsNone(queue["input"]["discovery"])
         self.assertEqual(SHA, queue["verified_target"]["commit_sha"])
         self.assertEqual({"repository", "readme", "tree", "blob"}, {item["kind"] for item in queue["external_evidence"]})
         self.assertEqual(queue["external_evidence"], raw["evidence"])
@@ -351,6 +404,65 @@ class LearningPrepareTests(unittest.TestCase):
         self.assertEqual("success", recovered.status)
         self.assertEqual([], queue["missing_scopes"])
         self.assertIn("blob", {item["kind"] for item in queue["external_evidence"]})
+
+    def test_discovered_run_requires_and_embeds_bounded_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "owned"
+            initialize_project(project)
+            write_policy(root)
+            provenance = root / "discovery.json"
+            write_discovery(provenance)
+
+            result = prepare_learning(
+                root=root,
+                github_url="https://github.com/openai/codex",
+                project_path=project,
+                entry_mode="discovered",
+                discovery_input_path=provenance,
+                api=FakeGitHubApi(),
+                now=datetime(2026, 9, 2, 8, 30, tzinfo=UTC),
+            )
+            queue = json.loads(result.queue_path.read_text(encoding="utf-8"))
+
+        self.assertEqual("success", result.status)
+        self.assertEqual("discovered", queue["input"]["entry_mode"])
+        self.assertEqual("openai/codex", queue["input"]["discovery"]["selected_repository"])
+        self.assertEqual(5, len(queue["input"]["discovery"]["screened_candidates"]))
+
+    def test_discovered_run_fails_closed_without_provenance_or_when_adjacent_budget_is_exceeded(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "owned"
+            initialize_project(project)
+            write_policy(root)
+
+            missing = prepare_learning(
+                root=root,
+                github_url="https://github.com/openai/codex",
+                project_path=project,
+                entry_mode="discovered",
+                api=FakeGitHubApi(),
+                now=datetime(2026, 9, 2, 8, 30, tzinfo=UTC),
+            )
+            provenance = root / "discovery.json"
+            write_discovery(provenance, adjacent_count=2)
+            exceeded = prepare_learning(
+                root=root,
+                github_url="https://github.com/openai/codex",
+                project_path=project,
+                entry_mode="discovered",
+                discovery_input_path=provenance,
+                api=FakeGitHubApi(),
+                now=datetime(2026, 9, 2, 8, 31, tzinfo=UTC),
+            )
+            missing_manifest = json.loads(missing.manifest_path.read_text(encoding="utf-8"))
+            exceeded_manifest = json.loads(exceeded.manifest_path.read_text(encoding="utf-8"))
+
+        self.assertEqual("failed", missing.status)
+        self.assertIn("requires a bounded", missing_manifest["validation_errors"][0])
+        self.assertEqual("failed", exceeded.status)
+        self.assertIn("20%", exceeded_manifest["validation_errors"][0])
 
 
 if __name__ == "__main__":

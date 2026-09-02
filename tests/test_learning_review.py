@@ -62,6 +62,7 @@ def write_prepared_run(root: Path, *, learning_only: bool = False) -> tuple[Path
         "input": {
             "url": "https://github.com/openai/codex",
             "entry_mode": "nominated",
+            "discovery": None,
             "kind": "repository",
             "canonical_repository": "openai/codex",
             "canonical_url": "https://github.com/openai/codex",
@@ -202,6 +203,7 @@ class LearningReviewTests(unittest.TestCase):
         self.assertEqual("success", result.status)
         self.assertFalse(result.healthy_no_connection)
         self.assertEqual(RELATION_ID, json.loads(ledger)["relation_ids"][0])
+        self.assertIsNone(json.loads(ledger)["discovery_metrics"])
         self.assertEqual(queue_hash, manifest["queue_sha256"])
         self.assertNotIn("Codex helps", ledger)
 

@@ -227,6 +227,77 @@ def _register_project(root: Path, owned_project: dict[str, Any]) -> None:
     write_bytes_atomic(path, rendered.encode("utf-8"))
 
 
+def _load_discovery_provenance(path: Path, github_url: str) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Discovery provenance must be a JSON object")
+    required = {"search_queries", "screened_candidates", "deep_read_repositories", "selected_repository"}
+    if set(payload) != required:
+        raise ValueError("Discovery provenance has missing or unknown fields")
+    queries = payload["search_queries"]
+    candidates = payload["screened_candidates"]
+    deep_reads = payload["deep_read_repositories"]
+    selected = payload["selected_repository"]
+    if not isinstance(queries, list) or not 1 <= len(queries) <= 5:
+        raise ValueError("Discovery provenance requires 1 to 5 search queries")
+    if not isinstance(candidates, list) or not 1 <= len(candidates) <= 20:
+        raise ValueError("Discovery provenance requires 1 to 20 screened candidates")
+    if not isinstance(deep_reads, list) or not 1 <= len(deep_reads) <= 5:
+        raise ValueError("Discovery provenance requires 1 to 5 deep-read repositories")
+    if not isinstance(selected, str):
+        raise ValueError("Discovery provenance selected_repository must be a string")
+
+    normalized_candidates: list[dict[str, Any]] = []
+    candidate_ids: set[str] = set()
+    lane_counts = {"direct": 0, "adjacent": 0}
+    for item in candidates:
+        if not isinstance(item, dict) or set(item) != {"repository", "url", "lane", "description"}:
+            raise ValueError("Each screened candidate must contain repository, url, lane, and description")
+        parsed = parse_github_url(str(item["url"]))
+        if parsed.kind != "repository" or parsed.repository_id != item["repository"]:
+            raise ValueError("Screened candidate URL and repository identity do not match")
+        if parsed.repository_id in candidate_ids:
+            raise ValueError(f"Duplicate screened candidate: {parsed.repository_id}")
+        lane = item["lane"]
+        if lane not in lane_counts:
+            raise ValueError(f"Unsupported discovery lane: {lane}")
+        if not isinstance(item["description"], str) or len(item["description"]) > 1000:
+            raise ValueError("Screened candidate description must be a string of at most 1000 characters")
+        candidate_ids.add(parsed.repository_id)
+        lane_counts[lane] += 1
+        normalized_candidates.append(dict(item))
+    if lane_counts["adjacent"] and lane_counts["direct"] < 4 * lane_counts["adjacent"]:
+        raise ValueError("Discovery provenance exceeds the 20% adjacent-exploration budget")
+
+    normalized_queries: list[dict[str, str]] = []
+    for item in queries:
+        if not isinstance(item, dict) or set(item) != {"query", "lane"}:
+            raise ValueError("Each discovery query must contain query and lane")
+        query = item["query"]
+        lane = item["lane"]
+        if not isinstance(query, str) or not query.strip() or len(query) > 500 or lane not in lane_counts:
+            raise ValueError("Discovery query is invalid")
+        normalized_queries.append({"query": query, "lane": lane})
+
+    if (
+        not all(isinstance(item, str) for item in deep_reads)
+        or len(set(deep_reads)) != len(deep_reads)
+        or not all(item in candidate_ids for item in deep_reads)
+    ):
+        raise ValueError("Deep-read repositories must be unique screened candidates")
+    target = parse_github_url(github_url)
+    if target.kind != "repository":
+        raise ValueError("Active discovery currently supports repository URLs only")
+    if selected != target.repository_id or selected not in deep_reads:
+        raise ValueError("Selected repository must match the learning target and be included in deep reads")
+    return {
+        "search_queries": normalized_queries,
+        "screened_candidates": normalized_candidates,
+        "deep_read_repositories": list(deep_reads),
+        "selected_repository": selected,
+    }
+
+
 def _write_unprepared_manifest(
     *, path: Path, run_id: str, created_at: str, policy: LearningPolicy, status: str, reason: str
 ) -> None:
@@ -260,6 +331,7 @@ def prepare_learning(
     project_path: Path,
     include_urls: tuple[str, ...] = (),
     entry_mode: str = "nominated",
+    discovery_input_path: Path | None = None,
     api: GitHubJsonApi | None = None,
     run_id: str | None = None,
     now: datetime | None = None,
@@ -296,6 +368,11 @@ def prepare_learning(
             ):
                 raise ValueError("Existing run input or owned project does not match")
             parsed_input = parse_github_url(github_url)
+            discovery = queue["input"]["discovery"]
+            if discovery_input_path is not None:
+                supplied_discovery = _load_discovery_provenance(discovery_input_path, github_url)
+                if supplied_discovery != discovery:
+                    raise ValueError("Existing run discovery provenance does not match")
             source_risk = dict(queue["source_risk"])
             project = VerifiedGitHubProject(
                 input=parsed_input,
@@ -321,6 +398,14 @@ def prepare_learning(
             verified_at = str(queue["verified_target"]["verified_at"])
         else:
             try:
+                if entry_mode == "discovered":
+                    if discovery_input_path is None:
+                        raise ValueError("Active discovery requires a bounded discovery provenance JSON file")
+                    discovery = _load_discovery_provenance(discovery_input_path, github_url)
+                else:
+                    if discovery_input_path is not None:
+                        raise ValueError("Nominated learning runs cannot include discovery provenance")
+                    discovery = None
                 project = verify_project(api_client, parse_github_url(github_url))
             except GitHubPartialError as error:
                 created_at = current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -337,7 +422,7 @@ def prepare_learning(
                 )
                 _register_project(resolved_root, owned)
                 return PrepareResult(identifier, None, manifest_path, "partial", (reason,))
-            except (GitHubError, ValueError) as error:
+            except (OSError, GitHubError, ValueError) as error:
                 created_at = current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
                 output_dir.mkdir(parents=True, exist_ok=True)
                 write_bytes_atomic(output_dir / "created-at.txt", (created_at + "\n").encode("utf-8"))
@@ -387,6 +472,7 @@ def prepare_learning(
             "input": {
                 "url": github_url,
                 "entry_mode": entry_mode,
+                "discovery": discovery,
                 "kind": project.input.kind,
                 "canonical_repository": project.repository_id,
                 "canonical_url": project.canonical_url,

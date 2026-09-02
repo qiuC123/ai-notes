@@ -27,6 +27,18 @@ class LearningTrialTests(unittest.TestCase):
                         "run_id": run_id,
                         "status": "success",
                         "entry_mode": "discovered" if index < 3 else "nominated",
+                        "discovery_metrics": (
+                            {
+                                "search_query_count": 4,
+                                "screened_candidate_count": 20,
+                                "deep_read_count": 5,
+                                "direct_candidate_count": 16,
+                                "adjacent_candidate_count": 4,
+                                "selected_repository": f"example/project-{index}",
+                            }
+                            if index < 3
+                            else None
+                        ),
                     },
                 )
                 if index < 6:
@@ -60,6 +72,10 @@ class LearningTrialTests(unittest.TestCase):
             append_jsonl_atomic(
                 ledger,
                 {"event": "learning_finalized", "run_id": "partial", "status": "partial", "entry_mode": "discovered"},
+            )
+            append_jsonl_atomic(
+                ledger,
+                {"event": "learning_finalized", "run_id": "bare-label", "status": "success", "entry_mode": "discovered"},
             )
             failure = {
                 "event": "learning_review_failed",
