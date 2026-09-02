@@ -368,6 +368,8 @@ def _record_feedback_unlocked(
     relation_id = connections[0]["relation_id"] if connections else None
     if feedback in {"ignore", "experiment"} and relation_id is None:
         raise ValueError(f"{feedback} feedback requires a concrete relation")
+    if feedback == "experiment" and connections[0]["experiment"] is None:
+        raise ValueError("experiment feedback requires a validated experiment in the learning decision")
     if feedback == "experiment" and (queue["source_risk"]["learning_only"] or decisions["risks"]["learning_only"]):
         raise ValueError("Learning-only projects cannot be moved to experiment")
 

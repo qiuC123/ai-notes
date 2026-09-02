@@ -368,6 +368,21 @@ class LearningReviewTests(unittest.TestCase):
         self.assertEqual("2026-10-02T08:31:00Z", events[-1]["cooldown_until"])
         self.assertEqual(2, len(events))
 
+    def test_experiment_feedback_requires_a_validated_experiment(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_policy(root)
+            project, queue_path = write_prepared_run(root)
+            payload = decisions(queue_path, project)
+            payload["connections"][0]["experiment"] = None
+            payload["next_actions"] = ["continue", "ignore", "watch"]
+            input_path = root / "decision-input.json"
+            write_json_atomic(input_path, payload)
+            finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=input_path, now=NOW)
+
+            with self.assertRaisesRegex(ValueError, "validated experiment"):
+                record_feedback(root=root, run_id=RUN_ID, feedback="experiment", now=NOW)
+
 
 if __name__ == "__main__":
     unittest.main()
