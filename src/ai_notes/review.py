@@ -280,23 +280,26 @@ def finalize_learning(
             return FinalizeResult(run_id, manifest_path, None, "review_failed", False, (message,))
 
         assert queue is not None
-        if manifest_path.exists() and canonical_decisions_path.exists():
+        if manifest_path.exists():
             existing_manifest = validate_contract(
                 MANIFEST_SCHEMA, json.loads(manifest_path.read_text(encoding="utf-8"))
             )
-            rendered_hash = sha256_bytes(
-                (json.dumps(decisions, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
-            )
-            if existing_manifest["decisions_sha256"] == rendered_hash:
-                return FinalizeResult(
-                    run_id,
-                    manifest_path,
-                    canonical_decisions_path,
-                    str(existing_manifest["status"]),
-                    bool(existing_manifest["healthy_no_connection"]),
-                    tuple(existing_manifest["validation_errors"]),
+            if existing_manifest["decisions_sha256"] is not None:
+                if not canonical_decisions_path.exists():
+                    raise ValueError("Finalized learning run is missing its canonical decisions")
+                rendered_hash = sha256_bytes(
+                    (json.dumps(decisions, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
                 )
-            raise ValueError("Finalized learning run cannot be replaced with conflicting decisions")
+                if existing_manifest["decisions_sha256"] == rendered_hash:
+                    return FinalizeResult(
+                        run_id,
+                        manifest_path,
+                        canonical_decisions_path,
+                        str(existing_manifest["status"]),
+                        bool(existing_manifest["healthy_no_connection"]),
+                        tuple(existing_manifest["validation_errors"]),
+                    )
+                raise ValueError("Finalized learning run cannot be replaced with conflicting decisions")
 
         write_json_atomic(canonical_decisions_path, decisions)
         decisions_hash = sha256_file(canonical_decisions_path)

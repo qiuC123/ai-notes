@@ -260,6 +260,30 @@ class LearningReviewTests(unittest.TestCase):
         self.assertEqual("review_failed", result.status)
         self.assertIn("JSONDecodeError", result.validation_errors[0])
 
+    def test_failed_canonical_decisions_can_be_corrected_and_retried(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_policy(root)
+            project, queue_path = write_prepared_run(root)
+            canonical_path = queue_path.parent / "learning-decisions.json"
+            invalid = decisions(queue_path, project)
+            invalid["project_understanding"]["architecture"][0]["evidence"][0]["quote"] = "invented quote"
+            write_json_atomic(canonical_path, invalid)
+
+            failed = finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=canonical_path, now=NOW)
+            write_json_atomic(canonical_path, decisions(queue_path, project))
+            retried = finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=canonical_path, now=NOW)
+            manifest = json.loads(retried.manifest_path.read_text(encoding="utf-8"))
+            events = [
+                json.loads(line)
+                for line in (root / "data" / "learning" / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual("review_failed", failed.status)
+        self.assertEqual("success", retried.status)
+        self.assertEqual("success", manifest["status"])
+        self.assertEqual(["learning_review_failed", "learning_finalized"], [event["event"] for event in events])
+
     def test_same_finalization_is_idempotent_but_conflicting_replacement_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
