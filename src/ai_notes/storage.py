@@ -95,6 +95,18 @@ def _git_optional(project: Path, *args: str) -> str | None:
     return completed.stdout.strip() if completed.returncode == 0 and completed.stdout.strip() else None
 
 
+def _git_bytes(project: Path, *args: str) -> bytes:
+    completed = subprocess.run(
+        ["git", "-C", str(project), *args],
+        capture_output=True,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        message = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise ValueError(message or f"git {' '.join(args)} failed")
+    return completed.stdout
+
+
 def project_fingerprint(project: Path) -> dict[str, str | None]:
     root = project.resolve()
     git_root = Path(_git(root, "rev-parse", "--show-toplevel")).resolve()
@@ -102,13 +114,30 @@ def project_fingerprint(project: Path) -> dict[str, str | None]:
         raise ValueError(f"Authorized project must be its Git root: {root}")
     head = _git(root, "rev-parse", "HEAD")
     repository_id = _git_optional(root, "config", "--get", "remote.origin.url") or root.name
-    status = _git(root, "status", "--porcelain=v1", "--untracked-files=all")
+    status = _git_bytes(root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+    tracked_diff = _git_bytes(root, "diff", "--no-ext-diff", "--binary", "HEAD", "--")
+    untracked_paths = [
+        item.decode("utf-8", errors="surrogateescape")
+        for item in _git_bytes(root, "ls-files", "--others", "--exclude-standard", "-z").split(b"\0")
+        if item
+    ]
+    untracked_fingerprints: list[dict[str, str]] = []
+    for relative in sorted(untracked_paths):
+        path = resolve_within(root, relative)
+        untracked_fingerprints.append({"path": relative.replace("\\", "/"), "sha256": sha256_file(path)})
+    working_tree = (
+        status
+        + b"\0tracked-diff\0"
+        + tracked_diff
+        + b"\0untracked-files\0"
+        + canonical_json_bytes(untracked_fingerprints)
+    )
     return {
         "name": root.name,
         "root": str(root),
         "repository_id": repository_id,
         "git_head": head,
-        "working_tree_fingerprint": sha256_bytes(status.encode("utf-8")),
+        "working_tree_fingerprint": sha256_bytes(working_tree),
     }
 
 

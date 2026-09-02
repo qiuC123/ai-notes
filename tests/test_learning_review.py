@@ -285,6 +285,31 @@ class LearningReviewTests(unittest.TestCase):
         self.assertEqual("review_failed", result.status)
         self.assertIn("working tree changed", result.validation_errors[0])
 
+    def test_already_dirty_owned_file_content_change_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_policy(root)
+            project, _ = write_prepared_run(root)
+            owned = project / "README.md"
+            owned.write_text("first dirty version\n", encoding="utf-8")
+            fingerprint = project_fingerprint(project)
+            run_dir = root / "outputs" / "learning" / RUN_ID
+            queue_path = run_dir / "learning-queue.json"
+            queue = json.loads(queue_path.read_text(encoding="utf-8"))
+            queue["owned_project"]["working_tree_fingerprint"] = fingerprint["working_tree_fingerprint"]
+            queue["owned_project"]["focus_files"][0]["sha256"] = sha256_file(owned)
+            queue["owned_project"]["focus_files"][0]["size"] = owned.stat().st_size
+            write_json_atomic(queue_path, queue)
+            payload = decisions(queue_path, project)
+            owned.write_text("second dirty version\n", encoding="utf-8")
+            input_path = root / "decision-input.json"
+            write_json_atomic(input_path, payload)
+
+            result = finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=input_path, now=NOW)
+
+        self.assertEqual("review_failed", result.status)
+        self.assertIn("working tree changed", result.validation_errors[0])
+
     def test_unregistered_owned_project_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
