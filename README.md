@@ -23,7 +23,7 @@ GitHub Release 只是“需要重新学习这个项目”的变化信号。真�
 
 三次人工提名分别学习 `openai/codex`、`thomvaill/log4brains` 和 `clarity-digital-development/tworkflow`。后两次只借鉴“ADR 状态与替代关系校验”和“实验复盘反哺下一轮学习”，没有安装外部工具、复制 Skill 或运行仓库代码。
 
-三次主动发现分别选择 `vectorian-rs/chizu`、`divyanshu-iitian/ContextFlux` 和 `LucasSantana-Dev/shelfmark`。第三次从 6 个候选中深读 5 个，只借鉴“冻结留出集与排序回归门禁”，不接入外部记忆库或模型。一次跨行引用错误被审计为双侧证据错误，修正后的新运行通过；所有运行都只读取固定版本公开证据，没有安装或执行外部项目。`log4brains` 和 `tworkflow` 的两个最小实验已经完成，结果均逐项通过并以 `awaiting_user_confirmation` 追加到账本，正反馈为 2/6；其余四次成功运行仍等待明确反馈。
+三次主动发现分别选择 `vectorian-rs/chizu`、`divyanshu-iitian/ContextFlux` 和 `LucasSantana-Dev/shelfmark`。第三次从 6 个候选中深读 5 个，只借鉴“冻结留出集与排序回归门禁”，不接入外部记忆库或模型。一次跨行引用错误被审计为双侧证据错误，修正后的新运行通过；所有运行都只读取固定版本公开证据，没有安装或执行外部项目。`log4brains` 和 `tworkflow` 的两个最小实验已经完成、逐项通过并获得用户明确结果确认，正反馈仍为 2/6；其余四次成功运行仍等待明确反馈。
 
 设计与术语：
 
@@ -101,9 +101,10 @@ python -m ai_notes finalize-learning <run-id> --feedback experiment
 
 ```bash
 python -m ai_notes record-experiment-result <run-id> --result <file> --root .
+python -m ai_notes confirm-experiment-result <run-id> --root .
 ```
 
-程序会把 run、relation、外部 commit 和批准时的自有项目 Git 状态与原 `approved_for_handoff` 事件逐项核对，并要求每条原成功条件记录 `pass`、`fail` 或 `inconclusive`。相同结果可幂等重放，冲突结果拒绝覆盖；成功时只追加结果账本，并保持 `awaiting_user_confirmation`，不会自动修改关注、排序、项目文档、`AGENTS.md` 或 Skill。
+程序会把 run、relation、外部 commit 和批准时的自有项目 Git 状态与原 `approved_for_handoff` 事件逐项核对，并要求每条原成功条件记录 `pass`、`fail` 或 `inconclusive`。相同结果可幂等重放，冲突结果拒绝覆盖；结果先保持 `awaiting_user_confirmation`，用户明确确认后再追加绑定结果哈希的确认事件。确认不是新的关联反馈，两步都不会自动修改关注、排序、项目文档、`AGENTS.md` 或 Skill。
 
 只有明确正反馈才会把紧凑关联快照写入长期账本。`watch` 同时保存最后核验 commit 作为监控游标，`experiment` 保存经批准的实验目标、成功标准和双侧项目指纹，等待独立任务接手；两者都不保存源码、外部原文或对话。当前关注项可用内部命令审计：
 

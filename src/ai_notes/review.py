@@ -86,6 +86,14 @@ class ExperimentResult:
     result_sha256: str
 
 
+@dataclass(frozen=True, slots=True)
+class ExperimentConfirmation:
+    run_id: str
+    relation_id: str
+    recorded: bool
+    result_sha256: str
+
+
 def _relation_snapshot(connection: dict[str, Any] | None) -> dict[str, Any] | None:
     if connection is None:
         return None
@@ -495,6 +503,69 @@ def record_experiment_result(
             },
         )
         return ExperimentResult(run_id, relation_id, True, result_sha256)
+
+
+def confirm_experiment_result(
+    *,
+    root: Path,
+    run_id: str,
+    now: datetime | None = None,
+) -> ExperimentConfirmation:
+    resolved_root = root.resolve()
+    current = now or datetime.now(UTC)
+    lock_path = resolved_root / "data" / "learning" / "ai-notes-learning.lock"
+    with RunLock(lock_path):
+        ledger_path = resolved_root / "data" / "learning" / "ledger.jsonl"
+        events = _ledger_events(ledger_path)
+        results = [
+            event
+            for event in events
+            if event.get("event") == "experiment_result_recorded" and event.get("run_id") == run_id
+        ]
+        if len(results) != 1:
+            raise ValueError("Experiment confirmation requires exactly one recorded result for the learning run")
+
+        result = results[0]
+        relation_id = result.get("relation_id")
+        result_sha256 = result.get("result_sha256")
+        downstream_state = result.get("downstream_state")
+        if not isinstance(relation_id, str) or not isinstance(result_sha256, str):
+            raise ValueError("Recorded experiment result is missing its relation or result hash")
+        if not isinstance(downstream_state, dict) or downstream_state.get("status") != "awaiting_user_confirmation":
+            raise ValueError("Recorded experiment result is not awaiting user confirmation")
+
+        prior_confirmations = [
+            event
+            for event in events
+            if event.get("event") == "experiment_result_confirmed" and event.get("run_id") == run_id
+        ]
+        if prior_confirmations:
+            prior = prior_confirmations[0]
+            if (
+                len(prior_confirmations) == 1
+                and prior.get("relation_id") == relation_id
+                and prior.get("result_sha256") == result_sha256
+            ):
+                return ExperimentConfirmation(run_id, relation_id, False, result_sha256)
+            raise ValueError("Experiment result confirmation conflicts with an existing confirmation")
+
+        append_jsonl_atomic(
+            ledger_path,
+            {
+                "event": "experiment_result_confirmed",
+                "recorded_at": current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                "run_id": run_id,
+                "relation_id": relation_id,
+                "repository": result.get("repository"),
+                "result_event_sha256": sha256_bytes(canonical_json_bytes(result)),
+                "result_sha256": result_sha256,
+                "downstream_state": {
+                    "status": "confirmed",
+                    "automatic_effects": [],
+                },
+            },
+        )
+        return ExperimentConfirmation(run_id, relation_id, True, result_sha256)
 
 
 def list_watched_projects(root: Path) -> list[dict[str, Any]]:

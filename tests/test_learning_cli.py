@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from ai_notes.__main__ import main
 from ai_notes.learning import PrepareResult
-from ai_notes.review import ExperimentResult, FeedbackResult, FinalizeResult, ValidationResult
+from ai_notes.review import ExperimentConfirmation, ExperimentResult, FeedbackResult, FinalizeResult, ValidationResult
 
 
 RUN_ID = "20260902T083000Z-0123abcd"
@@ -177,6 +177,20 @@ class LearningCliTests(unittest.TestCase):
         self.assertTrue(payload["recorded"])
         self.assertEqual("awaiting_user_confirmation", payload["downstream_status"])
         record.assert_called_once()
+
+    def test_confirm_experiment_result_reports_explicit_confirmation(self) -> None:
+        stdout = io.StringIO()
+        with patch(
+            "ai_notes.__main__.confirm_experiment_result",
+            return_value=ExperimentConfirmation(RUN_ID, "rel-0123456789ab", True, "c" * 64),
+        ) as confirm, redirect_stdout(stdout):
+            code = main(["confirm-experiment-result", RUN_ID, "--root", "."])
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, code)
+        self.assertTrue(payload["recorded"])
+        self.assertEqual("confirmed", payload["downstream_status"])
+        confirm.assert_called_once()
 
     def test_runtime_error_is_reported_without_traceback(self) -> None:
         stderr = io.StringIO()

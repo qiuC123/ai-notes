@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from ai_notes.review import (
+    confirm_experiment_result,
     finalize_learning,
     list_pending_feedback,
     list_watched_projects,
@@ -224,6 +225,58 @@ def experiment_result(queue_path: Path, project: Path) -> dict[str, object]:
 
 
 class LearningReviewTests(unittest.TestCase):
+    def test_experiment_confirmation_appends_once_without_automatic_effects(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_policy(root)
+            project, queue_path = write_prepared_run(root)
+            decision_path = root / "decision-input.json"
+            write_json_atomic(decision_path, decisions(queue_path, project))
+            finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=decision_path, now=NOW)
+            record_feedback(root=root, run_id=RUN_ID, feedback="experiment", now=NOW)
+            result_path = root / "experiment-result.json"
+            write_json_atomic(result_path, experiment_result(queue_path, project))
+            recorded_result = record_experiment_result(
+                root=root,
+                run_id=RUN_ID,
+                input_result_path=result_path,
+                now=datetime(2026, 9, 2, 9, 1, tzinfo=UTC),
+            )
+            original_trial_status = evaluate_trial(root).as_dict()
+
+            first = confirm_experiment_result(
+                root=root,
+                run_id=RUN_ID,
+                now=datetime(2026, 9, 2, 9, 2, tzinfo=UTC),
+            )
+            replay = confirm_experiment_result(
+                root=root,
+                run_id=RUN_ID,
+                now=datetime(2026, 9, 2, 9, 3, tzinfo=UTC),
+            )
+            events = [
+                json.loads(line)
+                for line in (root / "data" / "learning" / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
+            final_trial_status = evaluate_trial(root).as_dict()
+
+        self.assertTrue(first.recorded)
+        self.assertFalse(replay.recorded)
+        self.assertEqual(recorded_result.result_sha256, first.result_sha256)
+        self.assertEqual(first.result_sha256, replay.result_sha256)
+        self.assertEqual(4, len(events))
+        self.assertEqual("experiment_result_confirmed", events[-1]["event"])
+        self.assertEqual("confirmed", events[-1]["downstream_state"]["status"])
+        self.assertEqual([], events[-1]["downstream_state"]["automatic_effects"])
+        self.assertEqual(original_trial_status, final_trial_status)
+
+    def test_experiment_confirmation_requires_one_recorded_result(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            with self.assertRaisesRegex(ValueError, "exactly one recorded result"):
+                confirm_experiment_result(root=root, run_id=RUN_ID, now=NOW)
+
     def test_experiment_result_binds_approval_and_appends_once_without_downstream_effects(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

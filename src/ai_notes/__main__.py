@@ -8,6 +8,7 @@ from pathlib import Path
 from ai_notes.adr import inventory_adrs
 from ai_notes.learning import prepare_learning
 from ai_notes.review import (
+    confirm_experiment_result,
     finalize_learning,
     list_pending_feedback,
     list_watched_projects,
@@ -59,6 +60,12 @@ def _parser() -> argparse.ArgumentParser:
     experiment_result.add_argument("run_id")
     experiment_result.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
     experiment_result.add_argument("--result", required=True, type=Path, help="experiment-result.v1 JSON")
+
+    experiment_confirmation = commands.add_parser(
+        "confirm-experiment-result", help="append explicit user confirmation for a recorded experiment result"
+    )
+    experiment_confirmation.add_argument("run_id")
+    experiment_confirmation.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
 
     adrs = commands.add_parser("adr-status", help="list and validate local architecture decisions")
     adrs.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
@@ -135,6 +142,21 @@ def main(argv: list[str] | None = None) -> int:
                         "recorded": result.recorded,
                         "result_sha256": result.result_sha256,
                         "downstream_status": "awaiting_user_confirmation",
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        if args.command == "confirm-experiment-result":
+            result = confirm_experiment_result(root=root, run_id=args.run_id)
+            print(
+                json.dumps(
+                    {
+                        "run_id": result.run_id,
+                        "relation_id": result.relation_id,
+                        "recorded": result.recorded,
+                        "result_sha256": result.result_sha256,
+                        "downstream_status": "confirmed",
                     },
                     ensure_ascii=False,
                 )
