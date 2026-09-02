@@ -275,6 +275,7 @@ def finalize_learning(
                 "recorded_at": current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
                 "run_id": run_id,
                 "repository": queue["input"]["canonical_repository"],
+                "entry_mode": queue["input"]["entry_mode"],
                 "commit_sha": queue["verified_target"]["commit_sha"],
                 "status": status,
                 "relation_ids": [item["relation_id"] for item in decisions["connections"]],

@@ -208,6 +208,7 @@ class LearningPrepareTests(unittest.TestCase):
             registry = (root / "data" / "learning" / "projects.yaml").read_text(encoding="utf-8")
 
         self.assertEqual("success", result.status)
+        self.assertEqual("nominated", queue["input"]["entry_mode"])
         self.assertEqual(SHA, queue["verified_target"]["commit_sha"])
         self.assertEqual({"repository", "readme", "tree", "blob"}, {item["kind"] for item in queue["external_evidence"]})
         self.assertEqual(queue["external_evidence"], raw["evidence"])

@@ -61,6 +61,7 @@ def write_prepared_run(root: Path, *, learning_only: bool = False) -> tuple[Path
         "policy_version": "1",
         "input": {
             "url": "https://github.com/openai/codex",
+            "entry_mode": "nominated",
             "kind": "repository",
             "canonical_repository": "openai/codex",
             "canonical_url": "https://github.com/openai/codex",

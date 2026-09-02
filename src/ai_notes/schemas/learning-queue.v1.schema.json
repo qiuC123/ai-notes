@@ -12,9 +12,10 @@
     "input": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["url", "kind", "canonical_repository", "canonical_url"],
+      "required": ["url", "entry_mode", "kind", "canonical_repository", "canonical_url"],
       "properties": {
         "url": {"type": "string", "format": "uri"},
+        "entry_mode": {"enum": ["nominated", "discovered"]},
         "kind": {"enum": ["repository", "release", "pull", "issue", "tree"]},
         "canonical_repository": {"type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$"},
         "canonical_url": {"type": "string", "format": "uri"}

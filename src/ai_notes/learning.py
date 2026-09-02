@@ -259,10 +259,13 @@ def prepare_learning(
     github_url: str,
     project_path: Path,
     include_urls: tuple[str, ...] = (),
+    entry_mode: str = "nominated",
     api: GitHubJsonApi | None = None,
     run_id: str | None = None,
     now: datetime | None = None,
 ) -> PrepareResult:
+    if entry_mode not in {"nominated", "discovered"}:
+        raise ValueError(f"Unsupported learning entry mode: {entry_mode}")
     resolved_root = root.resolve()
     resolved_project = project_path.resolve()
     policy = load_learning_policy(resolved_root / "config" / "ai_notes_learning.yaml")
@@ -286,7 +289,11 @@ def prepare_learning(
             if not queue_path.exists():
                 raise ValueError(f"Learning run does not exist: {identifier}")
             queue = validate_contract(QUEUE_SCHEMA, json.loads(queue_path.read_text(encoding="utf-8")))
-            if queue["input"]["url"] != github_url or Path(queue["owned_project"]["root"]).resolve() != resolved_project:
+            if (
+                queue["input"]["url"] != github_url
+                or queue["input"]["entry_mode"] != entry_mode
+                or Path(queue["owned_project"]["root"]).resolve() != resolved_project
+            ):
                 raise ValueError("Existing run input or owned project does not match")
             parsed_input = parse_github_url(github_url)
             source_risk = dict(queue["source_risk"])
@@ -379,6 +386,7 @@ def prepare_learning(
             "policy_version": policy.policy_version,
             "input": {
                 "url": github_url,
+                "entry_mode": entry_mode,
                 "kind": project.input.kind,
                 "canonical_repository": project.repository_id,
                 "canonical_url": project.canonical_url,
