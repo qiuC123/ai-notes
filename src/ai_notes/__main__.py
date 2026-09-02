@@ -8,6 +8,7 @@ from pathlib import Path
 from ai_notes.learning import prepare_learning
 from ai_notes.review import finalize_learning, record_feedback
 from ai_notes.storage import sha256_file
+from ai_notes.trial import evaluate_trial
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -28,6 +29,9 @@ def _parser() -> argparse.ArgumentParser:
     action = finalize.add_mutually_exclusive_group(required=True)
     action.add_argument("--decisions", type=Path, help="Codex-produced learning-decisions.v1 JSON")
     action.add_argument("--feedback", choices=["continue", "ignore", "watch", "experiment"])
+
+    trial = commands.add_parser("trial-status", help="report whether manual validation permits automation")
+    trial.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
     return parser
 
 
@@ -58,6 +62,10 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
             return 0 if result.status == "success" else (2 if result.status == "partial" else 1)
+        if args.command == "trial-status":
+            result = evaluate_trial(root)
+            print(json.dumps(result.as_dict(), ensure_ascii=False))
+            return 0 if result.eligible_for_automation else 2
         if args.decisions is not None:
             result = finalize_learning(
                 root=root,

@@ -229,13 +229,21 @@ class LearningReviewTests(unittest.TestCase):
             write_json_atomic(input_path, payload)
 
             result = finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=input_path, now=NOW)
+            replay = finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=input_path, now=NOW)
             queue_preserved = queue_path.exists()
             canonical_absent = not (queue_path.parent / "learning-decisions.json").exists()
+            failure_events = [
+                json.loads(line)
+                for line in (root / "data" / "learning" / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
+            ]
 
         self.assertEqual("review_failed", result.status)
+        self.assertEqual("review_failed", replay.status)
         self.assertTrue(queue_preserved)
         self.assertTrue(canonical_absent)
         self.assertIn("does not match", result.validation_errors[0])
+        self.assertEqual(1, len(failure_events))
+        self.assertEqual("dual_evidence", failure_events[0]["error_class"])
 
     def test_malformed_decision_json_is_review_failed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

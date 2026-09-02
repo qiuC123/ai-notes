@@ -92,6 +92,14 @@ python -m ai_notes finalize-learning <run-id> --feedback experiment
 
 用户不需要直接运行这些命令；在共学主对话中提交 GitHub 地址即可。共学卡片只在对话中展示，本地保留严格 JSON 契约、运行清单和必要证据快照。
 
+十次手动验证期间可审计自动化准入状态：
+
+```bash
+python -m ai_notes trial-status --root .
+```
+
+只有十次完整成功运行、至少三次人工提名、至少三次主动发现、至少六次明确正反馈且双侧证据错误不超过一次时，才会报告 `eligible_for_automation=true`。该命令只报告状态，不创建 Skill 或定时任务。
+
 ## 每日运行
 
 ```bash

@@ -35,6 +35,22 @@ _SPACE = re.compile(r"\s+")
 _FEEDBACK = {"continue", "ignore", "watch", "experiment"}
 
 
+def _review_error_class(message: str) -> str:
+    evidence_markers = (
+        "Queued external evidence hash changed",
+        "references unknown external evidence",
+        "External quote does not match",
+        "Owned-project evidence changed",
+        "Owned-project line range",
+        "Owned-project evidence requires",
+    )
+    if any(marker in message for marker in evidence_markers) or (
+        "validation failed at" in message and ".evidence" in message
+    ):
+        return "dual_evidence"
+    return "other"
+
+
 @dataclass(frozen=True, slots=True)
 class FinalizeResult:
     run_id: str
@@ -206,6 +222,7 @@ def finalize_learning(
             raise ValueError(f"Prepared learning queue does not exist: {run_id}")
         queue_hash = sha256_file(queue_path)
         queue: dict[str, Any] | None = None
+        raw_decisions = b""
         try:
             queue = validate_contract(QUEUE_SCHEMA, json.loads(queue_path.read_text(encoding="utf-8")))
             raw_decisions = input_decisions_path.read_bytes()
@@ -228,6 +245,22 @@ def finalize_learning(
                 now=current,
                 retention_days=policy.retention_days,
             )
+            attempt_sha256 = sha256_bytes(raw_decisions or message.encode("utf-8"))
+            failure_event = {
+                "event": "learning_review_failed",
+                "recorded_at": current.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                "run_id": run_id,
+                "attempt_sha256": attempt_sha256,
+                "error_class": _review_error_class(message),
+            }
+            prior_events = _ledger_events(resolved_root / "data" / "learning" / "ledger.jsonl")
+            if not any(
+                item.get("event") == "learning_review_failed"
+                and item.get("run_id") == run_id
+                and item.get("attempt_sha256") == attempt_sha256
+                for item in prior_events
+            ):
+                append_jsonl_atomic(resolved_root / "data" / "learning" / "ledger.jsonl", failure_event)
             return FinalizeResult(run_id, manifest_path, None, "review_failed", False, (message,))
 
         assert queue is not None
