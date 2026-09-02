@@ -259,6 +259,7 @@ Codex 调用这些内部命令，用户只需要在共学主对话中提交 GitH
 - 主动发现最终项目的三十天成功运行冷却，并在网络请求前失败关闭；
 - API 限额后的固定 commit 官方 raw/codeload 后备，采用主机白名单、32 MiB 上限且不落盘执行；
 - `review_failed` 判断在保留失败事件后允许修正重试，已成功 Finalize 的判断仍不可替换；
+- 与 Finalize 共用严格校验规则但不写运行状态的 `validate-learning` 预检；
 - 十次手动运行的 10/3/3/6/≤1 自动化准入状态计算；
 - Codex 作为唯一语义 Agent，Python 只负责采集、状态和证据校验。
 

@@ -69,12 +69,15 @@ PYTHONPATH=src python -m aihot --help
 
 ## 共学接口
 
-新共学功能进入 `ai_notes` Python 包，现有 `aihot` 暂时作为遗留 Release 采集模块保留。Codex 编排两条内部命令：
+新共学功能进入 `ai_notes` Python 包，现有 `aihot` 暂时作为遗留 Release 采集模块保留。Codex 编排准备、只读预检和提交三个内部步骤：
 
 ```bash
 python -m ai_notes prepare-learning <github-url> --project .
+python -m ai_notes validate-learning <run-id> --decisions <file>
 python -m ai_notes finalize-learning <run-id> --decisions <file>
 ```
+
+`validate-learning` 使用与 Finalize 相同的严格 Schema、双侧证据和项目指纹校验，但不写 manifest、决策副本或账本。后续试运行必须先通过它，避免把可修正的格式或引用问题消耗为新的错误事件。
 
 需要补充同一仓库的深层证据时，先从队列取得固定 commit，再追加固定版本的 GitHub blob 地址：
 
