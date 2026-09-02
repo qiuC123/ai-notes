@@ -12,7 +12,7 @@
     "input": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["url", "entry_mode", "discovery", "kind", "canonical_repository", "canonical_url"],
+      "required": ["url", "entry_mode", "kind", "canonical_repository", "canonical_url"],
       "properties": {
         "url": {"type": "string", "format": "uri"},
         "entry_mode": {"enum": ["nominated", "discovered"]},

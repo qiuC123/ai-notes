@@ -505,7 +505,7 @@ def prepare_learning(
             ):
                 raise ValueError("Existing run input or owned project does not match")
             parsed_input = parse_github_url(github_url)
-            discovery = queue["input"]["discovery"]
+            discovery = queue["input"].get("discovery")
             if discovery_input_path is not None:
                 supplied_discovery = _load_discovery_provenance(discovery_input_path, github_url)
                 if supplied_discovery != discovery:

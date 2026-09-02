@@ -417,6 +417,40 @@ class LearningReviewTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "validated experiment"):
                 record_feedback(root=root, run_id=RUN_ID, feedback="experiment", now=NOW)
 
+    def test_legacy_nominated_v1_queue_without_discovery_field_still_accepts_feedback(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_policy(root)
+            project, queue_path = write_prepared_run(root)
+            queue = json.loads(queue_path.read_text(encoding="utf-8"))
+            del queue["input"]["discovery"]
+            write_json_atomic(queue_path, queue)
+            input_path = root / "decision-input.json"
+            write_json_atomic(input_path, decisions(queue_path, project))
+            finalized = finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=input_path, now=NOW)
+
+            feedback = record_feedback(root=root, run_id=RUN_ID, feedback="continue", now=NOW)
+
+        self.assertEqual("success", finalized.status)
+        self.assertTrue(feedback.recorded)
+
+    def test_discovered_v1_queue_without_provenance_fails_review(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_policy(root)
+            project, queue_path = write_prepared_run(root)
+            queue = json.loads(queue_path.read_text(encoding="utf-8"))
+            queue["input"]["entry_mode"] = "discovered"
+            del queue["input"]["discovery"]
+            write_json_atomic(queue_path, queue)
+            input_path = root / "decision-input.json"
+            write_json_atomic(input_path, decisions(queue_path, project))
+
+            result = finalize_learning(root=root, run_id=RUN_ID, input_decisions_path=input_path, now=NOW)
+
+        self.assertEqual("review_failed", result.status)
+        self.assertIn("discovery provenance", result.validation_errors[0])
+
 
 if __name__ == "__main__":
     unittest.main()

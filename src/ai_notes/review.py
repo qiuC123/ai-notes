@@ -149,6 +149,8 @@ def _validate_cross_contracts(root: Path, queue: dict[str, Any], decisions: dict
         raise ContractValidationError("Decision run_id does not match the prepared queue")
     if decisions["queue_sha256"] != queue_hash:
         raise ContractValidationError("Decision queue_sha256 does not match the prepared queue")
+    if queue["input"]["entry_mode"] == "discovered" and not isinstance(queue["input"].get("discovery"), dict):
+        raise ContractValidationError("Discovered learning queues require bounded discovery provenance")
 
     evidence_by_id = {item["evidence_id"]: item for item in queue["external_evidence"]}
     for item in evidence_by_id.values():
@@ -315,6 +317,7 @@ def finalize_learning(
             now=current,
             retention_days=policy.retention_days,
         )
+        discovery = queue["input"].get("discovery")
         append_jsonl_atomic(
             resolved_root / "data" / "learning" / "ledger.jsonl",
             {
@@ -325,20 +328,20 @@ def finalize_learning(
                 "entry_mode": queue["input"]["entry_mode"],
                 "discovery_metrics": (
                     {
-                        "search_query_count": len(queue["input"]["discovery"]["search_queries"]),
-                        "screened_candidate_count": len(queue["input"]["discovery"]["screened_candidates"]),
-                        "deep_read_count": len(queue["input"]["discovery"]["deep_read_repositories"]),
+                        "search_query_count": len(discovery["search_queries"]),
+                        "screened_candidate_count": len(discovery["screened_candidates"]),
+                        "deep_read_count": len(discovery["deep_read_repositories"]),
                         "direct_candidate_count": sum(
                             item["lane"] == "direct"
-                            for item in queue["input"]["discovery"]["screened_candidates"]
+                            for item in discovery["screened_candidates"]
                         ),
                         "adjacent_candidate_count": sum(
                             item["lane"] == "adjacent"
-                            for item in queue["input"]["discovery"]["screened_candidates"]
+                            for item in discovery["screened_candidates"]
                         ),
-                        "selected_repository": queue["input"]["discovery"]["selected_repository"],
+                        "selected_repository": discovery["selected_repository"],
                     }
-                    if queue["input"]["discovery"] is not None
+                    if discovery is not None
                     else None
                 ),
                 "commit_sha": queue["verified_target"]["commit_sha"],
