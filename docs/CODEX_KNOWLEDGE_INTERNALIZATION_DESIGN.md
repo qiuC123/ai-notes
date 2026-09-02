@@ -1,6 +1,6 @@
 # Ai Notes — GitHub 项目共学与连接发现设计
 
-Status: Project-learning boundary accepted; acquisition subsystem implemented; learning loop not implemented
+Status: Manual vertical slice implemented; complete live acceptance and ten-run validation pending
 Date: 2026-09-02
 Decisions: [`ADR 0002`](adr/0002-codex-knowledge-internalization-boundary.md), [`ADR 0003`](adr/0003-github-project-learning-and-connection.md), [`ADR 0004`](adr/0004-bounded-dual-entry-discovery.md), [`ADR 0005`](adr/0005-evidence-gated-connection-brief.md), [`ADR 0006`](adr/0006-user-controlled-skill-and-runtime-boundary.md), [`ADR 0007`](adr/0007-replace-hermes-runtime-with-codex-review.md), [`ADR 0008`](adr/0008-manual-learning-card-vertical-slice.md), [`ADR 0009`](adr/0009-separate-co-learning-core-from-legacy-pipeline.md)
 
@@ -249,30 +249,28 @@ Codex 调用这些内部命令，用户只需要在共学主对话中提交 GitH
 - 三个 v1 共学 Schema、四种运行状态和三十天运行产物保留；
 - GitHub 仓库/Release/PR/Issue/tree 固定版本解析；
 - 双侧证据、许可证风险、自有文件指纹和明确反馈校验；
+- 人工 GitHub URL 提名对应的单项目 prepare/finalize 入口；
+- 授权项目登记、Git HEAD/工作区快照绑定和越界读取阻断；
+- 四类明确反馈、关联冷却事件和不把沉默推断为反馈的账本边界；
+- YAML 策略、JSONL 运行账本、JSON 证据快照和三个版本化 Schema；
+- GitHub 限额 `partial` 降级、确定性错误 `failed` 审计和安全重试；
+- Codex 作为唯一语义 Agent，Python 只负责采集、状态和证据校验。
 
 尚未实现：
 
 - 外部项目档案和深度理解；
 - 自有项目画像；
-- GitHub 主动发现和人工提名入口；
-- 授权自有项目清单和 80/20 发现预算；
+- GitHub 主动发现、两阶段候选分析和 80/20 发现预算；
 - 每日最多三个关联机会的只读定时任务；
-- 共学主对话和两阶段候选分析；
-- 双侧证据门槛、三十天冷却和四类反馈；
-- 推断问题标记、风险阻断和独立实验交接；
+- 推断问题确认和独立实验任务交接；
 - 十次手动运行的自动化准入门槛；
 - 用户控制的 Skill 创建、更新和固定版本调用；
-- 人工提名触发规则与自有项目登记；
-- YAML 配置、JSONL 共学账本和运行产物 Schema；
 - 多项目全局简报预算和目标项目标注；
-- GitHub 限额降级与固定 commit 的隔离浅克隆；
+- 固定 commit 的隔离浅克隆后备路径；
 - 主动发现候选的 Codex 语义审查和排序；
 - Fork 独有修改的显式学习模式；
 - 旧来源重新准入和每日多样性约束；
-- 最小共学运行账本；
-- 可迁移能力和项目关联机会；
 - 最小验证实验；
-- 项目共学对话和反馈；
 - 项目理解过期检测和学习优先级调整。
 
 第一条 `openai/codex` → Ai Notes 真实运行已经锁定 commit、通过双侧证据 Finalize，但因补抓深层 Skill 文件时匿名 GitHub API 限额耗尽而诚实标记为 `partial`。下一步在额度恢复后完成一次无缺失的成功验收，再进入十次手动验证；最后才在用户批准后创建 Skill 和每日任务。当前不实现每日自动化、多项目管理或完整知识档案，也不检查结果是否被 Codex 提取为记忆。
