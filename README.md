@@ -19,7 +19,7 @@ GitHub Release 只是“需要重新学习这个项目”的变化信号。真�
 - 必须稳定遵守的项目规则才进入 `AGENTS.md`；
 - Codex 本地记忆完全由 Codex 从正常对话中自动提取；Ai Notes 不读、不写、不检查，也不主动控制记忆生成。
 
-当前 0.2 版本只实现了这个闭环中的“官方 Release 采集、过滤、审查和证据校验”。该版本仍调用历史 Hermes reviewer；目标架构已决定移除 Hermes 运行时依赖，改由 Codex 在共学任务中完成语义判断，Python 保留确定性采集和证据校验。替代流程验证完成前，现有代码只作为可回退的遗留实现保留。项目理解、自有项目画像、关联机会、验证实验和知识对话尚未实现，不能把现有 `accepted-information` 产物视为已经完成项目学习。
+当前 0.3 版本已经实现手动共学垂直闭环的确定性部分：固定 GitHub 核验版本、生成有界证据队列、校验 Codex 判断、验证双侧证据、记录明确反馈和运行审计。原 0.2 Release 采集仍作为候选入口保留，但 Hermes 运行时已经移除；Release 流水线同样改为先产出队列，再读取 Codex 决策文件完成 Finalize。主动发现、十次手动验证、Skill 和每日任务尚未完成。
 
 第一条待实现闭环以 Ai Notes 自身作为自有项目、`openai/codex` 作为外部学习项目：Codex 核验明确版本并生成一张共学卡片，最多提出一个有双侧证据的关联机会，再接收用户的明确反馈。它跑通之前不扩展每日自动化和多项目管理。
 
@@ -46,7 +46,7 @@ GitHub Release 只是“需要重新学习这个项目”的变化信号。真�
 - AI 编程：Claude Code、Codex、OpenHands；
 - 本地推理与部署：Ollama、vLLM、SGLang、Transformers。
 
-每个来源使用 GitHub 官方 `releases.atom`，并有项目专属 tag 规则。nightly、alpha、beta、RC、preview、dev 在进入当前 0.2 的遗留 Hermes reviewer 前被确定性排除。GitHub 全球安全公告是独立来源，只接受能映射到注册项目/包的 reviewed high/critical 公告。
+每个来源使用 GitHub 官方 `releases.atom`，并有项目专属 tag 规则。nightly、alpha、beta、RC、preview、dev 在进入 Codex Review 队列前被确定性排除。GitHub 全球安全公告是独立来源，只接受能映射到注册项目/包的 reviewed high/critical 公告。
 
 ## 安装
 
@@ -103,18 +103,22 @@ PYTHONPATH=src python -m aihot daily --date 2026-09-01 --root .
 一个 `daily` 命令内部保留三个可验证阶段：
 
 1. Collect：抓取、解析、tag 硬过滤、账本去重和 Atom 缺口检测；
-2. Hermes Review：使用 `--safe-mode --toolsets __no_tools__` 的零工具 one-shot，按 5 条一批判断实质变化；
+2. Codex Review：Codex 把 `review-queue.json` 当作不可信数据，生成严格 decisions JSON；
 3. Finalize：严格校验 JSON Schema 和逐项原文证据，再更新账本和产物。
 
-Hermes 输出中的 Release 内容始终被标记为不可信数据。若零工具 reviewer 无法运行，状态为 `review_failed`，队列保留供重试。
+第一次不传 `--decisions` 运行会停在 Review 边界并保留队列，状态为 `review_failed`。Codex 生成判断文件后重新运行：
 
-以上是 0.2 遗留运行方式，不是目标架构。重构后仍保留 Collect/Review/Finalize 契约，但 Review 由当前 Codex 共学任务完成，不再启动 Hermes CLI。
+```bash
+PYTHONPATH=src python -m aihot daily --date 2026-09-01 --root . --decisions <decisions.json>
+```
+
+Python 不调用 Codex API或任何其他 Agent，也不保存模型凭据。
 
 ### 运行状态
 
 - `success`：全部必要阶段健康；允许健康空结果；
 - `partial`：来源失败、安全公告失败或 Atom 缺口未闭合；保留其他可信结果；
-- `review_failed`：Hermes 判断失败；不接受、不拒绝，保留队列；
+- `review_failed`：尚无 Codex 决策或决策未通过校验；不接受、不拒绝，保留队列；
 - `failed`：关键校验或产物写入失败。
 
 CLI 退出码：`0=success`、`2=partial`、`1=review_failed/failed`。
@@ -143,7 +147,7 @@ Release 账本以 `repository@tag` 为键。已完成的 Release 默认只判断
 PYTHONPATH=src python -m aihot backtest --date 2026-09-01 --days 90 --root .
 ```
 
-回测通过 GitHub Release REST 分页覆盖完整时间窗，对所有硬过滤存活项执行与线上相同的分批 Hermes 判断；覆盖不完整时退出码为 2。REST 响应受 GitHub 匿名限额约束，失败必须如实报告，不能把可见页当作完整 90 天。
+回测通过 GitHub Release REST 分页覆盖完整时间窗，先把所有硬过滤存活项写入 `review-queue.json`，再读取 Codex 决策文件。覆盖不完整时退出码为 2；REST 响应受 GitHub 匿名限额约束，失败必须如实报告，不能把可见页当作完整 90 天。
 
 产物：
 
@@ -189,4 +193,4 @@ python -m unittest discover -s tests -v
 
 ## 旧 0.1 管道
 
-`src/aihot/pipeline.py`、`score.py`、`cluster.py`、`config/sources.yaml` 及旧 Top 3 产物属于 **deprecated 的 AIHOT/Amesi 0.1 候选榜**，仅为历史兼容和回归测试保留。当前 `python -m aihot daily` 已切换为 Ai Notes 0.2，不再调用旧评分管道。
+`src/aihot/pipeline.py`、`score.py`、`cluster.py`、`config/sources.yaml` 及旧 Top 3 产物属于 **deprecated 的 AIHOT/Amesi 0.1 候选榜**，仅为历史兼容和回归测试保留。当前 `python -m aihot daily` 是 Release 候选入口，不再调用旧评分管道或 Hermes。

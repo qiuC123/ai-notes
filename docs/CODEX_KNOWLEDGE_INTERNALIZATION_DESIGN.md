@@ -214,11 +214,11 @@ python -m ai_notes prepare-learning <github-url> --project .
 python -m ai_notes finalize-learning <run-id> --decisions <file>
 ```
 
-Codex 调用这些内部命令，用户只需要在共学主对话中提交 GitHub 地址。`aihot` 暂时保留当前十二源采集和遗留 Review，不先进行全量改名或全面重构；新闭环稳定并完成迁移后再删除兼容边界。
+Codex 调用这些内部命令，用户只需要在共学主对话中提交 GitHub 地址。`aihot` 暂时保留当前十二源采集作为候选入口，不先进行全量改名或全面重构；它的语义判断已经改为读取 Codex 决策文件，不再启动其他 Agent。
 
 共学运行固定使用四种状态：`success` 表示全部必要阶段完整，允许“暂无可验证关联”；`partial` 表示版本、官方资料或自有项目证据缺失；`review_failed` 表示 Codex 输出未通过 Schema 或证据校验，可安全重试；`failed` 表示确定性采集、状态或产物写入失败。后三种状态不得伪装成健康空结果。
 
-不引入 Codex 与 Hermes 的多轮讨论。当前 0.2 的 Hermes CLI reviewer 是原开发阶段的遗留实现，只在 Codex 替代链路尚未通过同等契约和回归验证时作为回退保留。迁移先抽象 Agent 无关的 Review 契约，再要求 Codex Review 通过现有 Schema/证据校验、预发布与安全边界、失败重试、代表性历史 Release 和提示注入用例。Codex 与 Hermes 不需要得出完全相同的语义结论，但每个结论必须符合策略且有可匹配证据。通过后删除 Hermes 运行时、profile 和配置依赖。
+不引入 Codex 与 Hermes 的多轮讨论。Hermes CLI reviewer 已从运行时代码删除；Release Collect 在没有决策文件时以 `review_failed` 停在队列边界，Codex 生成严格 JSON 后由 Python Finalize 校验。现有 Schema/证据校验、预发布与安全边界、失败重试和历史回测队列继续保留。
 
 ## 8. 来源策略变化
 
@@ -243,8 +243,12 @@ Codex 调用这些内部命令，用户只需要在共学主对话中提交 GitH
 
 - 12 个官方 Release Atom 采集；
 - 正式版硬过滤和缺口补抓；
-- 遗留 Hermes 实质变化判断；
+- Release Codex 决策文件边界和确定性 Finalize；
 - 原文证据校验、账本和审计产物。
+- `ai_notes` 手动共学包及 prepare/finalize 内部命令；
+- 三个 v1 共学 Schema、四种运行状态和三十天运行产物保留；
+- GitHub 仓库/Release/PR/Issue/tree 固定版本解析；
+- 双侧证据、许可证风险、自有文件指纹和明确反馈校验；
 
 尚未实现：
 
@@ -262,11 +266,8 @@ Codex 调用这些内部命令，用户只需要在共学主对话中提交 GitH
 - YAML 配置、JSONL 共学账本和运行产物 Schema；
 - 多项目全局简报预算和目标项目标注；
 - GitHub 限额降级与固定 commit 的隔离浅克隆；
-- Codex 结构化语义审查及其与现有队列/Finalize 的衔接；
-- Hermes 运行时依赖的回归验证后移除；
-- `ai_notes` 目标共学包及 prepare/finalize 内部命令；
-- 三个 v1 共学 Schema、四种运行状态和三十天运行产物保留；
-- Fork/归档/许可证/来源身份的学习边界；
+- 主动发现候选的 Codex 语义审查和排序；
+- Fork 独有修改的显式学习模式；
 - 旧来源重新准入和每日多样性约束；
 - 最小共学运行账本；
 - 可迁移能力和项目关联机会；
@@ -274,4 +275,4 @@ Codex 调用这些内部命令，用户只需要在共学主对话中提交 GitH
 - 项目共学对话和反馈；
 - 项目理解过期检测和学习优先级调整。
 
-下一阶段先以 Ai Notes 自身作为第一个授权自有项目、`openai/codex` 作为第一个外部学习项目，实现一条手动垂直闭环：锁定核验版本，形成一张共学卡片，提出最多一个有双侧证据的关联机会，并接收用户的明确反馈。实施顺序是三个 Schema 与安全 fixtures、`ai_notes` prepare/finalize、真实项目共学卡片、Codex Review 接入、Hermes 依赖移除、十次手动验证，最后才在用户批准后创建 Skill 和每日任务。它跑通前不实现每日自动化、多项目管理或完整知识档案；也不检查结果是否被 Codex 提取为记忆。
+第一条 `openai/codex` → Ai Notes 真实运行已经锁定 commit、通过双侧证据 Finalize，但因补抓深层 Skill 文件时匿名 GitHub API 限额耗尽而诚实标记为 `partial`。下一步在额度恢复后完成一次无缺失的成功验收，再进入十次手动验证；最后才在用户批准后创建 Skill 和每日任务。当前不实现每日自动化、多项目管理或完整知识档案，也不检查结果是否被 Codex 提取为记忆。
