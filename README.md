@@ -19,11 +19,11 @@ GitHub Release 只是“需要重新学习这个项目”的变化信号。真�
 - 必须稳定遵守的项目规则才进入 `AGENTS.md`；
 - Codex 本地记忆完全由 Codex 从正常对话中自动提取；Ai Notes 不读、不写、不检查，也不主动控制记忆生成。
 
-当前 0.3 版本已经实现手动共学垂直闭环的确定性部分：固定 GitHub 核验版本、生成有界证据队列、校验 Codex 判断、验证双侧证据、记录明确反馈和运行审计。人工提名已完成四次、有界主动发现已完成三次真实成功运行；主动发现固定最多二十个初筛、五个深读和 80/20 预算，并把 provenance 写入队列与长期账本。原 0.2 Release 采集仍作为候选入口保留，但 Hermes 运行时已经移除。当前手动试运行进度为 7/10，Skill 和每日任务尚未创建。
+当前 0.3 版本已经实现手动共学垂直闭环的确定性部分：固定 GitHub 核验版本、生成有界证据队列、校验 Codex 判断、验证双侧证据、记录明确反馈和运行审计。人工提名已完成四次、有界主动发现已完成四次真实成功运行；主动发现固定最多二十个初筛、五个深读和 80/20 预算，并把 provenance 写入队列与长期账本。原 0.2 Release 采集仍作为候选入口保留，但 Hermes 运行时已经移除。当前手动试运行进度为 8/10，Skill 和每日任务尚未创建。
 
 三次人工提名分别学习 `openai/codex`、`thomvaill/log4brains` 和 `clarity-digital-development/tworkflow`。后两次只借鉴“ADR 状态与替代关系校验”和“实验复盘反哺下一轮学习”，没有安装外部工具、复制 Skill 或运行仓库代码。
 
-三次主动发现分别选择 `vectorian-rs/chizu`、`divyanshu-iitian/ContextFlux` 和 `LucasSantana-Dev/shelfmark`。第三次从 6 个候选中深读 5 个，只借鉴“冻结留出集与排序回归门禁”，不接入外部记忆库或模型。一次跨行引用错误被审计为双侧证据错误，修正后的新运行通过；所有运行都只读取固定版本公开证据，没有安装或执行外部项目。`log4brains` 和 `tworkflow` 的两个最小实验已经完成、逐项通过并获得用户明确结果确认，正反馈仍为 2/6；其余四次成功运行仍等待明确反馈。
+四次主动发现分别选择 `vectorian-rs/chizu`、`divyanshu-iitian/ContextFlux`、`LucasSantana-Dev/shelfmark` 和 `kesari/ecommerce-poc`。第三次从 6 个候选中深读 5 个，只借鉴“冻结留出集与排序回归门禁”，不接入外部记忆库或模型；第四次借鉴“冻结变更集与关键漏报门禁”，形成跨项目影响实验。一次跨行引用错误被审计为双侧证据错误，修正后的新运行通过；所有运行都只读取固定版本公开证据，没有安装或执行外部项目。`log4brains`、`tworkflow` 和 `ecommerce-poc` 的三个最小实验已经完成、逐项通过并获得明确结果确认，正反馈为 3/6；其余五次成功运行仍等待明确反馈。
 
 第四次人工提名 `D4Vinci/Scrapling` 以 `official-campus-radar` 为自有项目完成核验。Scrapling 是完整自适应爬虫框架，但不能修复搜索 Provider 未召回未知微信文章的问题；其 stealth、代理和反爬能力也不应用于绕过微信公众号验证页，因此本次形成健康无关联结论，没有创建实验。
 
@@ -115,7 +115,7 @@ python -m ai_notes prepare-impact-blind --suite experiments/cross-project-impact
 python -m ai_notes score-impact-baseline --suite experiments/cross-project-impact-v1/suite.json --baseline <baseline.json>
 ```
 
-完整隔离、评分规则和原始确定性结果见 [`experiments/cross-project-impact-v1/README.md`](experiments/cross-project-impact-v1/README.md) 与 [`score-result.json`](experiments/cross-project-impact-v1/score-result.json)。本次没有重复关键漏报，结论是 MVP 不增加依赖图；下一步只改进双侧证据和测试定位提示。
+完整隔离、评分规则和原始确定性结果见 [`experiments/cross-project-impact-v1/README.md`](experiments/cross-project-impact-v1/README.md) 与 [`score-result.json`](experiments/cross-project-impact-v1/score-result.json)。本次没有重复关键漏报，结论是 MVP 不增加依赖图；下一步只改进双侧证据和测试定位提示。学习运行 `20260903T055625Z-2556d12b` 的实验结果已经按 `experiment-result.v1` 写入账本并追加确认事件。
 
 只有明确正反馈才会把紧凑关联快照写入长期账本。`watch` 同时保存最后核验 commit 作为监控游标，`experiment` 保存经批准的实验目标、成功标准和双侧项目指纹，等待独立任务接手；两者都不保存源码、外部原文或对话。当前关注项可用内部命令审计：
 
