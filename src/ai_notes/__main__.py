@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from ai_notes.adr import inventory_adrs
+from ai_notes.impact_experiment import score_impact_baseline, write_blind_input
 from ai_notes.learning import prepare_learning
 from ai_notes.review import (
     confirm_experiment_result,
@@ -69,12 +70,24 @@ def _parser() -> argparse.ArgumentParser:
 
     adrs = commands.add_parser("adr-status", help="list and validate local architecture decisions")
     adrs.add_argument("--root", default=Path.cwd(), type=Path, help="Ai Notes repository root")
+
+    impact_blind = commands.add_parser(
+        "prepare-impact-blind", help="strip gold answers from a frozen cross-project impact suite"
+    )
+    impact_blind.add_argument("--suite", required=True, type=Path, help="impact-suite.v1 JSON")
+    impact_blind.add_argument("--output", required=True, type=Path, help="blind task input JSON")
+
+    impact_score = commands.add_parser(
+        "score-impact-baseline", help="score one independent blind impact analysis deterministically"
+    )
+    impact_score.add_argument("--suite", required=True, type=Path, help="impact-suite.v1 JSON")
+    impact_score.add_argument("--baseline", required=True, type=Path, help="impact-baseline.v1 JSON")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    root = args.root.resolve()
+    root = getattr(args, "root", Path.cwd()).resolve()
     try:
         if args.command == "prepare-learning":
             result = prepare_learning(
@@ -165,6 +178,20 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "adr-status":
             records = inventory_adrs(root)
             print(json.dumps({"adrs": [record.as_dict() for record in records]}, ensure_ascii=False))
+            return 0
+        if args.command == "prepare-impact-blind":
+            digest = write_blind_input(
+                suite_path=args.suite.resolve(),
+                output_path=args.output.resolve(),
+            )
+            print(json.dumps({"output": str(args.output.resolve()), "sha256": digest}, ensure_ascii=False))
+            return 0
+        if args.command == "score-impact-baseline":
+            result = score_impact_baseline(
+                suite_path=args.suite.resolve(),
+                baseline_path=args.baseline.resolve(),
+            )
+            print(json.dumps(result.as_dict(), ensure_ascii=False))
             return 0
         if args.decisions is not None:
             result = finalize_learning(

@@ -11,6 +11,8 @@ QUEUE_SCHEMA = "learning-queue.v1"
 DECISIONS_SCHEMA = "learning-decisions.v1"
 MANIFEST_SCHEMA = "learning-run-manifest.v1"
 EXPERIMENT_RESULT_SCHEMA = "experiment-result.v1"
+IMPACT_SUITE_SCHEMA = "impact-suite.v1"
+IMPACT_BASELINE_SCHEMA = "impact-baseline.v1"
 
 
 class ContractValidationError(ValueError):

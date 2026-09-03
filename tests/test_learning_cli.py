@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from ai_notes.__main__ import main
+from ai_notes.impact_experiment import ImpactScore
 from ai_notes.learning import PrepareResult
 from ai_notes.review import ExperimentConfirmation, ExperimentResult, FeedbackResult, FinalizeResult, ValidationResult
 
@@ -21,6 +22,64 @@ RUN_ID = "20260902T083000Z-0123abcd"
 
 
 class LearningCliTests(unittest.TestCase):
+    def test_prepare_impact_blind_reports_output_and_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            suite = Path(directory) / "suite.json"
+            output = Path(directory) / "blind.json"
+            suite.write_text("{}\n", encoding="utf-8")
+            stdout = io.StringIO()
+            with patch(
+                "ai_notes.__main__.write_blind_input",
+                return_value="a" * 64,
+            ) as prepare, redirect_stdout(stdout):
+                code = main([
+                    "prepare-impact-blind",
+                    "--suite",
+                    str(suite),
+                    "--output",
+                    str(output),
+                ])
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, code)
+        self.assertEqual("a" * 64, payload["sha256"])
+        prepare.assert_called_once()
+
+    def test_score_impact_baseline_reports_graph_decision(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            suite = Path(directory) / "suite.json"
+            baseline = Path(directory) / "baseline.json"
+            suite.write_text("{}\n", encoding="utf-8")
+            baseline.write_text("{}\n", encoding="utf-8")
+            result = ImpactScore(
+                suite_id="suite",
+                blind_input_sha256="b" * 64,
+                true_positive_projects=4,
+                false_negative_projects=0,
+                false_positive_projects=0,
+                project_recall=1.0,
+                precision=1.0,
+                critical_misses=(),
+                repeated_critical_misses=False,
+                evidence_completeness=1.0,
+                required_test_completeness=1.0,
+                evidence_levels=(),
+                dependency_graph_decision="do_not_add_dependency_graph_to_mvp",
+            )
+            stdout = io.StringIO()
+            with patch("ai_notes.__main__.score_impact_baseline", return_value=result), redirect_stdout(stdout):
+                code = main([
+                    "score-impact-baseline",
+                    "--suite",
+                    str(suite),
+                    "--baseline",
+                    str(baseline),
+                ])
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(0, code)
+        self.assertEqual("do_not_add_dependency_graph_to_mvp", payload["dependency_graph_decision"])
+
     def test_validate_learning_reports_hashes_without_finalizing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             input_path = Path(directory) / "input.json"

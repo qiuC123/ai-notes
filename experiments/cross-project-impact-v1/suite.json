@@ -1,0 +1,237 @@
+{
+  "cases": [
+    {
+      "affected_projects": [
+        "official-campus-radar"
+      ],
+      "case_id": "impact-01",
+      "change_description": "在 canonical wechat-oa 的 Direct Discovery schema v1 中，把 DiscoverySummary.partial 字段改名为 incomplete，并且不提供兼容字段。请找出另一个样本项目中需要同步修改的位置和必要测试。",
+      "change_project": "canonical-wechat-oa",
+      "contract": "wechat-oa discovery search/hydrate 的单 JSON envelope 内，data.schema_version=1、data.summary.partial 为布尔值；radar 用它决定完整或 partial 状态。",
+      "criticality": "critical",
+      "evidence": [
+        {
+          "claim": "wechat-oa 的 schema-v1 DiscoverySummary 明确定义 partial 布尔值，并由 DiscoveryResult 引用。",
+          "line_end": 308,
+          "line_start": 289,
+          "path": "src/wxcli/discovery/models.py",
+          "project_id": "canonical-wechat-oa",
+          "symbol": "DiscoverySummary"
+        },
+        {
+          "claim": "radar 的 Direct Discovery 客户端要求 summary.partial 是布尔值并把它带入 WeChatOAHydrationResult。",
+          "line_end": 185,
+          "line_start": 134,
+          "path": "radar/services/wechat_oa_client.py",
+          "project_id": "official-campus-radar",
+          "symbol": "_discovery_result"
+        }
+      ],
+      "rationale": "这是生产者输出到消费者解析器的真实运行时依赖；漏改会使 radar 把合法输出拒绝为 INVALID_RESULT，或错误报告完整性。",
+      "relationship": "direct_dependency",
+      "required_tests": [
+        {
+          "path": "tests/test_discovery_service.py",
+          "project_id": "canonical-wechat-oa",
+          "selector": "test_hydration_partial_success_and_browser_requires_explicit_authorization"
+        },
+        {
+          "path": "radar/tests/test_announcement_driven.py",
+          "project_id": "official-campus-radar",
+          "selector": "test_direct_discovery_searches_without_recording_and_reports_partial"
+        }
+      ],
+      "title": "Direct Discovery partial 字段改名"
+    },
+    {
+      "affected_projects": [
+        "canonical-wechat-oa"
+      ],
+      "case_id": "impact-02",
+      "change_description": "在 official-campus-radar 生成的 Candidate Batch schema v1 中新增 hydration.allow_browser=true，让批次数据自身传递浏览器授权。请找出另一个样本项目中受到的影响和必要测试。",
+      "change_project": "official-campus-radar",
+      "contract": "Candidate Batch 是严格、额外字段禁止的非可信数据面；hydration 只允许 priority_count 与 maximum_attempts，浏览器授权只能通过 wechat-oa 的独立 CLI 控制面。",
+      "criticality": "critical",
+      "evidence": [
+        {
+          "claim": "radar 构造的 schema-v1 batch 固定只写两个 hydration 计数字段。",
+          "line_end": 486,
+          "line_start": 464,
+          "path": "radar/services/wechat_oa_client.py",
+          "project_id": "official-campus-radar",
+          "symbol": "build_wechat_candidate_batch"
+        },
+        {
+          "claim": "wechat-oa 的 CandidateHydrationPolicy 与 CandidateBatchRequest 都禁止额外字段，因此 batch 内 allow_browser 会被拒绝。",
+          "line_end": 214,
+          "line_start": 192,
+          "path": "src/wxcli/discovery/models.py",
+          "project_id": "canonical-wechat-oa",
+          "symbol": "CandidateHydrationPolicy"
+        }
+      ],
+      "rationale": "这是 radar 生产、wechat-oa 消费的真实输入契约，也是权限边界；新增字段既会导致解析失败，也会错误扩大非可信输入权限。",
+      "relationship": "direct_dependency",
+      "required_tests": [
+        {
+          "path": "radar/tests/test_announcement_driven.py",
+          "project_id": "official-campus-radar",
+          "selector": "test_candidate_batch_has_no_browser_or_credentials_fields"
+        },
+        {
+          "path": "tests/test_candidate_ingestion.py",
+          "project_id": "canonical-wechat-oa",
+          "selector": "test_candidate_batch_schema_is_strict_bounded_and_browser_cannot_be_delegated"
+        }
+      ],
+      "title": "Candidate Batch 内嵌浏览器授权"
+    },
+    {
+      "affected_projects": [
+        "official-campus-radar"
+      ],
+      "case_id": "impact-03",
+      "change_description": "在 canonical wechat-oa 的 Article Evidence schema v1 中删除顶层 content_sha256 和 evidence_sha256，改为 hashes.content 与 hashes.evidence，并且不保留旧字段。请找出另一个样本项目中需要同步修改的位置和必要测试。",
+      "change_project": "canonical-wechat-oa",
+      "contract": "Article Evidence schema v1 顶层包含 article、account_identity、external_links、images、content_sha256 与 evidence_sha256；radar 导入时校验并持久化两个 64 位哈希。",
+      "criticality": "critical",
+      "evidence": [
+        {
+          "claim": "wechat-oa 的 ArticleEvidence 模型把两个哈希定义为 schema-v1 顶层必填字段。",
+          "line_end": 100,
+          "line_start": 89,
+          "path": "src/wxcli/evidence.py",
+          "project_id": "canonical-wechat-oa",
+          "symbol": "ArticleEvidence"
+        },
+        {
+          "claim": "radar 的导入器直接读取、格式校验并持久化两个顶层哈希。",
+          "line_end": 445,
+          "line_start": 377,
+          "path": "radar/services/announcements.py",
+          "project_id": "official-campus-radar",
+          "symbol": "import_wechat_oa_announcement"
+        }
+      ],
+      "rationale": "这是生产者证据文档到消费者数据库导入器的真实运行时依赖；漏改会拒绝全部已核验微信公告。",
+      "relationship": "direct_dependency",
+      "required_tests": [
+        {
+          "path": "tests/test_evidence.py",
+          "project_id": "canonical-wechat-oa",
+          "selector": "test_evidence_hashes_ignore_observation_time_but_date_may_be_missing"
+        },
+        {
+          "path": "radar/tests/test_announcement_driven.py",
+          "project_id": "official-campus-radar",
+          "selector": "test_wechat_oa_article_requires_radar_owned_account_allowlist"
+        }
+      ],
+      "title": "Article Evidence 哈希结构迁移"
+    },
+    {
+      "affected_projects": [
+        "official-campus-radar"
+      ],
+      "case_id": "impact-04",
+      "change_description": "在 canonical wechat-oa 的 discovery search 命令中把 --no-browser 改名为 --deny-browser，并删除 --no-browser 兼容别名。请找出另一个样本项目中需要同步修改的位置和必要测试。",
+      "change_project": "canonical-wechat-oa",
+      "contract": "radar 通过子进程固定调用 wechat-oa --json discovery search ... --provider exa --hydrate --no-browser，显式禁止本次 Direct Discovery 打开 Chrome。",
+      "criticality": "critical",
+      "evidence": [
+        {
+          "claim": "wechat-oa Direct Discovery CLI 暴露 --no-browser，并把浏览器决定应用到请求。",
+          "line_end": 624,
+          "line_start": 550,
+          "path": "src/wxcli/cli.py",
+          "project_id": "canonical-wechat-oa",
+          "symbol": "discovery_search"
+        },
+        {
+          "claim": "radar 的固定命令尾部显式追加 --provider exa --hydrate --no-browser。",
+          "line_end": 350,
+          "line_start": 297,
+          "path": "radar/services/wechat_oa_client.py",
+          "project_id": "official-campus-radar",
+          "symbol": "search_articles_with_exa"
+        }
+      ],
+      "rationale": "这是 CLI 名称和安全控制语义的真实运行时依赖；漏改会使 Direct Discovery 调用失败，且不能静默退化为允许浏览器。",
+      "relationship": "direct_dependency",
+      "required_tests": [
+        {
+          "path": "tests/test_discovery_cli.py",
+          "project_id": "canonical-wechat-oa",
+          "selector": "test_direct_request_json_can_grant_once_but_no_browser_wins"
+        },
+        {
+          "path": "radar/tests/test_announcement_driven.py",
+          "project_id": "official-campus-radar",
+          "selector": "test_direct_exa_client_uses_frozen_command_and_scrubbed_environment"
+        }
+      ],
+      "title": "Direct Discovery 禁止浏览器参数改名"
+    },
+    {
+      "affected_projects": [],
+      "case_id": "impact-05",
+      "change_description": "在 official-campus-radar 中把当前招聘准入范围从“2027届或实习”调整为“2028届或实习”，并更新批次准入测试。请判断 canonical wechat-oa 是否需要修改。",
+      "change_project": "official-campus-radar",
+      "contract": "招聘届次、招聘类型、可投递状态和字段证据准入属于 radar 的业务解释；wechat-oa 只提供微信 Article/Media Evidence，不分类招聘批次。",
+      "criticality": "routine",
+      "evidence": [
+        {
+          "claim": "radar 在 admit_batch_with_announcement 中实现当前届次与实习准入策略。",
+          "line_end": 683,
+          "line_start": 649,
+          "path": "radar/services/announcements.py",
+          "project_id": "official-campus-radar",
+          "symbol": "admit_batch_with_announcement"
+        },
+        {
+          "claim": "wechat-oa 的领域边界明确排除 company recruitment modeling。",
+          "line_end": 3,
+          "line_start": 1,
+          "path": "CONTEXT.md",
+          "project_id": "canonical-wechat-oa",
+          "symbol": null
+        }
+      ],
+      "rationale": "两个项目都出现招聘内容词汇，但此变更没有修改调用、输入、输出或安全契约；把 wechat-oa 报为受影响项目属于语义相似误报。",
+      "relationship": "semantic_similarity",
+      "required_tests": [
+        {
+          "path": "radar/tests/test_announcement_driven.py",
+          "project_id": "official-campus-radar",
+          "selector": "test_verified_primary_announcement_admits_batch"
+        }
+      ],
+      "title": "招聘届次策略的方向性对照"
+    }
+  ],
+  "frozen_at": "2026-09-03T06:26:58Z",
+  "repositories": [
+    {
+      "git_head": "4ca4fa4a478e82af446fbd16659d39d92867b52f",
+      "project_id": "official-campus-radar",
+      "read_only": true,
+      "repository": "qiuC123/official-campus-radar",
+      "root": "E:\\devlop\\official-campus-radar"
+    },
+    {
+      "git_head": "767827c2f10bd8cd80875275beec5e7cc928dabd",
+      "project_id": "canonical-wechat-oa",
+      "read_only": true,
+      "repository": "qiuC123/qiuC-tools/CLI/wechat-oa",
+      "root": "E:\\devlop\\qiuC-tools\\CLI\\wechat-oa"
+    }
+  ],
+  "schema_version": "impact-suite.v1",
+  "source_learning": {
+    "external_commit_sha": "ffa2e865bf163a66b794345b025e641f0d644d4c",
+    "external_repository": "kesari/ecommerce-poc",
+    "relation_id": "rel-8d3b4f2a7c91",
+    "run_id": "20260903T055625Z-2556d12b"
+  },
+  "suite_id": "radar-wechat-oa-impact-v1"
+}
