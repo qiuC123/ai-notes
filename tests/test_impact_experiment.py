@@ -123,6 +123,28 @@ def baseline_payload(suite: dict, *, missed: set[str] | None = None, false_posit
 
 
 class ImpactExperimentTests(unittest.TestCase):
+    def test_baseline_accepts_read_only_audit_annotations_and_monorepo_prefixes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            suite = suite_payload()
+            suite_path = root / "suite.json"
+            baseline_path = root / "baseline.json"
+            write_json_atomic(suite_path, suite)
+            baseline = baseline_payload(suite)
+            baseline["observed_repositories"][0].update({"read_only": True, "read_method": "git show"})
+            case = baseline["cases"][0]
+            case.update({"title": "Audit title", "change_project": "producer"})
+            assessment = case["project_assessments"][0]
+            assessment.update({"evidence_level": "high", "affected_contracts": ["Public JSON"]})
+            assessment["evidence"][0]["note"] = "Pinned evidence."
+            assessment["evidence"][0]["path"] = "monorepo/" + assessment["evidence"][0]["path"]
+            write_json_atomic(baseline_path, baseline)
+
+            result = score_impact_baseline(suite_path=suite_path, baseline_path=baseline_path)
+
+        self.assertEqual(1.0, result.project_recall)
+        self.assertEqual(1.0, result.evidence_completeness)
+
     def test_blind_input_contains_prompts_but_no_gold_answers(self) -> None:
         suite = suite_payload()
         blind = build_blind_input(suite)
@@ -196,6 +218,18 @@ class ImpactExperimentTests(unittest.TestCase):
     def test_frozen_suite_contract_is_valid(self) -> None:
         suite = load_impact_suite(ROOT / "experiments" / "cross-project-impact-v1" / "suite.json")
         self.assertEqual(5, len(suite["cases"]))
+
+    def test_committed_score_result_preserves_the_frozen_decision_gate(self) -> None:
+        path = ROOT / "experiments" / "cross-project-impact-v1" / "score-result.json"
+        result = json.loads(path.read_text(encoding="utf-8"))
+
+        self.assertEqual(1.0, result["metrics"]["project_recall"])
+        self.assertEqual(1.0, result["metrics"]["precision"])
+        self.assertEqual([], result["metrics"]["critical_misses"])
+        self.assertFalse(result["metrics"]["repeated_critical_misses"])
+        self.assertEqual(0.5, result["metrics"]["evidence_completeness"])
+        self.assertEqual(0.0, result["metrics"]["required_test_completeness"])
+        self.assertEqual("do_not_add_dependency_graph_to_mvp", result["decision"]["result"])
 
 
 if __name__ == "__main__":

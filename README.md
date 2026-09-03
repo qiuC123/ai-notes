@@ -108,14 +108,14 @@ python -m ai_notes confirm-experiment-result <run-id> --root .
 
 程序会把 run、relation、外部 commit 和批准时的自有项目 Git 状态与原 `approved_for_handoff` 事件逐项核对，并要求每条原成功条件记录 `pass`、`fail` 或 `inconclusive`。相同结果可幂等重放，冲突结果拒绝覆盖；结果先保持 `awaiting_user_confirmation`，用户明确确认后再追加绑定结果哈希的确认事件。确认不是新的关联反馈，两步都不会自动修改关注、排序、项目文档、`AGENTS.md` 或 Skill。
 
-跨项目影响实验使用单独的冻结套件和盲测评分器。当前五案套件已冻结，但同一上下文不能读取标准答案后再充当盲测者，因此有效基线仍等待独立任务：
+跨项目影响实验使用单独的冻结套件和盲测评分器。五案独立盲测已经完成：项目召回和精确率均为 `1.0`，关键漏报为 `0`，证据完整性为 `0.5`，必要测试精确匹配为 `0.0`：
 
 ```bash
 python -m ai_notes prepare-impact-blind --suite experiments/cross-project-impact-v1/suite.json --output <blind-input.json>
 python -m ai_notes score-impact-baseline --suite experiments/cross-project-impact-v1/suite.json --baseline <baseline.json>
 ```
 
-完整隔离与评分规则见 [`experiments/cross-project-impact-v1/README.md`](experiments/cross-project-impact-v1/README.md)。没有重复关键漏报时，MVP 明确不增加依赖图。
+完整隔离、评分规则和原始确定性结果见 [`experiments/cross-project-impact-v1/README.md`](experiments/cross-project-impact-v1/README.md) 与 [`score-result.json`](experiments/cross-project-impact-v1/score-result.json)。本次没有重复关键漏报，结论是 MVP 不增加依赖图；下一步只改进双侧证据和测试定位提示。
 
 只有明确正反馈才会把紧凑关联快照写入长期账本。`watch` 同时保存最后核验 commit 作为监控游标，`experiment` 保存经批准的实验目标、成功标准和双侧项目指纹，等待独立任务接手；两者都不保存源码、外部原文或对话。当前关注项可用内部命令审计：
 

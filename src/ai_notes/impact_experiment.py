@@ -159,7 +159,9 @@ def _normalized_path(value: str) -> str:
 def _evidence_matches(observed: dict[str, Any], required: dict[str, Any]) -> bool:
     if observed["project_id"] != required["project_id"]:
         return False
-    if _normalized_path(observed["path"]) != _normalized_path(required["path"]):
+    observed_path = _normalized_path(observed["path"])
+    required_path = _normalized_path(required["path"])
+    if observed_path != required_path and not observed_path.endswith(f"/{required_path}"):
         return False
     if observed.get("symbol") and required.get("symbol"):
         if observed["symbol"] == required["symbol"]:
@@ -170,9 +172,11 @@ def _evidence_matches(observed: dict[str, Any], required: dict[str, Any]) -> boo
 
 
 def _test_matches(observed: dict[str, Any], required: dict[str, Any]) -> bool:
+    observed_path = _normalized_path(observed["path"])
+    required_path = _normalized_path(required["path"])
     return (
         observed["project_id"] == required["project_id"]
-        and _normalized_path(observed["path"]) == _normalized_path(required["path"])
+        and (observed_path == required_path or observed_path.endswith(f"/{required_path}"))
         and observed["selector"] == required["selector"]
     )
 

@@ -1,0 +1,62 @@
+{
+  "schema_version": "impact-score-result.v1",
+  "suite_id": "radar-wechat-oa-impact-v1",
+  "scored_at": "2026-09-03T06:59:07Z",
+  "source_learning": {
+    "run_id": "20260903T055625Z-2556d12b",
+    "relation_id": "rel-8d3b4f2a7c91"
+  },
+  "inputs": {
+    "suite_path": "experiments/cross-project-impact-v1/suite.json",
+    "suite_sha256": "5089eb80b57ed1e0ee1632388e39bc6acb95128f886318423fc4fe4ac87e775c",
+    "blind_input_sha256": "bf856551a206c6f90ecc27d45fb7872ea55237d0bf37c33e2fdcf2fd6122be8a",
+    "baseline_path": "C:/Users/Mayn/Documents/Codex/2026-09-03/ai-notes-impact-blind-v1/outputs/impact-baseline.json",
+    "baseline_sha256": "0cfd0fc23b4ff6448ae809278dc90c33ea99c859a2eb6295c792a62221b25a08",
+    "baseline_contract_valid": true,
+    "blind_boundary_maintained": true,
+    "case_count": 5
+  },
+  "metrics": {
+    "true_positive_projects": 4,
+    "false_negative_projects": 0,
+    "false_positive_projects": 0,
+    "project_recall": 1.0,
+    "precision": 1.0,
+    "critical_misses": [],
+    "repeated_critical_misses": false,
+    "evidence_completeness": 0.5,
+    "required_test_completeness": 0.0,
+    "evidence_levels": [
+      {
+        "case_id": "impact-01",
+        "project_id": "official-campus-radar",
+        "level": "one_sided"
+      },
+      {
+        "case_id": "impact-02",
+        "project_id": "canonical-wechat-oa",
+        "level": "one_sided"
+      },
+      {
+        "case_id": "impact-03",
+        "project_id": "official-campus-radar",
+        "level": "one_sided"
+      },
+      {
+        "case_id": "impact-04",
+        "project_id": "official-campus-radar",
+        "level": "one_sided"
+      }
+    ]
+  },
+  "decision": {
+    "frozen_gate": "At least two distinct critical project-impact misses are required before a dependency graph may enter root-cause review.",
+    "result": "do_not_add_dependency_graph_to_mvp",
+    "reason": "All four direct project impacts were found, the semantic-only control produced no false positive, and there were zero critical misses. Codex plus pinned local search is sufficient for this MVP sample."
+  },
+  "quality_notes": [
+    "The deterministic scorer derived one_sided evidence for every direct case because the baseline cited affected-project evidence but did not also cite the frozen change-project evidence.",
+    "The baseline proposed relevant new tests, but required_test_completeness remains 0.0 because the frozen metric requires exact project, path, and existing test selector matches.",
+    "The baseline's self-reported evidence_level values were not used by the scorer."
+  ]
+}
