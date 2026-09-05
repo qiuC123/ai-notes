@@ -1,0 +1,51 @@
+{
+  "schema_version": "chemist-evaluation.v1",
+  "run_id": "project-chemist-7594e8d2-80ec-46c0-8baf-ac9cc30f5638",
+  "runtime_status": "sealed",
+  "review_status": "analysis_metrics_available_with_report_metadata_warnings",
+  "baseline_path": "outputs/project-chemist/project-chemist-7594e8d2-80ec-46c0-8baf-ac9cc30f5638/baseline.json",
+  "baseline_file_sha256": "f423b3ce5795f91dc871dfff6f809b95502058888c7ef13389f122616e7303cd",
+  "score": {
+    "suite_id": "radar-wechat-oa-impact-v1",
+    "blind_input_sha256": "bf856551a206c6f90ecc27d45fb7872ea55237d0bf37c33e2fdcf2fd6122be8a",
+    "true_positive_projects": 4,
+    "false_negative_projects": 0,
+    "false_positive_projects": 0,
+    "project_recall": 1,
+    "precision": 1,
+    "critical_misses": [],
+    "repeated_critical_misses": false,
+    "evidence_completeness": 1,
+    "required_test_completeness": 0.4444,
+    "evidence_levels": [
+      {
+        "case_id": "impact-01",
+        "project_id": "official-campus-radar",
+        "level": "two_sided"
+      },
+      {
+        "case_id": "impact-02",
+        "project_id": "canonical-wechat-oa",
+        "level": "two_sided"
+      },
+      {
+        "case_id": "impact-03",
+        "project_id": "official-campus-radar",
+        "level": "two_sided"
+      },
+      {
+        "case_id": "impact-04",
+        "project_id": "official-campus-radar",
+        "level": "two_sided"
+      }
+    ],
+    "dependency_graph_decision": "do_not_add_dependency_graph_to_mvp"
+  },
+  "review_notes": [
+    "Original scoring rules unchanged. Four of nine test selectors match literally; the other five have an existing class prefix and were mapped in the review, not rescored.",
+    "Model-supplied completed_at is 2026-09-03T00:00:00Z; actual run occurred on 2026-09-05. Use runtime manifest timestamps.",
+    "Model-supplied read_method says git show; the harness actually reads pinned blobs with git cat-file. Original sealed report preserved.",
+    "Transport and model changed since the failed attempt; this is not a controlled model-only or transport-only comparison.",
+    "No automatic ledger confirmation, dependency graph, skill, or production integration."
+  ]
+}
