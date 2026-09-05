@@ -40,19 +40,31 @@ def startup():
 
 
 class ChemistRunnerTests(unittest.TestCase):
-    def run_fake(self, events, *, sealed=False):
+    def run_fake(self, events, *, sealed=False, profile="impact"):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             if sealed:
-                (output / "baseline.json").write_text('{"fixture": true}', encoding="utf-8")
+                (output / ("decisions.json" if profile == "learning" else "baseline.json")).write_text('{"fixture": true}', encoding="utf-8")
+            queue_path = output / "queue.json"
+            queue_path.write_text('{}', encoding="utf-8")
             process = FakePi(events)
-            with patch.dict(os.environ, {"CHEMIST_RUN_DIR": directory, "CHEMIST_RUN_ID": "fixture"}), \
-                 patch.object(sys, "argv", ["run.py", "--pi-cli", str(output / "pi.js")]), \
+            with patch.dict(os.environ, {"CHEMIST_RUN_DIR": directory, "CHEMIST_RUN_ID": "fixture", "CHEMIST_INPUT": str(queue_path)}), \
+                 patch.object(sys, "argv", ["run.py", "--pi-cli", str(output / "pi.js"), "--profile", profile]), \
                  patch.object(runner.subprocess, "Popen", return_value=process) as popen, \
                  patch("builtins.print"):
                 code = runner.main()
             manifest = json.loads((output / "run-manifest.json").read_text(encoding="utf-8"))
             return code, manifest, process.sent, popen.call_args
+
+    def test_learning_profile_uses_new_report_and_three_tools(self):
+        events = startup()
+        events[-1]["message"] = "tools=chemist_context,chemist_read,chemist_submit"
+        code, manifest, sent, call = self.run_fake(events + [{"type": "agent_settled"}], sealed=True, profile="learning")
+        self.assertEqual(code, 0)
+        self.assertIn("decisions_file_sha256", manifest)
+        self.assertEqual(manifest["profile"], "learning")
+        self.assertIn("最多一个", sent)
+        self.assertTrue(call.args[0][-1].endswith("learning-extension.ts"))
 
     def test_sealed_result_and_restricted_startup(self):
         events = startup() + [{"type": "turn_start"}, {"type": "tool_execution_end", "toolName": "chemist_submit", "isError": False}, {"type": "agent_settled"}]

@@ -19,6 +19,11 @@ PROMPT = (
     "完成后通过 chemist_submit 提交报告，不要实施修改。"
     "这是一个全新的独立盲测会话；只使用本扩展提供的冻结输入和证据工具，不访问标准答案。"
 )
+LEARNING_PROMPT = (
+    "学习冻结队列中的外部项目，并对照 Ai Notes 的项目理解与关联发现流程。"
+    "只根据双方源码提出最多一个值得尝试的改进；找不到可靠关联就明确说明。"
+    "给出证据、成本、不适用条件和最小实验建议，通过 chemist_submit 提交。不要实施建议。"
+)
 
 
 def now():
@@ -72,8 +77,16 @@ def main():
     parser.add_argument("--pi-cli", required=True, type=Path)
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--transport", choices=("sse", "auto"), default="sse")
+    parser.add_argument("--profile", choices=("impact", "learning"), default="impact")
     args = parser.parse_args()
     here = Path(__file__).resolve().parent
+    learning = args.profile == "learning"
+    extension_name = "learning-extension.ts" if learning else "extension.ts"
+    worker_name = "learning_worker.py" if learning else "worker.py"
+    result_name = "decisions.json" if learning else "baseline.json"
+    prompt = LEARNING_PROMPT if learning else PROMPT
+    expected_tools = {"chemist_context", "chemist_read", "chemist_submit"} if learning else {
+        "chemist_context", "chemist_inventory", "chemist_read", "chemist_search", "chemist_test_selectors", "chemist_submit"}
     output = Path(os.environ["CHEMIST_RUN_DIR"])
     if not output.is_absolute() or not output.is_dir() or not 30 <= args.timeout <= 1800:
         raise ValueError("Expected existing isolated run directory and 30..1800 second timeout")
@@ -84,10 +97,14 @@ def main():
         "transport": args.transport, "http_idle_timeout_ms": 120000, "retry_starts": 0,
         "retry_ends": 0, "model_errors": 0, "stderr_events": 0, "last_event_at": None,
         "metadata_source": "runtime", "repository_read_method": "git cat-file",
-        "prompt": PROMPT, "gold_sent": False, "context_discovery": False,
+        "profile": args.profile,
+        "prompt": prompt, "gold_sent": False, "context_discovery": False,
         "harness_sha256": {name: hashlib.sha256((here / name).read_bytes()).hexdigest()
-                           for name in ("extension.ts", "worker.py", "run.py")},
+                           for name in (extension_name, worker_name, "run.py")},
     }
+    if learning:
+        manifest["repository_read_method"] = "frozen external queue and fingerprint-checked owned files"
+        manifest["queue_file_sha256"] = hashlib.sha256(Path(os.environ["CHEMIST_INPUT"]).read_bytes()).hexdigest()
     with (output / "run-manifest.json").open("x", encoding="utf-8") as handle:
         json.dump(manifest, handle, ensure_ascii=False, indent=2)
     # Trust only this newly generated, isolated project config; never a sample repo.
@@ -99,7 +116,7 @@ def main():
                              "provider": {"maxRetries": 0, "timeoutMs": 120000, "maxRetryDelayMs": 60000}}}, handle)
     command = ["node", str(args.pi_cli.resolve()), "--mode", "rpc", "--no-session", "--approve",
                "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files",
-               "--no-builtin-tools", "-e", str(here / "extension.ts")]
+               "--no-builtin-tools", "-e", str(here / extension_name)]
     events = queue.Queue()
     process = subprocess.Popen(command, cwd=output, env=os.environ.copy(), stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
@@ -179,14 +196,13 @@ def main():
                 have_model = True
             if kind == "extension_ui_request" and event.get("method") == "notify":
                 message = event.get("message", "")
-                expected = {"chemist_context", "chemist_inventory", "chemist_read", "chemist_search", "chemist_test_selectors", "chemist_submit"}
-                if "tools=" in message and set(message.split("tools=", 1)[1].split(",")) == expected:
+                if "tools=" in message and set(message.split("tools=", 1)[1].split(",")) == expected_tools:
                     ready_tools = True
             if ready_tools and have_model and not started:
                 started = True
                 manifest["status"] = "running"
                 print(json.dumps({"event": "started", "model": manifest["model"]}), flush=True)
-                send({"id": "analysis", "type": "prompt", "message": PROMPT})
+                send({"id": "analysis", "type": "prompt", "message": prompt})
             if kind == "turn_start":
                 manifest["model_turns"] += 1
             if kind == "tool_execution_end":
@@ -209,7 +225,7 @@ def main():
             if kind in {"extension_error", "reader_error"}:
                 raise RuntimeError("Pi extension or RPC reader failed")
             if kind == "agent_settled" and started:
-                manifest["status"] = "sealed" if (output / "baseline.json").is_file() else "incomplete"
+                manifest["status"] = "sealed" if (output / result_name).is_file() else "incomplete"
                 code = 0 if manifest["status"] == "sealed" else 2
                 break
         else:
@@ -229,8 +245,9 @@ def main():
         process.stderr.close()
         manifest["finished_at"] = now()
         manifest["pi_exit_code_after_shutdown"] = process.returncode
-        if (output / "baseline.json").exists():
-            manifest["baseline_file_sha256"] = hashlib.sha256((output / "baseline.json").read_bytes()).hexdigest()
+        if (output / result_name).exists():
+            hash_key = "decisions_file_sha256" if learning else "baseline_file_sha256"
+            manifest[hash_key] = hashlib.sha256((output / result_name).read_bytes()).hexdigest()
         write_manifest(output / "run-manifest.json", manifest)
         (output / "final-response.txt").write_text(final_text, encoding="utf-8")
     print(json.dumps({"status": manifest["status"], "run_dir": str(output),
