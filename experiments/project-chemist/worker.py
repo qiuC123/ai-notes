@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from datetime import UTC, datetime
 import hashlib
 import json
 import os
@@ -245,6 +246,33 @@ class Chemist:
         return {"valid": True, "semantic_correctness_verified": False, "tests_executed": False,
                 "result_sha256": hashlib.sha256(canonical_json_bytes(result)).hexdigest()}
 
+    def assemble_result(self, analysis: dict):
+        """Construct execution facts, never accept them from the model."""
+        if not isinstance(analysis, dict) or set(analysis) != {"cases", "blind_attestation"}:
+            raise ValueError("Submit only cases and blind_attestation; metadata is runtime-owned")
+        attestation = analysis["blind_attestation"]
+        flags = {"gold_answer_accessed_before_completion", "ai_notes_repository_inspected"}
+        if not isinstance(attestation, dict) or set(attestation) != flags or any(v is not False for v in attestation.values()):
+            raise ValueError("Explicit clean blind attestation required")
+        task_id = os.environ.get("CHEMIST_RUN_ID", "")
+        if not re.fullmatch(r"project-chemist-[0-9a-f-]{36}", task_id):
+            raise ValueError("Missing runtime task ID")
+        result = {
+            "schema_version": "impact-baseline.v1", "suite_id": self.manifest["suite_id"],
+            "completed_at": datetime.now(UTC).isoformat(),
+            "blind_protocol": {"independent_task_id": task_id, "blind_input_sha256": self.input_hash, **attestation},
+            "observed_repositories": [
+                {"project_id": pid, "git_head": r["git_head"], "read_only": True}
+                for pid, r in self.repos.items()
+            ],
+            "cases": analysis["cases"],
+        }
+        validation = self.validate_result(result)
+        # Legacy v1 only allows the optional string 'git show'. Omit it rather
+        # than changing v1 or lying. Actual method is in runtime metadata.
+        return {**validation, "result": result,
+                "execution": {"metadata_source": "runtime", "repository_read_method": "git cat-file"}}
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -258,7 +286,7 @@ def main():
         worker = Chemist(args.input)
         actions = {"context": worker.context, "inventory": worker.inventory, "read": worker.read,
                    "search": worker.search, "test_selectors": worker.test_selectors,
-                   "validate_result": worker.validate_result}
+                   "validate_result": worker.validate_result, "assemble_result": worker.assemble_result}
         if not isinstance(request, dict) or set(request) != {"action", "params"} or request["action"] not in actions:
             raise ValueError("Unknown tool request")
         result = actions[request["action"]](**request["params"])

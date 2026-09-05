@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from datetime import UTC, datetime
 import importlib.util
 import json
 import os
@@ -9,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -166,6 +168,36 @@ class ChemistTests(unittest.TestCase):
                 input=json.dumps({"action": action, "params": {}}), capture_output=True, text=True, env=env)
             self.assertEqual(result.returncode, expected)
             self.assertEqual(json.loads(result.stdout)["ok"], expected == 0)
+
+    def test_runtime_assembles_facts_and_omits_legacy_read_method(self):
+        task_id = "project-chemist-12345678-1234-1234-1234-123456789abc"
+        analysis = {"cases": self.result()["cases"], "blind_attestation": {
+            "gold_answer_accessed_before_completion": False, "ai_notes_repository_inspected": False}}
+        before = datetime.now(UTC)
+        with patch.dict(os.environ, {"CHEMIST_RUN_ID": task_id}):
+            assembled = self.agent.assemble_result(analysis)
+        result = assembled["result"]
+        self.assertLessEqual(before, datetime.fromisoformat(result["completed_at"]))
+        self.assertLessEqual(datetime.fromisoformat(result["completed_at"]), datetime.now(UTC))
+        self.assertEqual(result["blind_protocol"]["independent_task_id"], task_id)
+        self.assertEqual(assembled["execution"]["repository_read_method"], "git cat-file")
+        self.assertTrue(all("read_method" not in r for r in result["observed_repositories"]))
+        self.assertEqual(result["observed_repositories"][0]["git_head"], self.head)
+
+    def test_model_cannot_supply_metadata_or_fake_blind_attestation(self):
+        analysis = {"cases": self.result()["cases"], "blind_attestation": {
+            "gold_answer_accessed_before_completion": False, "ai_notes_repository_inspected": False}}
+        for field in ("completed_at", "observed_repositories", "blind_protocol", "read_method"):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.agent.assemble_result({**analysis, field: "invented"})
+        analysis["blind_attestation"]["gold_answer_accessed_before_completion"] = True
+        with self.assertRaises(ValueError): self.agent.assemble_result(analysis)
+
+    def test_bare_method_is_rejected_instead_of_fuzzy_matched(self):
+        result = self.result()
+        result["cases"][0]["project_assessments"][0]["required_tests"][0]["selector"] = "test_partial"
+        with self.assertRaisesRegex(ValueError, "selector does not exist"):
+            self.agent.validate_result(result)
 
 
 if __name__ == "__main__":

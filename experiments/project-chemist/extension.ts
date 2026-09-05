@@ -15,9 +15,9 @@ const policy = `你是项目化学反应 Agent 的只读可行性实验版，默
 先用 inventory 找文件，再 search/read。测试须用 chemist_test_selectors 定位既有测试，
 Class.method 使用点号；不编造测试名，不声称运行过测试或验证了测试收集。
 不能因出现相似词就声称存在依赖；缺证据时说明未完成，不强行提交结果。
-最终用 chemist_submit 提交完整 impact-baseline.v1 JSON：suite_id、completed_at（ISO日期）、
-blind_protocol（本次任务 ID、输入 hash、gold_answer_accessed_before_completion=false、
-ai_notes_repository_inspected=false）、observed_repositories（project_id/git_head）、cases。
+最终用 chemist_submit 提交 analysis，只包含 cases 和 blind_attestation。
+blind_attestation 包含 gold_answer_accessed_before_completion=false、ai_notes_repository_inspected=false。
+完成时间、任务 ID、输入哈希、项目版本等全部由程序生成，不要自行填写。
 每个 case 包含 case_id 和 project_assessments；每个 assessment 包含 project_id、relationship、
 evidence（project_id/path/line_start/line_end）、required_tests（project_id/path/selector）、reason。
 只有确实未接触答案和 Ai Notes 仓库内容才能做出盲测声明；如用户提供过答案则停止盲测。
@@ -79,12 +79,13 @@ export default function (pi: ExtensionAPI) {
       async execute(_id, params, signal) {
         const data = await worker(action, params, signal);
         if (action === "context") data.independent_task_id = process.env.CHEMIST_RUN_ID;
-        if (action === "validate_result") {
-          if (params.result.blind_protocol.independent_task_id !== process.env.CHEMIST_RUN_ID) {
+        if (action === "assemble_result") {
+          if (data.result.blind_protocol.independent_task_id !== process.env.CHEMIST_RUN_ID) {
             throw new Error("Result must use this run's independent_task_id");
           }
           // Exclusive creation: never overwrite a sealed result or a prior run.
-          writeFileSync(join(outputPath, "baseline.json"), JSON.stringify(params.result, null, 2) + "\n", { flag: "wx" });
+          writeFileSync(join(outputPath, "baseline.json"), JSON.stringify(data.result, null, 2) + "\n", { flag: "wx" });
+          delete data.result;
           sealed = true;
           data.result_path = join(outputPath, "baseline.json");
           data.status = "awaiting_independent_scoring";
@@ -109,8 +110,14 @@ export default function (pi: ExtensionAPI) {
   }), "search");
   register("chemist_test_selectors", "Parse existing Python test names without executing or collecting tests", Type.Object({ project, path }), "test_selectors");
   register("chemist_submit", "Validate and seal one complete report; does not score or confirm it", Type.Object({
-    result: Type.Unsafe(schema),
-  }), "validate_result");
+    analysis: Type.Object({
+      cases: Type.Unsafe(schema.properties.cases),
+      blind_attestation: Type.Object({
+        gold_answer_accessed_before_completion: Type.Literal(false),
+        ai_notes_repository_inspected: Type.Literal(false),
+      }, { additionalProperties: false }),
+    }, { additionalProperties: false }),
+  }, { additionalProperties: false }), "assemble_result");
 
   pi.on("session_start", () => pi.setActiveTools(names));
   pi.on("tool_call", async (event) => {

@@ -83,6 +83,7 @@ def main():
         "timeout_seconds": args.timeout, "model_turns": 0, "tool_calls": 0, "tool_errors": 0,
         "transport": args.transport, "http_idle_timeout_ms": 120000, "retry_starts": 0,
         "retry_ends": 0, "model_errors": 0, "stderr_events": 0, "last_event_at": None,
+        "metadata_source": "runtime", "repository_read_method": "git cat-file",
         "prompt": PROMPT, "gold_sent": False, "context_discovery": False,
         "harness_sha256": {name: hashlib.sha256((here / name).read_bytes()).hexdigest()
                            for name in ("extension.ts", "worker.py", "run.py")},
