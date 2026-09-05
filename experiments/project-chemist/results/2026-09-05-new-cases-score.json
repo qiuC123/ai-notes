@@ -1,0 +1,68 @@
+{
+  "schema_version": "chemist-evaluation.v1",
+  "run_id": "project-chemist-f99f9b5e-ef94-416a-848c-0a02dcac7848",
+  "runtime_status": "sealed",
+  "review_status": "runtime_passed_structured_impact_gate_failed",
+  "harness_commit": "14127ee",
+  "baseline_path": "outputs/project-chemist/project-chemist-f99f9b5e-ef94-416a-848c-0a02dcac7848/baseline.json",
+  "baseline_file_sha256": "fa589e134efd98c752c1f383c32bd0c3e40095d93f1381d0fc890b7f0d2be5d5",
+  "score": {
+    "suite_id": "radar-wechat-oa-impact-v2",
+    "blind_input_sha256": "2f53909af71ec486d8e83274d15f9e4cb5a327d5441a97d1a9451e2294b4a5d5",
+    "true_positive_projects": 3,
+    "false_negative_projects": 0,
+    "false_positive_projects": 2,
+    "project_recall": 1,
+    "precision": 0.6,
+    "critical_misses": [],
+    "repeated_critical_misses": false,
+    "evidence_completeness": 1,
+    "required_test_completeness": 0.9,
+    "evidence_levels": [
+      {
+        "case_id": "impact-06",
+        "project_id": "official-campus-radar",
+        "level": "two_sided"
+      },
+      {
+        "case_id": "impact-07",
+        "project_id": "official-campus-radar",
+        "level": "two_sided"
+      },
+      {
+        "case_id": "impact-08",
+        "project_id": "official-campus-radar",
+        "level": "two_sided"
+      }
+    ],
+    "dependency_graph_decision": "do_not_add_dependency_graph_to_mvp"
+  },
+  "runtime_checks": {
+    "completed_at_within_run": true,
+    "metadata_source": "runtime",
+    "repository_read_method": "git cat-file",
+    "legacy_read_method_omitted": true,
+    "harness_unchanged_during_run": true,
+    "model": "openai-codex/gpt-6-astra",
+    "thinking_level": "high",
+    "transport": "sse",
+    "elapsed_seconds": 219.461204,
+    "model_turns": 11,
+    "model_requests": 11,
+    "http_200_responses": 11,
+    "tool_calls": 45,
+    "tool_errors": 0,
+    "model_errors": 0,
+    "retry_starts": 0,
+    "launcher_exit_code": 0,
+    "offline_tests_passed": 174
+  },
+  "review_notes": [
+    "Cases 09 and 10 correctly say no synchronized change is required in prose, but label the existing project relationship direct_dependency. The unchanged scorer counts both as false positives; no rescoring or sealed report edits.",
+    "The current output contract conflates project relationship with change-specific impact. This is a structured handoff failure, not evidence that the model misunderstood the explicit-value/default distinction.",
+    "Nine of ten frozen exact selectors match. Case 07 omitted test_ingestion_stamps_history_and_browser_requires_explicit_service_option and selected other relevant tests; no alias or partial credit was added.",
+    "Evidence completeness is 7/7 gold positive references; the scorer does not score negative-case evidence. Human review checked the non-breaking output field and explicitly supplied priority_count paths.",
+    "Legacy blind-input generation still says git show. The higher-priority tool-only policy and runtime manifest describe actual access; no model shell tool was exposed. Old schemas, scorer, and input builder were kept unchanged.",
+    "Same historical repository pair, not a new-project or matched Codex/Pi comparison. No sample test execution, production integration, ledger confirmation, Skill, or memory writes."
+  ]
+}
