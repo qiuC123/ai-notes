@@ -117,7 +117,7 @@ python -m ai_notes score-impact-baseline --suite experiments/cross-project-impac
 
 完整隔离、评分规则和原始确定性结果见 [`experiments/cross-project-impact-v1/README.md`](experiments/cross-project-impact-v1/README.md) 与 [`score-result.json`](experiments/cross-project-impact-v1/score-result.json)。本次没有重复关键漏报，结论是 MVP 不增加依赖图；下一步只改进双侧证据和测试定位提示。学习运行 `20260903T055625Z-2556d12b` 的实验结果已经按 `experiment-result.v1` 写入账本并追加确认事件。
 
-Pi 项目化学反应 Agent 的独立可行性入口位于 [`experiments/project-chemist/README.md`](experiments/project-chemist/README.md)。已提供冻结 Git 证据工具、静态测试定位、报告校验和交互/有界 RPC 启动器。首次连接异常超时后，补齐日志并使用 SSE 重跑，45 次工具调用、约 285 秒成功封存；双侧证据完整性为 1.0，测试精确匹配为 4/9，仍有测试名格式与报告元数据问题。原失败记录保留，未接入正式学习流程、每日任务或账本。
+Pi 项目化学反应 Agent 的独立可行性入口位于 [`experiments/project-chemist/README.md`](experiments/project-chemist/README.md)，历史影响分析与失败记录保留。新增[单项目共学入口](experiments/project-chemist/LEARNING.md)：主对话筛选候选，Pi 读取冻结外部证据和限定的自有源码，最多提出一个关联，再由主对话复核。[Aider 首次共学结果](experiments/project-chemist/results/2026-09-06-aider-learning.md)已通过引用校验，改进收益尚待对照实验；未接入正式学习流程、每日任务或账本。
 
 只有明确正反馈才会把紧凑关联快照写入长期账本。`watch` 同时保存最后核验 commit 作为监控游标，`experiment` 保存经批准的实验目标、成功标准和双侧项目指纹，等待独立任务接手；两者都不保存源码、外部原文或对话。当前关注项可用内部命令审计：
 

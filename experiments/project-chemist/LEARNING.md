@@ -17,3 +17,5 @@ E:\devlop\ai-notes\experiments\project-chemist\learning-start.ps1 -QueueFile <le
 运行产物直接保存于 `<LearningRoot>/outputs/pi/<run-id>/`，包括 decisions、manifest、调用和重试日志，不生成需要再次复制的临时运行目录。不会调用 Finalize、写入正式账本、创建 Skill、写记忆、安装外部项目或执行自有项目修改。
 
 本轮候选：Aider 与 Repomix；选择 Aider 的上下文选取方法作为学习对象。候选不是采用建议，具体结论由 Pi 读源码后提出、主对话核验并交付。结果只作为这一次有人工限定证据范围的可行性实验。
+
+[2026-09-06 实际结果与主复核](results/2026-09-06-aider-learning.md)：运行成功，提出一个任务相关阅读顺序的候选；引用校验通过，实际收益待对照实验。
