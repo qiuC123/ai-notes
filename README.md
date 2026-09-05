@@ -117,7 +117,7 @@ python -m ai_notes score-impact-baseline --suite experiments/cross-project-impac
 
 完整隔离、评分规则和原始确定性结果见 [`experiments/cross-project-impact-v1/README.md`](experiments/cross-project-impact-v1/README.md) 与 [`score-result.json`](experiments/cross-project-impact-v1/score-result.json)。本次没有重复关键漏报，结论是 MVP 不增加依赖图；下一步只改进双侧证据和测试定位提示。学习运行 `20260903T055625Z-2556d12b` 的实验结果已经按 `experiment-result.v1` 写入账本并追加确认事件。
 
-Pi 项目化学反应 Agent 的独立可行性入口位于 [`experiments/project-chemist/README.md`](experiments/project-chemist/README.md)。已提供冻结 Git 证据工具、静态测试定位、报告校验和 `start.ps1` 启动器；尚未进行新的模型盲测，未接入正式学习流程、每日任务或账本。
+Pi 项目化学反应 Agent 的独立可行性入口位于 [`experiments/project-chemist/README.md`](experiments/project-chemist/README.md)。已提供冻结 Git 证据工具、静态测试定位、报告校验和交互/有界 RPC 启动器。首次真实盲测共完成 104 次工具调用，记录到模型连接异常，最终 15 分钟超时，尚无可评分报告；未接入正式学习流程、每日任务或账本。
 
 只有明确正反馈才会把紧凑关联快照写入长期账本。`watch` 同时保存最后核验 commit 作为监控游标，`experiment` 保存经批准的实验目标、成功标准和双侧项目指纹，等待独立任务接手；两者都不保存源码、外部原文或对话。当前关注项可用内部命令审计：
 

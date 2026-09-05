@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$InputFile = (Join-Path $PSScriptRoot '..\cross-project-impact-v1\blind-input.json'),
-    [switch]$Check
+    [switch]$Check,
+    [switch]$Run
 )
 $ErrorActionPreference = 'Stop'
 $chemistRepo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -36,7 +37,13 @@ try {
         Write-Output 'This uses your configured Pi model. Authorized source snippets may be sent to that provider.'
         Push-Location -LiteralPath $chemistDir
         try {
-            & $chemistPi --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-builtin-tools --no-session -e (Join-Path $PSScriptRoot 'extension.ts')
+            if ($Run) {
+                $chemistCli = Join-Path (Split-Path $chemistPi) 'node_modules\@earendil-works\pi-coding-agent\dist\bundle\cli.js'
+                if (-not (Test-Path -LiteralPath $chemistCli)) { throw 'Headless mode requires the npm Pi installation; use interactive mode for other installations.' }
+                & $chemistPython (Join-Path $PSScriptRoot 'run.py') --pi-cli $chemistCli
+            } else {
+                & $chemistPi --no-approve --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-builtin-tools --no-session -e (Join-Path $PSScriptRoot 'extension.ts')
+            }
             $chemistCode = $LASTEXITCODE
         } finally { Pop-Location }
     }
