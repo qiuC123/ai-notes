@@ -38,6 +38,18 @@ export default function (pi: ExtensionAPI) {
   let sealed = false;
   const names: string[] = [];
 
+  // Deliberately do not inspect/persist request bodies, headers or credentials.
+  pi.on("before_provider_request", async () => {
+    appendFileSync(join(outputPath, "provider-events.jsonl"), JSON.stringify({
+      at: new Date().toISOString(), event: "provider_request",
+    }) + "\n", "utf8");
+  });
+  pi.on("after_provider_response", async (event) => {
+    appendFileSync(join(outputPath, "provider-events.jsonl"), JSON.stringify({
+      at: new Date().toISOString(), event: "provider_response", status: event.status,
+    }) + "\n", "utf8");
+  });
+
   function worker(action: string, params: unknown, signal?: AbortSignal): Promise<any> {
     if (++calls > 120) return Promise.reject(new Error("120-call experiment budget exhausted; stop and report incomplete"));
     if (sealed) return Promise.reject(new Error("Result sealed; start a new run to analyze again"));

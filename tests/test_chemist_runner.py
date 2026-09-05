@@ -20,6 +20,7 @@ class FakePi:
     def __init__(self, events):
         self.stdin = io.StringIO()
         self.stdout = io.StringIO("".join(json.dumps(e) + "\n" for e in events))
+        self.stderr = io.StringIO("")
         self.returncode = None
         self.sent = ""
 
@@ -87,7 +88,40 @@ class ChemistRunnerTests(unittest.TestCase):
         events = startup() + [{"type": "message_end", "message": {"role": "assistant", "errorMessage": "fixture provider failure"}}, {"type": "agent_settled"}]
         code, manifest, _, _ = self.run_fake(events)
         self.assertEqual(code, 2)
-        self.assertEqual(manifest["last_model_error"], "fixture provider failure")
+        self.assertEqual(manifest["last_model_error"]["code"], "unclassified_error")
+        self.assertEqual(manifest["model_errors"], 1)
+        self.assertIn("last_model_error_at", manifest)
+
+    def test_error_summary_never_stores_credentials_or_body(self):
+        secret = "Bearer sk-fake-secret https://user:password@private.invalid/path?token=private"
+        event = {"type": "auto_retry_start", "attempt": 1, "maxAttempts": 3, "delayMs": 2000,
+                 "errorMessage": "WebSocket error " + secret, "body": secret, "headers": {"Authorization": secret}}
+        summary = runner.event_summary(event)
+        self.assertEqual(summary["error"]["code"], "websocket_error")
+        self.assertEqual(summary["attempt"], 1)
+        self.assertNotIn(secret, json.dumps(summary))
+        self.assertNotIn("password", json.dumps(summary))
+        self.assertNotIn("headers", summary)
+        self.assertNotIn("body", summary)
+
+    def test_retry_success_is_logged_but_not_counted_as_sealed(self):
+        events = startup() + [{"type": "auto_retry_start", "attempt": 1, "maxAttempts": 3, "delayMs": 2000, "errorMessage": "WebSocket error"},
+                              {"type": "auto_retry_end", "attempt": 1, "success": True}, {"type": "agent_settled"}]
+        code, manifest, _, _ = self.run_fake(events)
+        self.assertEqual(code, 2)
+        self.assertEqual(manifest["retry_starts"], 1)
+        self.assertEqual(manifest["retry_ends"], 1)
+        self.assertEqual(manifest["transport"], "sse")
+
+    def test_final_retry_failure_stops_without_waiting_for_global_timeout(self):
+        code, manifest, _, _ = self.run_fake(startup() + [{"type": "auto_retry_end", "attempt": 3, "success": False, "finalError": "timeout"}])
+        self.assertEqual(code, 1)
+        self.assertIn("exhausted automatic retries", manifest["error"])
+
+    def test_closed_rpc_stream_fails_explicitly(self):
+        code, manifest, _, _ = self.run_fake(startup())
+        self.assertEqual(code, 1)
+        self.assertIn("Pi exited", manifest["error"])
 
 
 if __name__ == "__main__":
