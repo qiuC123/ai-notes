@@ -1,0 +1,97 @@
+{
+  "schema_version": "chemist-evaluation.v1",
+  "run_id": "project-chemist-040a79c9-a599-4c6e-9a25-31cba06ada57",
+  "harness_commit": "2d54c96",
+  "evaluation_kind": "same_case_protocol_regression",
+  "runtime_status": "sealed_after_retry_recovery",
+  "review_status": "relationship_impact_separation_verified_not_production_approval",
+  "baseline_path": "outputs/project-chemist/project-chemist-040a79c9-a599-4c6e-9a25-31cba06ada57/baseline.json",
+  "baseline_file_sha256": "49d1494021bb7c1ef0953f4aaa648dab4630d088540db2b73919ced528bc85c4",
+  "score": {
+    "suite_id": "radar-wechat-oa-impact-v3",
+    "blind_input_sha256": "d77535f77cc890e2dac7c37f206183b60d6a728a8b042e67e80a0daacede42c4",
+    "true_positive_projects": 3,
+    "false_negative_projects": 0,
+    "false_positive_projects": 0,
+    "project_recall": 1,
+    "precision": 1,
+    "critical_misses": [],
+    "repeated_critical_misses": false,
+    "evidence_completeness": 1,
+    "required_test_completeness": 0.9,
+    "evidence_levels": [
+      {
+        "case_id": "impact-06",
+        "project_id": "official-campus-radar",
+        "level": "two_sided"
+      },
+      {
+        "case_id": "impact-07",
+        "project_id": "official-campus-radar",
+        "level": "two_sided"
+      },
+      {
+        "case_id": "impact-08",
+        "project_id": "official-campus-radar",
+        "level": "two_sided"
+      }
+    ],
+    "dependency_graph_decision": "do_not_add_dependency_graph_to_mvp"
+  },
+  "offline_tests_passed": 184,
+  "attempts": [
+    {
+      "run_id": "project-chemist-56bad460-a666-4fd1-86b6-255ed6e83ae3",
+      "status": "failed",
+      "elapsed_seconds": 108.347665,
+      "model_requests": 11,
+      "http_200_responses": 7,
+      "tool_calls": 33,
+      "tool_errors": 0,
+      "model_errors": 4,
+      "retry_starts": 3,
+      "retry_success": false,
+      "baseline_present": false,
+      "launcher_exit_code": 1
+    },
+    {
+      "run_id": "project-chemist-040a79c9-a599-4c6e-9a25-31cba06ada57",
+      "status": "sealed",
+      "elapsed_seconds": 290.099418,
+      "model_requests": 14,
+      "http_200_responses": 13,
+      "tool_calls": 45,
+      "tool_errors": 0,
+      "model_errors": 2,
+      "retry_starts": 2,
+      "retry_success": true,
+      "baseline_present": true,
+      "launcher_exit_code": 0
+    }
+  ],
+  "runtime_checks": {
+    "completed_at_within_run": true,
+    "harness_unchanged_between_attempts": true,
+    "model": "openai-codex/gpt-6-astra",
+    "thinking_level": "high",
+    "transport": "sse"
+  },
+  "artifact_hashes": {
+    "baseline.json": "49d1494021bb7c1ef0953f4aaa648dab4630d088540db2b73919ced528bc85c4",
+    "blind-input.json": "d77535f77cc890e2dac7c37f206183b60d6a728a8b042e67e80a0daacede42c4",
+    "events.jsonl": "e2413c0bc4ad5d4c00f1ab1990d98f32a58ed9f041d145ac8716d7cdfce1748f",
+    "final-response.txt": "95467b79f1ccd331f5c9a9207fa3694183965c24428714881c510578d245daef",
+    "provider-events.jsonl": "5937be64edc485755ec264e4da71ad96f940fc69fdd7684ad653d17576c12665",
+    "run-manifest.json": "64baa00c737078645304ab9c8ba6be51ba3b0036ea891558f8e3ba918ef5dd04",
+    "tool-audit.jsonl": "87e50abeb61caace373d4faf14feb5a88af5b14b108628e75a21cff3fc3afeca"
+  },
+  "review_notes": [
+    "The five cases, source revisions, evidence and ten exact test requirements are reused unchanged. Only protocol/suite versions and existing-relation labels for the two compatible cases changed. This is not new-case generalization.",
+    "Cases 06-08 report direct_dependency/true and cases 09-10 report direct_dependency/false, consistent with their prose. V2 scoring uses requires_change exclusively. No automatic action is authorized.",
+    "Case 07 still misses the frozen exact selector test_ingestion_stamps_history_and_browser_requires_explicit_service_option. Nine of ten exact selectors remain the score; no replacement credit.",
+    "The prior sealed report still scores precision 0.6 under the preserved v1 branch. All prior suites, schemas, baselines and score records are unchanged.",
+    "Attempt one exhausted three retries. Attempt two recovered after two retries; one model error was unclassified, one network_error. Network root cause remains unproven and global proxy settings were not changed.",
+    "Completion time is runtime-owned and falls inside the run interval. last_model_error in the successful manifest is historical; final status sealed, agent_settled and launcher exit 0 establish completion.",
+    "Domain definitions were added to CONTEXT.md. No sample project mutation or test execution, ledger confirmation, memory/Skill write, dependency graph or production integration."
+  ]
+}
