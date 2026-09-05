@@ -1,0 +1,80 @@
+# 项目化学反应 Agent：Pi 可行性实验
+
+状态：只读证据工具、报告校验和 Pi 启动入口已实现；尚未运行新的模型盲测，尚未证明优于已有基线。
+
+这是独立于 Ai Notes 正式学习流程的实验目录，不是完整产品。第一步先验证 Pi 能否改善已有跨项目分析中的两项短板：**双侧证据**和**既有测试定位**。不修改正式 CLI、账本、来源排序或任何样本项目。
+
+## 使用入口（Windows）
+
+先只检查本机依赖、两个冻结提交和可读文件；不调用模型、不启动 Pi、不写实验产物：
+
+```powershell
+E:\devlop\ai-notes\experiments\project-chemist\start.ps1 -Check
+```
+
+启动一个独立 Pi 会话：
+
+```powershell
+E:\devlop\ai-notes\experiments\project-chemist\start.ps1
+```
+
+在 Pi 中输入：
+
+> 分析这次冻结输入里的五个案例。逐案查找双方代码证据和既有测试；不能确定就说明缺口。完成后通过 chemist_submit 提交报告，不要实施修改。
+
+`/chemist-status` 可以检查加载状态，不调用模型。必须使用启动脚本；不要直接在 Ai Notes 主目录里加载扩展开展盲测，也不要将标准答案、旧分析或评分结果粘贴给这次 Pi 会话。
+
+启动器使用用户现有 Pi 模型配置，不保存或复制凭证、不改全局设置。**用户开始分析后，工具返回的授权项目源码片段会进入所选模型的上下文，可能发送到远端模型服务。** 本轮开发测试没有发起这种模型调用。
+
+启动器创建独立临时目录并显示绝对路径，保留：
+
+- `blind-input.json`：本次输入副本；
+- `tool-audit.jsonl`：本次调用参数、成功状态及错误，不保存完整源码响应；
+- `baseline.json`：只有校验通过后才独占创建，存在则禁止覆盖。
+
+不保存 Pi 会话历史。临时目录不会被启动器自动删除；需要长期保留结果时由用户归档，系统清理临时文件可能使其丢失。提交结果不等于用户确认，不进入学习账本。
+
+## 能做什么
+
+| 工具 | 作用 |
+| --- | --- |
+| `chemist_context` | 获取五案、项目、固定版本、输入哈希和本次任务 ID |
+| `chemist_inventory` | 分页列出固定提交内的允许文件，可按文件名片段筛选 |
+| `chemist_search` | 在指定文件中做字面文本搜索，不执行正则或 shell |
+| `chemist_read` | 读取固定文件的有界行范围，返回行号 |
+| `chemist_test_selectors` | 静态解析 Python 测试名，不导入、不收集、不运行测试 |
+| `chemist_submit` | 校验并封存符合 `impact-baseline.v1` 的报告 |
+
+文件路径均相对于授权项目目录；例如 monorepo 内的 `CLI/wechat-oa` 只能看到该子树，不能看到同仓库其他项目。工具使用冻结 Git blob，不读取样本工作区、切换分支或执行样本代码。
+
+直接依赖报告必须提供双方的文件和准确行范围、双方已有测试。测试 selector 用 `ClassName.test_method` 或顶层 `test_function`；不支持动态生成、参数化实例或非 Python 测试。找不到支持的测试时报告未完成，不能编造名称来过校验。
+
+校验仅确认 JSON 结构、固定版本、引用范围、可选 symbol 字面存在以及静态测试定义存在。**不证明引用支持结论，不证明测试可收集/通过，也不证明项目间确有关系。** 语义正确性仍需封存后的独立评分和人工复核。
+
+## 范围和限制
+
+- 这轮只复用既有五案输入，不实现外部项目搜索、GitHub URL 提名、网页采集或每日推送；后续才连接“发现 → 理解 → 关联 → 实验”。
+- 两个样本使用历史冻结提交。招聘雷达当前已经切换官网-only；实验对旧契约的分析**不能作为当前依赖现状**。
+- 无知识图谱、索引、本地模型、Hermes；不读取/写入 Codex 记忆，不创建 Skill，不自动升级项目规则。
+- 禁用 Pi 内置工具、自动扩展、Skills、模板和上下文文件；仅加载本扩展，并对模型工具调用设置白名单。每个会话最多 120 次 worker 调用。
+- 这是应用层工具限制，不是操作系统沙箱。Pi 程序及本扩展属于受信任运行时；用户若手动加载其他扩展、执行 shell、修改输入或提供答案，必须废弃该次盲测。
+- 只读文本文件最多 512 KiB，单次读取最多 200 行/24,000 字符。大文件、非支持扩展名、symlink、submodule、常见凭证文件名等跳过并计数；这不是完整的秘密扫描器，不保证普通源文件内没有硬编码敏感信息。
+- 缺失提交、空文件目录、超时、超预算或引用无效均明确失败，不能当健康空结果。Git 禁止自动 lazy-fetch。
+
+## 验证与下一步
+
+自动化离线回归：
+
+```powershell
+E:\devlop\ai-notes\.venv\Scripts\python.exe -m unittest discover -s E:\devlop\ai-notes\tests -p test_project_chemist.py -v
+```
+
+安装版 Pi 的真实加载检查（只调用 `/chemist-status`，没有模型推理）：
+
+```powershell
+E:\devlop\ai-notes\.venv\Scripts\python.exe E:\devlop\ai-notes\experiments\project-chemist\smoke.py --pi-cli C:\Users\Mayn\AppData\Roaming\npm\node_modules\@earendil-works\pi-coding-agent\dist\bundle\cli.js
+```
+
+本机使用 Pi 0.85.0 的内置文档/API，未新增 npm 依赖。换机需使用对应实际安装路径和支持这些 CLI 参数的 Pi 版本；Python 使用 Ai Notes 现有 `.venv`。
+
+下一步是用户启动独立 Pi 分析，封存 `baseline.json` 后交回主对话。知晓标准答案的主对话使用原 `score-impact-baseline` 评分器；不修改套件或评分规则来提高分数。检查项目召回/精确率保持 1.0、关键漏报为 0，且证据完整性高于 0.5、既有测试命中高于 0.0。五案结果只用于判断是否值得继续，不代表通用关联发现能力，更不自动批准接入生产。
