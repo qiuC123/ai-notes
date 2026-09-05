@@ -51,6 +51,8 @@ E:\devlop\ai-notes\experiments\project-chemist\start.ps1 -Run
 
 ## 能做什么
 
+新[同题协议回归](../cross-project-impact-v3/README.md)使用 v2，把已有 `relationship` 与必填布尔 `requires_change` 分开。前者描述已有关系，后者才决定本次影响评分；直接依赖可以无需修改。旧输入仍按 v1 解释，旧报告与分数不变。使用新协议需要显式传入该目录的 `blind-input.json`。
+
 | 工具 | 作用 |
 | --- | --- |
 | `chemist_context` | 获取五案、项目、固定版本、输入哈希和本次任务 ID |
@@ -64,7 +66,7 @@ E:\devlop\ai-notes\experiments\project-chemist\start.ps1 -Run
 
 直接依赖报告必须提供双方的文件和准确行范围、双方已有测试。测试 selector 用 `ClassName.test_method` 或顶层 `test_function`；不支持动态生成、参数化实例或非 Python 测试。找不到支持的测试时报告未完成，不能编造名称来过校验。
 
-`chemist_submit` 只接受 `analysis.cases` 和两项显式为 false 的 `analysis.blind_attestation`。套件 ID、输入哈希、任务 ID、冻结仓库信息和 UTC 完成时间由运行时生成；模型不能传入或覆盖。历史 v1 报告结构的可选 `read_method` 仅允许 `git show`，新报告省略该字段，实际 `git cat-file` 读取方法记录在 `run-manifest.json`，不修改旧 schema。声明未接触答案是模型声明，不是单凭该字段就能证明隔离。
+`chemist_submit` 只接受 `analysis.cases` 和两项显式为 false 的 `analysis.blind_attestation`。套件 ID、输入哈希、任务 ID、冻结仓库信息和 UTC 完成时间由运行时生成；模型不能传入或覆盖。报告协议版本与冻结输入绑定。历史 v1 的可选 `read_method` 仅允许 `git show`，运行器省略该字段；v2 不再允许此旧字段，实际 `git cat-file` 读取方法记录在 `run-manifest.json`，v2 输入说明也已统一。旧 schema 不修改。声明未接触答案是模型声明，不是单凭该字段就能证明隔离。
 
 校验仅确认 JSON 结构、固定版本、引用范围、可选 symbol 字面存在以及静态测试定义存在。**不证明引用支持结论，不证明测试可收集/通过，也不证明项目间确有关系。** 语义正确性仍需封存后的独立评分和人工复核。
 

@@ -17,7 +17,7 @@ import subprocess
 import sys
 import tempfile
 
-from ai_notes.contracts import IMPACT_BASELINE_SCHEMA, validate_contract
+from ai_notes.contracts import IMPACT_BASELINE_SCHEMA, IMPACT_BASELINE_V2_SCHEMA, validate_contract
 from ai_notes.storage import canonical_json_bytes
 
 MAX_FILE = 512 * 1024
@@ -64,8 +64,11 @@ def load_manifest(path: Path) -> dict:
         raise ValueError("Manifest exceeds budget")
     payload = json.loads(path.read_text(encoding="utf-8"))
     expected = {"schema_version", "suite_id", "source_learning", "repositories", "repository_read_rule", "cases", "response_contract"}
-    if not isinstance(payload, dict) or set(payload) != expected or payload["schema_version"] != "impact-blind-input.v1":
+    if not isinstance(payload, dict) or set(payload) != expected or payload["schema_version"] not in ("impact-blind-input.v1", "impact-blind-input.v2"):
         raise ValueError("Expected blind input, never the gold suite")
+    expected_schema = IMPACT_BASELINE_V2_SCHEMA if payload["schema_version"] == "impact-blind-input.v2" else IMPACT_BASELINE_SCHEMA
+    if payload.get("response_contract", {}).get("schema_version") != expected_schema:
+        raise ValueError("Blind input and response contract versions must match")
     repos = payload["repositories"]
     if not isinstance(repos, list) or not 2 <= len(repos) <= 5:
         raise ValueError("Expected 2..5 authorized repositories")
@@ -205,7 +208,7 @@ class Chemist:
         return {"selectors": selectors, "collection_verified": False, "tests_executed": False}
 
     def validate_result(self, result: dict):
-        validate_contract(IMPACT_BASELINE_SCHEMA, result)
+        validate_contract(self.manifest["response_contract"]["schema_version"], result)
         if result["suite_id"] != self.manifest["suite_id"] or result["blind_protocol"]["blind_input_sha256"] != self.input_hash:
             raise ValueError("Result does not match this frozen blind input")
         observed = result["observed_repositories"]
@@ -258,7 +261,7 @@ class Chemist:
         if not re.fullmatch(r"project-chemist-[0-9a-f-]{36}", task_id):
             raise ValueError("Missing runtime task ID")
         result = {
-            "schema_version": "impact-baseline.v1", "suite_id": self.manifest["suite_id"],
+            "schema_version": self.manifest["response_contract"]["schema_version"], "suite_id": self.manifest["suite_id"],
             "completed_at": datetime.now(UTC).isoformat(),
             "blind_protocol": {"independent_task_id": task_id, "blind_input_sha256": self.input_hash, **attestation},
             "observed_repositories": [

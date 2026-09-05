@@ -13,6 +13,8 @@ MANIFEST_SCHEMA = "learning-run-manifest.v1"
 EXPERIMENT_RESULT_SCHEMA = "experiment-result.v1"
 IMPACT_SUITE_SCHEMA = "impact-suite.v1"
 IMPACT_BASELINE_SCHEMA = "impact-baseline.v1"
+IMPACT_SUITE_V2_SCHEMA = "impact-suite.v2"
+IMPACT_BASELINE_V2_SCHEMA = "impact-baseline.v2"
 
 
 class ContractValidationError(ValueError):

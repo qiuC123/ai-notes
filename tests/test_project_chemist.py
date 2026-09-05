@@ -51,7 +51,7 @@ class ChemistTests(unittest.TestCase):
         cls.head = git("rev-parse", "HEAD")
         cls.manifest = {
             "schema_version": "impact-blind-input.v1", "suite_id": "chemist-test",
-            "source_learning": {}, "repository_read_rule": "pinned", "response_contract": {},
+            "source_learning": {}, "repository_read_rule": "pinned", "response_contract": {"schema_version": "impact-baseline.v1"},
             "repositories": [{"project_id": p, "root": str(cls.root / p), "git_head": cls.head, "read_only": True} for p in ("producer", "consumer")],
             "cases": [{"case_id": f"impact-{i:02d}", "title": "test", "change_project": "producer", "change_description": "Rename partial"} for i in range(1, 6)],
         }
@@ -198,6 +198,37 @@ class ChemistTests(unittest.TestCase):
         result["cases"][0]["project_assessments"][0]["required_tests"][0]["selector"] = "test_partial"
         with self.assertRaisesRegex(ValueError, "selector does not exist"):
             self.agent.validate_result(result)
+
+    def test_v2_runtime_preserves_no_change_dependency_and_requires_evidence(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest["schema_version"] = "impact-blind-input.v2"
+        manifest["response_contract"]["schema_version"] = "impact-baseline.v2"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "input.json"
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            agent = worker.Chemist(path)
+            analysis = {"cases": self.result()["cases"], "blind_attestation": {
+                "gold_answer_accessed_before_completion": False, "ai_notes_repository_inspected": False}}
+            for case in analysis["cases"]:
+                case["project_assessments"][0]["requires_change"] = False
+            with patch.dict(os.environ, {"CHEMIST_RUN_ID": "project-chemist-12345678-1234-1234-1234-123456789abc"}):
+                result = agent.assemble_result(analysis)["result"]
+            self.assertEqual(result["schema_version"], "impact-baseline.v2")
+            assessment = result["cases"][0]["project_assessments"][0]
+            self.assertFalse(assessment["requires_change"])
+            self.assertEqual(assessment["relationship"], "direct_dependency")
+            assessment["evidence"].pop()
+            with self.assertRaisesRegex(ValueError, "both projects"):
+                agent.validate_result(result)
+
+    def test_manifest_rejects_mixed_protocol_versions(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest["schema_version"] = "impact-blind-input.v2"
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "input.json"
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "versions must match"):
+                worker.Chemist(path)
 
 
 if __name__ == "__main__":

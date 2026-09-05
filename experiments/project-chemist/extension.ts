@@ -33,7 +33,15 @@ export default function (pi: ExtensionAPI) {
   const inputPath = input;
   const outputPath = output;
   const repo = resolve(here, "../..");
-  const schema = JSON.parse(readFileSync(join(repo, "src/ai_notes/schemas/impact-baseline.v1.schema.json"), "utf8"));
+  const inputVersion = JSON.parse(readFileSync(inputPath, "utf8")).schema_version;
+  if (!["impact-blind-input.v1", "impact-blind-input.v2"].includes(inputVersion)) throw new Error("Unsupported blind input version");
+  const isV2 = inputVersion === "impact-blind-input.v2";
+  const schema = JSON.parse(readFileSync(join(repo, `src/ai_notes/schemas/impact-baseline.${isV2 ? "v2" : "v1"}.schema.json`), "utf8"));
+  const versionPolicy = isV2 ? `\n本次使用 v2：每个 assessment 必须另外填写布尔 requires_change。
+relationship 只说明项目之间已有的关系；requires_change 才说明本案是否必须同步修改。
+直接依赖且兼容时，填写 direct_dependency 和 requires_change=false，不要为了表示无需修改而否认真实依赖。
+建议补充回归测试不等于必须修改。requires_change=true 需要真实直接依赖证据；不确定就报告未完成，不默认 false。
+评分仅根据 requires_change 判定受影响项目，不从 relationship 或 reason 猜测。` : "";
   let calls = 0;
   let sealed = false;
   const names: string[] = [];
@@ -123,7 +131,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event) => {
     if (!names.includes(event.toolName)) return { block: true, reason: "Only pinned chemist tools are allowed" };
   });
-  pi.on("before_agent_start", async () => ({ systemPrompt: policy }));
+  pi.on("before_agent_start", async () => ({ systemPrompt: policy + versionPolicy }));
   pi.registerCommand("chemist-status", {
     description: "Check the frozen input and active tools without calling a model",
     handler: async (_args, ctx) => {

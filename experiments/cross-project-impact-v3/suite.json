@@ -1,0 +1,248 @@
+{
+  "schema_version": "impact-suite.v2",
+  "suite_id": "radar-wechat-oa-impact-v3",
+  "frozen_at": "2026-09-05T08:30:21.770Z",
+  "source_learning": {
+    "external_commit_sha": "ffa2e865bf163a66b794345b025e641f0d644d4c",
+    "external_repository": "kesari/ecommerce-poc",
+    "relation_id": "rel-8d3b4f2a7c91",
+    "run_id": "20260903T055625Z-2556d12b"
+  },
+  "repositories": [
+    {
+      "project_id": "official-campus-radar",
+      "repository": "qiuC123/official-campus-radar",
+      "root": "E:\\devlop\\official-campus-radar",
+      "git_head": "4ca4fa4a478e82af446fbd16659d39d92867b52f",
+      "read_only": true
+    },
+    {
+      "project_id": "canonical-wechat-oa",
+      "repository": "qiuC123/qiuC-tools/CLI/wechat-oa",
+      "root": "E:\\devlop\\qiuC-tools\\CLI\\wechat-oa",
+      "git_head": "767827c2f10bd8cd80875275beec5e7cc928dabd",
+      "read_only": true
+    }
+  ],
+  "cases": [
+    {
+      "change_project": "canonical-wechat-oa",
+      "relationship": "direct_dependency",
+      "affected_projects": [
+        "official-campus-radar"
+      ],
+      "case_id": "impact-06",
+      "title": "公众号身份字段嵌套迁移",
+      "change_description": "在 canonical wechat-oa 的 Article Evidence schema v1 中，把 account_identity.observed_display_name 和 observed_biz_id 改为 account_identity.observed.display_name 和 biz_id；删除旧键，不提供兼容映射，其余语义不变。判断另一个样本项目是否需要同步修改，给出代码证据和既有测试。",
+      "contract": "账户身份输出与 radar 自有白名单匹配之间存在字段级依赖。",
+      "criticality": "critical",
+      "evidence": [
+        {
+          "project_id": "canonical-wechat-oa",
+          "path": "src/wxcli/evidence.py",
+          "line_start": 61,
+          "line_end": 68,
+          "symbol": "AccountIdentityEvidence",
+          "claim": "公众号身份的两个 observed 字段在 account_identity 内直接提供。"
+        },
+        {
+          "project_id": "official-campus-radar",
+          "path": "radar/services/announcements.py",
+          "line_start": 378,
+          "line_end": 395,
+          "symbol": "import_wechat_oa_announcement",
+          "claim": "消费者直接读取旧键并匹配自己维护的公众号白名单。"
+        }
+      ],
+      "required_tests": [
+        {
+          "project_id": "canonical-wechat-oa",
+          "path": "tests/test_evidence.py",
+          "selector": "test_evidence_identity_matching"
+        },
+        {
+          "project_id": "official-campus-radar",
+          "path": "radar/tests/test_announcement_driven.py",
+          "selector": "WeChatOABoundaryTests.test_wechat_oa_article_requires_radar_owned_account_allowlist"
+        }
+      ],
+      "rationale": "旧键消失后，消费者取空字符串，已核验账户也会因匹配不到白名单而拒绝。"
+    },
+    {
+      "change_project": "canonical-wechat-oa",
+      "relationship": "direct_dependency",
+      "affected_projects": [
+        "official-campus-radar"
+      ],
+      "case_id": "impact-07",
+      "title": "核验成功状态枚举改名",
+      "change_description": "在 canonical wechat-oa 的 Direct Discovery 和 Candidate Ingestion 输出中，把 verification_status 的成功值从 verified 改为 confirmed，生产者内部一起迁移，不再输出 verified；evidence 结构和 schema_version 不变。判断另一个样本项目是否需要同步修改，给出代码证据和既有测试。",
+      "contract": "消费者只有在 verification_status 精确等于 verified 且 evidence 为对象时，才纳入已核验结果。",
+      "criticality": "critical",
+      "evidence": [
+        {
+          "project_id": "canonical-wechat-oa",
+          "path": "src/wxcli/discovery/models.py",
+          "line_start": 38,
+          "line_end": 45,
+          "symbol": "VerificationStatus",
+          "claim": "成功状态目前序列化为 verified。"
+        },
+        {
+          "project_id": "official-campus-radar",
+          "path": "radar/services/wechat_oa_client.py",
+          "line_start": 179,
+          "line_end": 185,
+          "symbol": null,
+          "claim": "Direct Discovery 按 verified 字符串提取已核验条目。"
+        },
+        {
+          "project_id": "official-campus-radar",
+          "path": "radar/services/wechat_oa_client.py",
+          "line_start": 284,
+          "line_end": 295,
+          "symbol": null,
+          "claim": "Candidate Batch 的结果同样按 verified 字符串筛选。"
+        }
+      ],
+      "required_tests": [
+        {
+          "project_id": "canonical-wechat-oa",
+          "path": "tests/test_candidate_ingestion.py",
+          "selector": "test_ingestion_stamps_history_and_browser_requires_explicit_service_option"
+        },
+        {
+          "project_id": "official-campus-radar",
+          "path": "radar/tests/test_announcement_driven.py",
+          "selector": "WeChatOABoundaryTests.test_direct_exa_client_uses_frozen_command_and_scrubbed_environment"
+        }
+      ],
+      "rationale": "两条消费路径均会将新成功值静默排除；必须修改过滤判断并补充成功与未核验候选混合的回归断言。"
+    },
+    {
+      "change_project": "canonical-wechat-oa",
+      "relationship": "direct_dependency",
+      "affected_projects": [
+        "official-campus-radar"
+      ],
+      "case_id": "impact-08",
+      "title": "核验尝试数量上限收紧",
+      "change_description": "canonical wechat-oa 把 CandidateHydrationPolicy.maximum_attempts 的默认值及允许上限从 20 降到 10；priority_count 的默认值和规则不变，不自动截断超限输入。考察包含 15 条有效候选的正常批次，判断另一个样本项目是否需要同步修改，给出代码证据和既有测试。",
+      "contract": "Candidate Batch 的发送数值必须满足接收端严格范围约束。",
+      "criticality": "important",
+      "evidence": [
+        {
+          "project_id": "canonical-wechat-oa",
+          "path": "src/wxcli/discovery/models.py",
+          "line_start": 192,
+          "line_end": 214,
+          "symbol": "CandidateHydrationPolicy",
+          "claim": "priority_count 默认 10，maximum_attempts 默认及上限 20；计数必须满足 priority<=maximum。"
+        },
+        {
+          "project_id": "official-campus-radar",
+          "path": "radar/services/wechat_oa_client.py",
+          "line_start": 464,
+          "line_end": 479,
+          "symbol": null,
+          "claim": "调用方显式传入 min(10,候选数) 与 min(20,候选数)，没有省略 hydration。"
+        }
+      ],
+      "required_tests": [
+        {
+          "project_id": "canonical-wechat-oa",
+          "path": "tests/test_candidate_ingestion.py",
+          "selector": "test_candidate_batch_schema_is_strict_bounded_and_browser_cannot_be_delegated"
+        },
+        {
+          "project_id": "official-campus-radar",
+          "path": "radar/tests/test_announcement_driven.py",
+          "selector": "WeChatOABoundaryTests.test_candidate_batch_has_no_browser_or_credentials_fields"
+        }
+      ],
+      "rationale": "15 条候选时 radar 显式发 maximum_attempts=15，新上限10会拒绝；应修改批次构造并在已有测试增加10/11/15边界，而非宣称旧测试已覆盖。"
+    },
+    {
+      "change_project": "canonical-wechat-oa",
+      "relationship": "direct_dependency",
+      "affected_projects": [],
+      "case_id": "impact-09",
+      "title": "输出摘要增加诊断字段",
+      "change_description": "canonical wechat-oa 在 DiscoverySummary 输出模型中新增可选字符串 diagnostic_note，用于诊断说明；所有原字段、类型、值、候选内容及 schema_version 保持不变。判断另一个样本项目是否必须同步修改，给出代码证据和既有测试。",
+      "contract": "生产者可以新增可选输出字段；本消费者没有 summary 未知键拒绝规则。",
+      "criticality": "routine",
+      "evidence": [
+        {
+          "project_id": "canonical-wechat-oa",
+          "path": "src/wxcli/discovery/models.py",
+          "line_start": 289,
+          "line_end": 308,
+          "symbol": "DiscoverySummary",
+          "claim": "输出 summary 由严格的生产者模型定义，但可显式添加新字段。"
+        },
+        {
+          "project_id": "official-campus-radar",
+          "path": "radar/services/wechat_oa_client.py",
+          "line_start": 134,
+          "line_end": 185,
+          "symbol": "_discovery_result",
+          "claim": "消费者校验 summary.partial，但不禁止 summary 中存在未知附加字段。"
+        }
+      ],
+      "required_tests": [
+        {
+          "project_id": "canonical-wechat-oa",
+          "path": "tests/test_discovery_service.py",
+          "selector": "test_hydration_partial_success_and_browser_requires_explicit_authorization"
+        },
+        {
+          "project_id": "official-campus-radar",
+          "path": "radar/tests/test_announcement_driven.py",
+          "selector": "WeChatOABoundaryTests.test_direct_exa_client_uses_frozen_command_and_scrubbed_environment"
+        }
+      ],
+      "rationale": "不存在必须同步修改的跨项目破坏。消费者仍读取 partial；可在已有客户端测试加入额外 summary 字段作兼容性回归，不能把生产者 extra=forbid 误认为消费者也禁止未知字段。"
+    },
+    {
+      "change_project": "canonical-wechat-oa",
+      "relationship": "direct_dependency",
+      "affected_projects": [],
+      "case_id": "impact-10",
+      "title": "优先核验默认数量调整",
+      "change_description": "canonical wechat-oa 仅把 CandidateHydrationPolicy.priority_count 的默认值从 10 改为 5；允许范围、maximum_attempts 的默认值20和上限20均不变，显式传入值仍优先。判断另一个样本项目是否必须同步修改，给出代码证据和既有测试。",
+      "contract": "仅省略 priority_count 的调用方会使用接收端新默认值。",
+      "criticality": "routine",
+      "evidence": [
+        {
+          "project_id": "canonical-wechat-oa",
+          "path": "src/wxcli/discovery/models.py",
+          "line_start": 192,
+          "line_end": 214,
+          "symbol": "CandidateHydrationPolicy",
+          "claim": "priority_count 默认 10，maximum_attempts 默认及上限 20；计数必须满足 priority<=maximum。"
+        },
+        {
+          "project_id": "official-campus-radar",
+          "path": "radar/services/wechat_oa_client.py",
+          "line_start": 464,
+          "line_end": 479,
+          "symbol": null,
+          "claim": "调用方显式传入 min(10,候选数) 与 min(20,候选数)，没有省略 hydration。"
+        }
+      ],
+      "required_tests": [
+        {
+          "project_id": "canonical-wechat-oa",
+          "path": "tests/test_candidate_ingestion.py",
+          "selector": "test_candidate_batch_schema_is_strict_bounded_and_browser_cannot_be_delegated"
+        },
+        {
+          "project_id": "official-campus-radar",
+          "path": "radar/tests/test_announcement_driven.py",
+          "selector": "WeChatOABoundaryTests.test_candidate_batch_has_no_browser_or_credentials_fields"
+        }
+      ],
+      "rationale": "radar 在正常构造路径显式写 priority_count=min(10,len(candidates))，未依赖默认值，因此不需要同步修改；可补充不省略字段和默认行为的回归断言。"
+    }
+  ]
+}

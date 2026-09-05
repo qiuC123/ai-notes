@@ -16,12 +16,13 @@ import time
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--pi-cli", required=True, type=Path, help="Installed Pi dist/bundle/cli.js")
+    parser.add_argument("--input-file", type=Path, help="Frozen blind input; defaults to the legacy v1 suite")
     args = parser.parse_args()
     here = Path(__file__).resolve().parent
     repo = here.parents[1]
     with tempfile.TemporaryDirectory(prefix="chemist-smoke-") as directory:
         env = {**os.environ, "PI_OFFLINE": "1", "PI_CODING_AGENT_DIR": str(Path(directory) / "config"),
-               "CHEMIST_PYTHON": sys.executable, "CHEMIST_INPUT": str(here.parent / "cross-project-impact-v1/blind-input.json"),
+               "CHEMIST_PYTHON": sys.executable, "CHEMIST_INPUT": str((args.input_file or here.parent / "cross-project-impact-v1/blind-input.json").resolve()),
                "CHEMIST_RUN_DIR": directory, "CHEMIST_RUN_ID": "smoke-no-model", "PYTHONPATH": str(repo / "src")}
         process = subprocess.Popen([
             "node", str(args.pi_cli.resolve()), "--mode", "rpc", "--no-session", "--no-approve",

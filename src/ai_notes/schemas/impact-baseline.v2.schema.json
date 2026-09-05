@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "impact-baseline.v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite_id",
+    "completed_at",
+    "blind_protocol",
+    "observed_repositories",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "impact-baseline.v2"
+    },
+    "suite_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "blind_protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "independent_task_id",
+        "blind_input_sha256",
+        "gold_answer_accessed_before_completion",
+        "ai_notes_repository_inspected"
+      ],
+      "properties": {
+        "independent_task_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "blind_input_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "gold_answer_accessed_before_completion": {
+          "const": false
+        },
+        "ai_notes_repository_inspected": {
+          "const": false
+        }
+      }
+    },
+    "observed_repositories": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "project_id",
+          "git_head"
+        ],
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "git_head": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "read_only": {
+            "const": true
+          }
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "case_id",
+          "project_assessments"
+        ],
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "pattern": "^impact-[0-9]{2}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "change_project": {
+            "type": "string",
+            "minLength": 1
+          },
+          "project_assessments": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "project_id",
+                "relationship",
+                "requires_change",
+                "evidence",
+                "required_tests",
+                "reason"
+              ],
+              "properties": {
+                "project_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "relationship": {
+                  "enum": [
+                    "direct_dependency",
+                    "semantic_similarity",
+                    "unrelated"
+                  ],
+                  "description": "Existing relationship between projects, independent of the impact of this specific change."
+                },
+                "evidence_level": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high"
+                  ]
+                },
+                "affected_contracts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "evidence": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "project_id",
+                      "path"
+                    ],
+                    "properties": {
+                      "project_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "path": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "line_start": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "line_end": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "symbol": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "note": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000
+                      }
+                    },
+                    "anyOf": [
+                      {
+                        "required": [
+                          "line_start",
+                          "line_end"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "symbol"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "required_tests": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "project_id",
+                      "path",
+                      "selector"
+                    ],
+                    "properties": {
+                      "project_id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "path": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "selector": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                },
+                "requires_change": {
+                  "type": "boolean",
+                  "description": "Whether this specific change requires synchronized modification. Existing direct dependency alone is insufficient; optional regression testing does not count."
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "requires_change": {
+                        "const": true
+                      }
+                    },
+                    "required": [
+                      "requires_change"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "relationship": {
+                        "const": "direct_dependency"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

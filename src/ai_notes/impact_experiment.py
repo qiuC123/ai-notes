@@ -5,7 +5,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from ai_notes.contracts import IMPACT_BASELINE_SCHEMA, IMPACT_SUITE_SCHEMA, validate_contract
+from ai_notes.contracts import (
+    IMPACT_BASELINE_SCHEMA, IMPACT_SUITE_SCHEMA, IMPACT_BASELINE_V2_SCHEMA,
+    IMPACT_SUITE_V2_SCHEMA, validate_contract,
+)
 from ai_notes.storage import canonical_json_bytes, sha256_bytes, write_bytes_atomic
 
 
@@ -50,7 +53,7 @@ def _validate_suite(suite: dict[str, Any]) -> None:
         affected = set(case["affected_projects"])
         if not affected <= known or case["change_project"] in affected:
             raise ValueError(f"Invalid affected projects in {case['case_id']}")
-        if case["relationship"] == "direct_dependency" and not affected:
+        if suite["schema_version"] == IMPACT_SUITE_SCHEMA and case["relationship"] == "direct_dependency" and not affected:
             raise ValueError(f"Direct dependency case {case['case_id']} requires an affected project")
         if case["relationship"] == "semantic_similarity" and affected:
             raise ValueError(f"Semantic-only case {case['case_id']} cannot declare an affected project")
@@ -64,14 +67,17 @@ def _validate_suite(suite: dict[str, Any]) -> None:
 
 
 def load_impact_suite(path: Path) -> dict[str, Any]:
-    suite = _load(path, IMPACT_SUITE_SCHEMA)
+    suite = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(suite, dict) or suite.get("schema_version") not in (IMPACT_SUITE_SCHEMA, IMPACT_SUITE_V2_SCHEMA):
+        raise ValueError("Unsupported impact suite version")
+    validate_contract(suite["schema_version"], suite)
     _validate_suite(suite)
     return suite
 
 
 def build_blind_input(suite: dict[str, Any]) -> dict[str, Any]:
     _validate_suite(suite)
-    return {
+    payload = {
         "schema_version": "impact-blind-input.v1",
         "suite_id": suite["suite_id"],
         "source_learning": {
@@ -139,6 +145,24 @@ def build_blind_input(suite: dict[str, Any]) -> dict[str, Any]:
             "test_fields": "project_id, path, selector",
         },
     }
+    if suite["schema_version"] == IMPACT_SUITE_V2_SCHEMA:
+        payload["schema_version"] = "impact-blind-input.v2"
+        payload["repository_read_rule"] = (
+            "Analyze pinned git_head blobs with the authorized read-only tools; ignore working-tree changes, "
+            "do not switch checkouts or modify sample repositories. The Chemist runtime uses git cat-file."
+        )
+        contract = payload["response_contract"]
+        contract["schema_version"] = IMPACT_BASELINE_V2_SCHEMA
+        contract["project_assessment_required"].insert(2, "requires_change")
+        contract["relationship_definition"] = "Existing project relationship, independent of this change's compatibility."
+        contract["requires_change_definition"] = (
+            "Required boolean: true only if the other project must change to preserve correct behavior for this case. "
+            "A direct_dependency may have requires_change=false. Optional regression tests do not imply true. "
+            "If uncertain, report incomplete rather than defaulting to false. True requires direct_dependency. "
+            "Impact scoring uses requires_change only, never relationship or free-text reason."
+        )
+        contract["test_fields"] = "project_id, path, exact selector (ClassName.test_method or top-level test_function)"
+    return payload
 
 
 def blind_input_sha256(suite: dict[str, Any]) -> str:
@@ -187,7 +211,8 @@ def _ratio(numerator: int, denominator: int) -> float:
 
 def score_impact_baseline(*, suite_path: Path, baseline_path: Path) -> ImpactScore:
     suite = load_impact_suite(suite_path)
-    baseline = _load(baseline_path, IMPACT_BASELINE_SCHEMA)
+    is_v2 = suite["schema_version"] == IMPACT_SUITE_V2_SCHEMA
+    baseline = _load(baseline_path, IMPACT_BASELINE_V2_SCHEMA if is_v2 else IMPACT_BASELINE_SCHEMA)
     if baseline["suite_id"] != suite["suite_id"]:
         raise ValueError("Baseline suite_id does not match the frozen suite")
     expected_blind_hash = blind_input_sha256(suite)
@@ -225,7 +250,7 @@ def score_impact_baseline(*, suite_path: Path, baseline_path: Path) -> ImpactSco
             raise ValueError(f"Baseline case {case_id} must assess every other project exactly once")
         predicted = {
             project_id for project_id, item in by_project.items()
-            if item["relationship"] == "direct_dependency"
+            if (item["requires_change"] if is_v2 else item["relationship"] == "direct_dependency")
         }
         expected = set(gold["affected_projects"])
         tp += len(predicted & expected)
