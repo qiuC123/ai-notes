@@ -22,9 +22,13 @@ if ($Action -eq 'Start') {
         throw 'Run mobile-configure.ps1 first'
     }
     $mobileArguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $mobileScript + '"'))
-    $mobileProcess = Start-Process powershell.exe -ArgumentList $mobileArguments -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput (Join-Path $mobileState 'launcher-out.log') `
-        -RedirectStandardError (Join-Path $mobileState 'launcher-error.log')
+    $mobileModulePath = $env:PSModulePath
+    try {
+        $env:PSModulePath = $null
+        $mobileProcess = Start-Process powershell.exe -ArgumentList $mobileArguments -WindowStyle Hidden -PassThru `
+            -RedirectStandardOutput (Join-Path $mobileState 'launcher-out.log') `
+            -RedirectStandardError (Join-Path $mobileState 'launcher-error.log')
+    } finally { $env:PSModulePath = $mobileModulePath }
     Write-Output ('Launcher PID: ' + $mobileProcess.Id + '; use Status to verify the Python process and connection.')
     return
 }

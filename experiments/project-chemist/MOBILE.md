@@ -37,6 +37,8 @@ $env:PYTHONPATH='src'
 .\experiments\project-chemist\mobile-configure.ps1
 ```
 
+若应用已经创建、但本机凭证保存失败，修复保存问题后运行 `mobile-register.py --app-id <已创建应用的App ID>`，重新连接同一个应用，不重复创建。注册前会用临时凭证验证本机加密保存能力。Windows PowerShell 子进程会清除继承的 PowerShell 7 模块路径，避免安全模块加载失败。
+
 App Secret 隐藏输入，凭证用 Windows DPAPI 加密，仅当前电脑当前 Windows 用户可解密，保存在 Git 忽略的 `work/mobile-chemist/feishu-credential.xml`。不复用其他业务机器人。
 
 随后启动本机服务，在应用的“事件与回调”中确认使用长连接接收事件及 `im.message.receive_v1`，按飞书提示发布应用版本并将自己加入可用范围。配置页面要求先检测到长连接时，先运行下方 Start，再保存配置。
