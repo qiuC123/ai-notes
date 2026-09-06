@@ -79,9 +79,13 @@ def main():
     parser.add_argument("--transport", choices=("sse", "auto"), default="sse")
     parser.add_argument("--profile", choices=("impact", "learning"), default="impact")
     parser.add_argument("--request-file", type=Path, help="bounded mobile question and previous discussion, learning only")
+    parser.add_argument("--session-file", type=Path, help="explicit persistent mobile Pi session; never used for blind runs")
     args = parser.parse_args()
     here = Path(__file__).resolve().parent
     learning = args.profile == "learning"
+    if args.session_file and (not learning or not args.request_file or
+                             not args.session_file.is_absolute() or not args.session_file.parent.is_dir()):
+        raise ValueError("Persistent session requires a mobile learning request and an absolute file path")
     extension_name = "learning-extension.ts" if learning else "extension.ts"
     worker_name = "learning_worker.py" if learning else "worker.py"
     result_name = "decisions.json" if learning else "baseline.json"
@@ -99,6 +103,10 @@ def main():
                    "请求涉及其他自有项目时，明确只有 Ai Notes 三个预选文件，不能断言其他项目情况。"
                    "外部树最多500项，源码是有限抽样，不代表完整阅读。所有证据仍以工具返回为准。\n"
                    + json.dumps(request, ensure_ascii=False))
+    if args.session_file:
+        prompt += ("\n本轮是新的分析任务：先调用 chemist_context 获取本轮队列和证据标识。"
+                   "历史对话可用于理解用户偏好，但历史提交不代表本轮已完成；"
+                   "历史证据须与本轮工具核对，最后重新调用 chemist_submit。")
     expected_tools = {"chemist_context", "chemist_read", "chemist_submit"} if learning else {
         "chemist_context", "chemist_inventory", "chemist_read", "chemist_search", "chemist_test_selectors", "chemist_submit"}
     output = Path(os.environ["CHEMIST_RUN_DIR"])
@@ -130,7 +138,8 @@ def main():
         json.dump({"transport": args.transport, "httpIdleTimeoutMs": 120000,
                    "retry": {"enabled": True, "maxRetries": 3, "baseDelayMs": 2000,
                              "provider": {"maxRetries": 0, "timeoutMs": 120000, "maxRetryDelayMs": 60000}}}, handle)
-    command = ["node", str(args.pi_cli.resolve()), "--mode", "rpc", "--no-session", "--approve",
+    session_args = ["--session", str(args.session_file)] if args.session_file else ["--no-session"]
+    command = ["node", str(args.pi_cli.resolve()), "--mode", "rpc", *session_args, "--approve",
                "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files",
                "--no-builtin-tools", "-e", str(here / extension_name)]
     events = queue.Queue()
@@ -209,6 +218,11 @@ def main():
                 if not model.get("id"):
                     raise RuntimeError("Pi has no configured model")
                 manifest["model"] = {"id": model["id"], "provider": model.get("provider"), "thinking_level": data.get("thinkingLevel")}
+                if args.session_file:
+                    if not data.get("sessionFile") or Path(data["sessionFile"]).resolve() != args.session_file.resolve() or not data.get("sessionId"):
+                        raise RuntimeError("Pi did not bind the requested persistent session")
+                    manifest["session"] = {"file": data["sessionFile"], "id": data["sessionId"],
+                                           "previous_message_count": data.get("messageCount", 0)}
                 have_model = True
             if kind == "extension_ui_request" and event.get("method") == "notify":
                 message = event.get("message", "")
@@ -241,6 +255,8 @@ def main():
             if kind in {"extension_error", "reader_error"}:
                 raise RuntimeError("Pi extension or RPC reader failed")
             if kind == "agent_settled" and started:
+                if args.session_file and (not args.session_file.is_file() or not args.session_file.stat().st_size):
+                    raise RuntimeError("Pi did not save the persistent session")
                 manifest["status"] = "sealed" if (output / result_name).is_file() else "incomplete"
                 code = 0 if manifest["status"] == "sealed" else 2
                 break

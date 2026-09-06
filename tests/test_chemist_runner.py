@@ -40,7 +40,7 @@ def startup():
 
 
 class ChemistRunnerTests(unittest.TestCase):
-    def run_fake(self, events, *, sealed=False, profile="impact", request=None):
+    def run_fake(self, events, *, sealed=False, profile="impact", request=None, persistent=False, wrong_session=False):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             if sealed:
@@ -53,6 +53,16 @@ class ChemistRunnerTests(unittest.TestCase):
                 request_path = output / "request.json"
                 request_path.write_text(json.dumps(request), encoding="utf-8")
                 request_args = ["--request-file", str(request_path)]
+            if persistent:
+                session_path = output / "session.jsonl"
+                session_path.write_text('{"type":"session","id":"fixture"}\n', encoding="utf-8")
+                request_args += ["--session-file", str(session_path)]
+                copied = json.loads(json.dumps(events))
+                for event in copied:
+                    if event.get("id") == "state":
+                        event["data"].update(sessionFile=str(output / "wrong.jsonl") if wrong_session else str(session_path),
+                                             sessionId="fixture", messageCount=12)
+                process = FakePi(copied)
             with patch.dict(os.environ, {"CHEMIST_RUN_DIR": directory, "CHEMIST_RUN_ID": "fixture", "CHEMIST_INPUT": str(queue_path)}), \
                  patch.object(sys, "argv", ["run.py", "--pi-cli", str(output / "pi.js"), "--profile", profile] + request_args), \
                  patch.object(runner.subprocess, "Popen", return_value=process) as popen, \
@@ -98,6 +108,24 @@ class ChemistRunnerTests(unittest.TestCase):
         self.assertIn("--no-builtin-tools", call.args[0])
         self.assertNotIn("--model", call.args[0])
         self.assertFalse(manifest["gold_sent"])
+        self.assertIn("--no-session", call.args[0])
+
+    def test_persistent_mobile_session_is_bound_and_blind_runs_stay_ephemeral(self):
+        events = startup()
+        events[-1]["message"] = "tools=chemist_context,chemist_read,chemist_submit"
+        request = {"question": "continue", "previous_discussion": ""}
+        code, manifest, _, call = self.run_fake(events + [{"type": "agent_settled"}], sealed=True,
+                                                profile="learning", request=request, persistent=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(manifest["session"]["previous_message_count"], 12)
+        self.assertIn("--session", call.args[0])
+        self.assertNotIn("--no-session", call.args[0])
+        code, _, sent, _ = self.run_fake(events, profile="learning", request=request,
+                                        persistent=True, wrong_session=True)
+        self.assertEqual(code, 1)
+        self.assertNotIn('"id": "analysis"', sent)
+        with self.assertRaises(ValueError):
+            self.run_fake(events, persistent=True)
 
     def test_settled_without_report_is_incomplete(self):
         code, manifest, _, _ = self.run_fake(startup() + [{"type": "agent_settled"}])

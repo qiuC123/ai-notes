@@ -14,6 +14,7 @@ import uuid
 from ai_notes.github import parse_github_url
 
 HELP = ("发送一个 GitHub 项目链接，可附问题；之后直接发文字继续追问。\n"
+        "追问会保留会话；新链接开始新项目，“新话题”重置上下文（保留历史文件）。\n"
         "发送“状态”查看最近任务，“结果”重发最近结果，“帮助”查看说明。\n"
         "本机串行分析，通常需要几分钟。仅做只读初步分析。\n"
         "自有项目范围：Ai Notes 的 storage.py、learning.py、review.py；尚不支持其他项目的本地代码。")
@@ -73,6 +74,8 @@ class Store:
                     sent INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0,
                     next_try REAL NOT NULL DEFAULT 0, created REAL NOT NULL);
             """)
+            if "session_file" not in {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}:
+                db.execute("ALTER TABLE jobs ADD COLUMN session_file TEXT")
 
     @contextmanager
     def connect(self):
@@ -127,6 +130,10 @@ class Store:
                 return
             previous = db.execute("SELECT j.* FROM conversations c JOIN jobs j ON c.last_job=j.id "
                                   "WHERE c.chat_id=? AND c.user_id=?", (chat, user)).fetchone()
+            if text == "新话题":
+                db.execute("DELETE FROM conversations WHERE chat_id=? AND user_id=?", (chat, user))
+                self.reply(db, mid, "已开始新话题，请发送 GitHub 项目链接。历史文件已保留；已排队任务仍会完成。", "new-topic")
+                return
             if text == "结果":
                 self.reply(db, mid, previous["report"] if previous and previous["report"] else "最近任务尚无结果。", "resend")
                 return
@@ -177,9 +184,22 @@ class Store:
 
     def complete(self, job, result):
         with self.connect() as db:
-            db.execute("UPDATE jobs SET status='done',queue_path=?,learning_root=?,report=?,result_path=? WHERE id=?",
-                       (result["queue_path"], result["learning_root"], result["report"], result["result_path"], job["id"]))
+            db.execute("UPDATE jobs SET status='done',queue_path=?,learning_root=?,report=?,result_path=?,session_file=? WHERE id=?",
+                       (result["queue_path"], result["learning_root"], result["report"], result["result_path"],
+                        result.get("session_file"), job["id"]))
             self.reply(db, job["message_id"], result["report"], "result")
+
+    def context_parent(self, job):
+        """Only successful ancestors in this topic supply history after a failure."""
+        parent_id = job["parent_id"]
+        while parent_id:
+            parent = self.get(parent_id)
+            if not parent or (parent["chat_id"], parent["user_id"]) != (job["chat_id"], job["user_id"]):
+                raise ValueError("Invalid conversation ancestry")
+            if parent["status"] == "done":
+                return parent
+            parent_id = parent["parent_id"]
+        return None
 
     def fail(self, job, error):
         with self.connect() as db:

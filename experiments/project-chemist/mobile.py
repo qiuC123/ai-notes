@@ -150,7 +150,7 @@ def worker(store, state, stop):
             if job:
                 LOG.info("job_started id=%s", job["id"])
                 try:
-                    result = execute_job(job, store.get(job["parent_id"]) if job["parent_id"] else None, state)
+                    result = execute_job(job, store.context_parent(job), state)
                 except Exception as error:
                     LOG.error("job_failed id=%s type=%s", job["id"], type(error).__name__)
                     store.fail(job, "采集、模型或引用校验未完成，请检查本机运行记录。")

@@ -116,6 +116,39 @@ class MobileQueueTests(unittest.TestCase):
         fresh.receive(event(), self.code)
         self.assertEqual(fresh.status()["jobs"], {"done": 1})
 
+    def test_persistent_session_survives_restart_failure_and_topic_reset(self):
+        self.pair()
+        self.store.receive(event(), self.code)
+        first = self.store.claim()
+        self.store.complete(first, {"queue_path": "q", "learning_root": "r", "report": "ok",
+                                    "result_path": "d", "session_file": "first.jsonl"})
+        self.store = core.Store(self.path)
+        self.store.receive(event("second", "继续"), self.code)
+        second = self.store.claim()
+        self.assertEqual(self.store.context_parent(second)["session_file"], "first.jsonl")
+        self.store.fail(second, "interrupted")
+        self.store.receive(event("third", "再试一次"), self.code)
+        third = self.store.claim()
+        self.assertEqual(self.store.context_parent(third)["id"], first["id"])
+        self.store.receive(event("reset", "新话题"), self.code)
+        # Completing an old in-flight job must not undo a topic reset.
+        self.store.complete(third, {"queue_path": "q", "learning_root": "r", "report": "ok",
+                                    "result_path": "d", "session_file": "third.jsonl"})
+        self.store.receive(event("orphan", "继续"), self.code)
+        self.assertIsNone(self.store.claim())
+        self.store.receive(event("new-link"), self.code)
+        self.assertIsNone(self.store.claim()["parent_id"])
+
+    def test_existing_database_migration_preserves_jobs(self):
+        self.pair()
+        self.store.receive(event(), self.code)
+        with self.store.connect() as db:
+            db.execute("ALTER TABLE jobs DROP COLUMN session_file")
+        fresh = core.Store(self.path)
+        job = fresh.claim()
+        self.assertEqual(job["message_id"], "m1")
+        self.assertIsNone(job["session_file"])
+
     def test_send_retry_keeps_uuid_and_preserves_chunk_order(self):
         with self.store.connect() as db:
             self.store.reply(db, "x", "文" * 4000, "result")
@@ -232,6 +265,9 @@ class MobileAnalysisTests(unittest.TestCase):
                 request = json.loads(Path(command[-1]).read_text(encoding="utf-8"))
                 self.assertEqual(request["previous_discussion"], "之前讨论")
                 (output / "decisions.json").write_text(json.dumps(result), encoding="utf-8")
+                session = Path(command[command.index("--session-file") + 1])
+                session.write_text('{"type":"session","id":"fixture"}\n'
+                                   '{"type":"message","message":{"role":"assistant"}}\n', encoding="utf-8")
                 return type("Completed", (), {"returncode": 0})()
 
             with patch("learning_worker.OWNED_PATHS", ("README.md",)), \
@@ -246,3 +282,39 @@ class MobileAnalysisTests(unittest.TestCase):
             self.assertIn("最多500项", response["report"])
             self.assertEqual(response["queue_path"], str(queue_path))
             self.assertFalse((root / "data/learning/ledger.jsonl").exists())
+
+    def test_session_checkpoint_is_copied_and_failed_attempt_cannot_change_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project, queue_path = write_prepared_run(root)
+            state = root / "state"
+            old = state / "runs" / "old" / "session.jsonl"
+            old.parent.mkdir(parents=True)
+            original = ('{"type":"session","id":"fixture"}\n'
+                        '{"type":"message","message":{"role":"assistant","content":"remember-42"}}\n')
+            old.write_text(original, encoding="utf-8")
+            parent = {"queue_path": str(queue_path), "learning_root": str(root),
+                      "report": "should not be injected", "session_file": str(old)}
+            job = {"id": "next", "question": "之前的数字？", "url": "https://github.com/a/b"}
+            real_run = analysis.subprocess.run
+
+            def failed_run(command, **kwargs):
+                if "env" not in kwargs or "CHEMIST_RUN_DIR" not in kwargs["env"]:
+                    return real_run(command, **kwargs)
+                session = Path(command[command.index("--session-file") + 1])
+                self.assertNotEqual(session, old)
+                self.assertEqual(session.read_text(encoding="utf-8"), original)
+                request = json.loads(Path(command[-1]).read_text(encoding="utf-8"))
+                self.assertEqual(request["previous_discussion"], "")
+                session.write_text(original + '{"unfinished":true}\n', encoding="utf-8")
+                return type("Completed", (), {"returncode": 1})()
+
+            with patch("learning_worker.OWNED_PATHS", ("README.md",)), \
+                 patch.object(analysis, "pi_cli", return_value=root / "pi.js"), \
+                 patch.object(analysis.subprocess, "run", side_effect=failed_run):
+                with self.assertRaises(RuntimeError):
+                    analysis.analyze(job, parent, state)
+            self.assertEqual(old.read_text(encoding="utf-8"), original)
+            old.write_text(original + '{truncated', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                analysis.validate_session(old)

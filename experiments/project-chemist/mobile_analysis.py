@@ -115,7 +115,17 @@ def analyze(job, parent, state):
                                         include_urls=urls, run_id=prepared.run_id)
         queue_path = prepared.queue_path
     reader = LearningReader(queue_path, root)
-    previous = (parent.get("report") or "")[-12000:] if parent else ""
+    # Each attempt extends an immutable successful checkpoint. Failed attempts
+    # never mutate the parent's history and are not replayed after a crash.
+    session_path = attempt / "session.jsonl"
+    inherited_session = parent.get("session_file") if parent else None
+    if inherited_session:
+        source = Path(inherited_session).resolve()
+        if not source.is_relative_to(state.resolve() / "runs"):
+            raise ValueError("Session must belong to this mobile state directory")
+        validate_session(source)
+        shutil.copyfile(source, session_path)
+    previous = (parent.get("report") or "")[-12000:] if parent and not inherited_session else ""
     request_path = attempt / "request.json"
     write_json_atomic(request_path, {"question": job["question"], "previous_discussion": previous})
     output = attempt / "pi"
@@ -127,7 +137,8 @@ def analyze(job, parent, state):
                CHEMIST_RUN_ID="mobile-" + job["id"])
     with (attempt / "runner.log").open("w", encoding="utf-8") as log:
         process = subprocess.run([sys.executable, str(HERE / "run.py"), "--pi-cli", str(pi_cli()),
-                                  "--profile", "learning", "--request-file", str(request_path)],
+                                  "--profile", "learning", "--session-file", str(session_path),
+                                  "--request-file", str(request_path)],
                                  cwd=attempt, env=env, stdout=log, stderr=log, check=False)
     if process.returncode:
         raise RuntimeError("Pi 分析或引用校验未完成；请检查本机运行记录后重试")
@@ -137,10 +148,26 @@ def analyze(job, parent, state):
     reader = LearningReader(queue_path, root)
     reader.submit({key: value for key, value in decisions.items()
                    if key not in {"schema_version", "queue_sha256", "run_id"}})
+    validate_session(session_path)
     report = render_report(decisions, reader.queue, job["question"])
     (attempt / "report.txt").write_text(report, encoding="utf-8")
     return {"queue_path": str(queue_path), "learning_root": str(root), "report": report,
-            "result_path": str(decisions_path)}
+            "result_path": str(decisions_path), "session_file": str(session_path)}
+
+
+def validate_session(path):
+    """Reject missing/truncated history instead of letting Pi silently reset it."""
+    with path.open(encoding="utf-8") as handle:
+        header = json.loads(next(handle))
+        if header.get("type") != "session" or not header.get("id"):
+            raise ValueError("Invalid Pi session header")
+        has_assistant = False
+        for line in handle:
+            entry = json.loads(line)
+            if entry.get("type") == "message" and entry.get("message", {}).get("role") == "assistant":
+                has_assistant = True
+        if not has_assistant:
+            raise ValueError("Pi session has no completed assistant history")
 
 
 if __name__ == "__main__":
