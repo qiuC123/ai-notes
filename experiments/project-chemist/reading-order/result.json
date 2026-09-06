@@ -1,0 +1,286 @@
+{
+  "source_commit": "3f3dd629c6cb51f75dd7eff4af99c58c4711a25b",
+  "spec_sha256": "a64c3c1f70cf72d96fdb59c88c8ef16f7cbd5ec1d8f500c8ae7fc5e36e667525",
+  "runner_sha256": "ad5a1f0abb135f53e12d87a6e6ba5b3b14d99e9f20706f31f58b72bfc61cdca1",
+  "packets_sha256": "1999b45b08f622fa0105076fa5283b6b95f6bf272f8ba6d5506bb1159ebfcdf5",
+  "source_sha256": {
+    "src/ai_notes/learning.py": "f53ae195a9d852990281ff5acdea5f31b9da9ae6651581db3294305b5ba173dc",
+    "src/ai_notes/review.py": "35b482fbfa88aaca27765789df2f809c9c7029cf9757d8e8a88ac6c301b9d33b",
+    "src/ai_notes/storage.py": "960c6f6dd1a3ed06f3f1ba180008afa513a751b42990685e8d2a4989c727e369"
+  },
+  "coverage_gate_passed": false,
+  "cost_gate": "requires_manual_elapsed_record",
+  "model_evaluation_performed": false,
+  "questions": [
+    {
+      "id": "selection",
+      "A": {
+        "chars": 5966,
+        "hits": 0,
+        "total": 4,
+        "critical_misses": [
+          "skip_invalid_or_large"
+        ],
+        "facts": [
+          {
+            "id": "priority",
+            "critical": false,
+            "covered_lines": 0,
+            "required_lines": 11,
+            "hit": false
+          },
+          {
+            "id": "limit",
+            "critical": false,
+            "covered_lines": 0,
+            "required_lines": 3,
+            "hit": false
+          },
+          {
+            "id": "prepare_call",
+            "critical": false,
+            "covered_lines": 0,
+            "required_lines": 2,
+            "hit": false
+          },
+          {
+            "id": "skip_invalid_or_large",
+            "critical": true,
+            "covered_lines": 0,
+            "required_lines": 8,
+            "hit": false
+          }
+        ],
+        "traceability_valid": true
+      },
+      "B": {
+        "chars": 5687,
+        "hits": 4,
+        "total": 4,
+        "critical_misses": [],
+        "facts": [
+          {
+            "id": "priority",
+            "critical": false,
+            "covered_lines": 11,
+            "required_lines": 11,
+            "hit": true
+          },
+          {
+            "id": "limit",
+            "critical": false,
+            "covered_lines": 3,
+            "required_lines": 3,
+            "hit": true
+          },
+          {
+            "id": "prepare_call",
+            "critical": false,
+            "covered_lines": 2,
+            "required_lines": 2,
+            "hit": true
+          },
+          {
+            "id": "skip_invalid_or_large",
+            "critical": true,
+            "covered_lines": 8,
+            "required_lines": 8,
+            "hit": true
+          }
+        ],
+        "traceability_valid": true
+      }
+    },
+    {
+      "id": "frozen_intake",
+      "A": {
+        "chars": 5966,
+        "hits": 0,
+        "total": 5,
+        "critical_misses": [
+          "include_failure",
+          "partial_status"
+        ],
+        "facts": [
+          {
+            "id": "same_input",
+            "critical": false,
+            "covered_lines": 0,
+            "required_lines": 7,
+            "hit": false
+          },
+          {
+            "id": "frozen_commit",
+            "critical": false,
+            "covered_lines": 0,
+            "required_lines": 7,
+            "hit": false
+          },
+          {
+            "id": "pinned_include",
+            "critical": false,
+            "covered_lines": 0,
+            "required_lines": 7,
+            "hit": false
+          },
+          {
+            "id": "include_failure",
+            "critical": true,
+            "covered_lines": 0,
+            "required_lines": 2,
+            "hit": false
+          },
+          {
+            "id": "partial_status",
+            "critical": true,
+            "covered_lines": 0,
+            "required_lines": 2,
+            "hit": false
+          }
+        ],
+        "traceability_valid": true
+      },
+      "B": {
+        "chars": 5931,
+        "hits": 3,
+        "total": 5,
+        "critical_misses": [
+          "partial_status"
+        ],
+        "facts": [
+          {
+            "id": "same_input",
+            "critical": false,
+            "covered_lines": 6,
+            "required_lines": 7,
+            "hit": false
+          },
+          {
+            "id": "frozen_commit",
+            "critical": false,
+            "covered_lines": 7,
+            "required_lines": 7,
+            "hit": true
+          },
+          {
+            "id": "pinned_include",
+            "critical": false,
+            "covered_lines": 7,
+            "required_lines": 7,
+            "hit": true
+          },
+          {
+            "id": "include_failure",
+            "critical": true,
+            "covered_lines": 2,
+            "required_lines": 2,
+            "hit": true
+          },
+          {
+            "id": "partial_status",
+            "critical": true,
+            "covered_lines": 0,
+            "required_lines": 2,
+            "hit": false
+          }
+        ],
+        "traceability_valid": true
+      }
+    },
+    {
+      "id": "validation",
+      "A": {
+        "chars": 5966,
+        "hits": 0,
+        "total": 5,
+        "critical_misses": [
+          "learning_only"
+        ],
+        "facts": [
+          {
+            "id": "external_quote",
+            "critical": false,
+            "covered_lines": 0,
+            "required_lines": 12,
+            "hit": false
+          },
+          {
+            "id": "project_drift",
+            "critical": false,
+            "covered_lines": 0,
+            "required_lines": 5,
+            "hit": false
+          },
+          {
+            "id": "owned_reference",
+            "critical": false,
+            "covered_lines": 0,
+            "required_lines": 16,
+            "hit": false
+          },
+          {
+            "id": "entrypoint",
+            "critical": false,
+            "covered_lines": 0,
+            "required_lines": 6,
+            "hit": false
+          },
+          {
+            "id": "learning_only",
+            "critical": true,
+            "covered_lines": 0,
+            "required_lines": 9,
+            "hit": false
+          }
+        ],
+        "traceability_valid": true
+      },
+      "B": {
+        "chars": 5954,
+        "hits": 3,
+        "total": 5,
+        "critical_misses": [
+          "learning_only"
+        ],
+        "facts": [
+          {
+            "id": "external_quote",
+            "critical": false,
+            "covered_lines": 12,
+            "required_lines": 12,
+            "hit": true
+          },
+          {
+            "id": "project_drift",
+            "critical": false,
+            "covered_lines": 5,
+            "required_lines": 5,
+            "hit": true
+          },
+          {
+            "id": "owned_reference",
+            "critical": false,
+            "covered_lines": 2,
+            "required_lines": 16,
+            "hit": false
+          },
+          {
+            "id": "entrypoint",
+            "critical": false,
+            "covered_lines": 6,
+            "required_lines": 6,
+            "hit": true
+          },
+          {
+            "id": "learning_only",
+            "critical": true,
+            "covered_lines": 2,
+            "required_lines": 9,
+            "hit": false
+          }
+        ],
+        "traceability_valid": true
+      }
+    }
+  ]
+}

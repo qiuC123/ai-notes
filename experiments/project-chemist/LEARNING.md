@@ -19,3 +19,5 @@ E:\devlop\ai-notes\experiments\project-chemist\learning-start.ps1 -QueueFile <le
 本轮候选：Aider 与 Repomix；选择 Aider 的上下文选取方法作为学习对象。候选不是采用建议，具体结论由 Pi 读源码后提出、主对话核验并交付。结果只作为这一次有人工限定证据范围的可行性实验。
 
 [2026-09-06 实际结果与主复核](results/2026-09-06-aider-learning.md)：运行成功，提出一个任务相关阅读顺序的候选；引用校验通过，实际收益待对照实验。
+
+后续[阅读顺序对照](results/2026-09-06-reading-order.md)已执行：参考证据覆盖增加，但漏掉关键反例，未通过预设标准。没有实施到正式流程；没有证明 Agent 理解质量提升。
