@@ -1,9 +1,10 @@
 [CmdletBinding()]
 param(
     [ValidateSet('serve','doctor','status','check-app','init')][string]$Action = 'serve',
-    [string]$StateDirectory = (Join-Path $PSScriptRoot '..\..\work\mobile-chemist')
+    [string]$StateDirectory
 )
 $ErrorActionPreference = 'Stop'
+if (-not $StateDirectory) { $StateDirectory = Join-Path $PSScriptRoot '..\..\work\mobile-chemist' }
 $mobileRepo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $mobileNames = @('PYTHONPATH','PYTHONIOENCODING','CHEMIST_FEISHU_APP_ID','CHEMIST_FEISHU_APP_SECRET')
 $mobileSaved = @{}

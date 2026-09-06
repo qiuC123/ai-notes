@@ -1,6 +1,7 @@
 [CmdletBinding()]
-param([string]$StateDirectory = (Join-Path $PSScriptRoot '..\..\work\mobile-chemist'))
+param([string]$StateDirectory)
 $ErrorActionPreference = 'Stop'
+if (-not $StateDirectory) { $StateDirectory = Join-Path $PSScriptRoot '..\..\work\mobile-chemist' }
 $mobileRepo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $mobilePython = Join-Path $mobileRepo '.venv\Scripts\python.exe'
 $mobileSavedPath = $env:PYTHONPATH

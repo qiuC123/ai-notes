@@ -32,9 +32,9 @@ if ($Action -eq 'Start') {
     Write-Output ('Launcher PID: ' + $mobileProcess.Id + '; use Status to verify the Python process and connection.')
     return
 }
-$mobileProcesses | Select-Object ProcessId, ParentProcessId, CreationDate
+$mobileProcesses | Select-Object ProcessId, ParentProcessId, CreationDate | Format-Table -AutoSize
 foreach ($mobileProcess in $mobileProcesses) {
     Get-NetTCPConnection -OwningProcess $mobileProcess.ProcessId -State Established -ErrorAction SilentlyContinue |
-        Select-Object OwningProcess, RemoteAddress, RemotePort, State
+        Select-Object OwningProcess, RemoteAddress, RemotePort, State | Format-Table -AutoSize
 }
 & $mobileScript -Action status
