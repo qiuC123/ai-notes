@@ -73,3 +73,18 @@ finally:
 ```
 
 OBS 需要保持运行才能连接。此客户端独立于 CLI-Anything；上面的配置编辑 CLI 没有因此增加录制控制命令。
+
+## 实际录屏验证（2026-09-06）
+
+已用 WebSocket 建立独立场景 `Douyin Recording` 和窗口来源 `Douyin Chrome`，通过 Windows Graphics Capture 采集 Chrome 视频窗口，并启用该来源的应用音频。原有场景与来源保留。
+
+Chrome 的旧标签页读取曾报 `Debugger unattached`；本次接管已有空白标签页并导航到视频后，页面读取、关闭登录提示、播放控制恢复正常。无需为本次操作开放 CDP。
+
+实测 `StartRecord`、`GetRecordStatus`、`StopRecord` 成功；对短录制执行 FFmpeg 音量检测，平均音量 -21.6 dB、峰值 -6.2 dB，确认不是静音音轨。`StartRecord` 返回后立刻查状态可能仍显示未开始，需要等待初始化后核实。
+
+产物保存在被 Git 忽略的 `outputs/recordings/`，不把大视频提交到仓库：
+
+- `douyin-7682114944347219402.mp4`：约 5 分 43 秒，保留画面字幕与声音。
+- `视频内容笔记.md`：按录屏字幕整理的方法、渠道和时间索引，另标明针对本项目的建议。
+
+窗口来源设置后首次截图曾报 `Failed to render screenshot`；等采集初始化后重试成功。后期导出的 FFmpeg NVENC 要求比本机驱动更高的 API 版本，因此改用 `libx264` 软件编码；OBS 自身的 NVENC 录制正常，无需为此更新驱动。
