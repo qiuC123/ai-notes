@@ -21,3 +21,5 @@ E:\devlop\ai-notes\experiments\project-chemist\learning-start.ps1 -QueueFile <le
 [2026-09-06 实际结果与主复核](results/2026-09-06-aider-learning.md)：运行成功，提出一个任务相关阅读顺序的候选；引用校验通过，实际收益待对照实验。
 
 后续[阅读顺序对照](results/2026-09-06-reading-order.md)已执行：参考证据覆盖增加，但漏掉关键反例，未通过预设标准。没有实施到正式流程；没有证明 Agent 理解质量提升。
+
+[Repomix 真实共学](results/2026-09-06-repomix-learning.md)已完成：发现本地文件树限额的呈现缺口，建议先补充范围说明。首次提交的 learning-only 冲突被拒绝并自行修正，最终校验通过；正式功能未改。
