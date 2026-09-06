@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "source_commit": "3f3dd629c6cb51f75dd7eff4af99c58c4711a25b",
+  "files": ["src/ai_notes/learning.py", "src/ai_notes/review.py", "src/ai_notes/storage.py"],
+  "budget": 6000,
+  "reserve": 1200,
+  "chunk_lines": 20,
+  "questions": [
+    {
+      "id": "selection",
+      "question": "focus_files 如何为 prepare_learning 选择文件？数量、文件大小和路径有效性会怎样限制结果？",
+      "symbols": ["focus_files", "max_focus_files"],
+      "gold": [
+        {"id": "priority", "path": "src/ai_notes/storage.py", "start": 156, "end": 166, "critical": false},
+        {"id": "limit", "path": "src/ai_notes/storage.py", "start": 168, "end": 170, "critical": false},
+        {"id": "prepare_call", "path": "src/ai_notes/learning.py", "start": 494, "end": 495, "critical": false},
+        {"id": "skip_invalid_or_large", "path": "src/ai_notes/storage.py", "start": 171, "end": 178, "critical": true}
+      ]
+    },
+    {
+      "id": "frozen_intake",
+      "question": "prepare_learning 扩充已有队列时如何保持 commit_sha 和输入一致？parse_pinned_blob_url 接入失败能否仍算完整成功？",
+      "symbols": ["prepare_learning", "commit_sha", "parse_pinned_blob_url"],
+      "gold": [
+        {"id": "same_input", "path": "src/ai_notes/learning.py", "start": 500, "end": 506, "critical": false},
+        {"id": "frozen_commit", "path": "src/ai_notes/learning.py", "start": 514, "end": 520, "critical": false},
+        {"id": "pinned_include", "path": "src/ai_notes/learning.py", "start": 607, "end": 613, "critical": false},
+        {"id": "include_failure", "path": "src/ai_notes/learning.py", "start": 614, "end": 615, "critical": true},
+        {"id": "partial_status", "path": "src/ai_notes/learning.py", "start": 650, "end": 651, "critical": true}
+      ]
+    },
+    {
+      "id": "validation",
+      "question": "validate_learning_decisions 和 _validate_cross_contracts 如何核验双方证据？引用有效是否足以允许 learning-only 来源做实验？",
+      "symbols": ["validate_learning_decisions", "_validate_cross_contracts"],
+      "gold": [
+        {"id": "external_quote", "path": "src/ai_notes/review.py", "start": 180, "end": 191, "critical": false},
+        {"id": "project_drift", "path": "src/ai_notes/review.py", "start": 212, "end": 216, "critical": false},
+        {"id": "owned_reference", "path": "src/ai_notes/review.py", "start": 217, "end": 232, "critical": false},
+        {"id": "entrypoint", "path": "src/ai_notes/review.py", "start": 250, "end": 255, "critical": false},
+        {"id": "learning_only", "path": "src/ai_notes/review.py", "start": 234, "end": 242, "critical": true}
+      ]
+    }
+  ]
+}
