@@ -24,17 +24,29 @@ def digest(value):
 
 
 def project_url(text):
-    links = re.findall(r"https?://[^\s<>\"）)]+", text)
+    # Feishu displays clickable links even when the original text has no scheme.
+    # Match whole explicit URLs first so an embedded github.com cannot hide an alien host.
+    links = re.findall(
+        r"https?://[^\s<>\"'`，。；！？、（）\[\](),]+|"
+        r"(?<![A-Za-z0-9_./@:-])(?:www\.)?github\.com/[^\s<>\"'`，。；！？、（）\[\](),]+",
+        text, flags=re.IGNORECASE)
     if not links:
         return None
-    if len(links) != 1:
+    normalized = []
+    for link in links:
+        url = link.rstrip(".;；！!？?")
+        if not re.match(r"https?://", url, flags=re.IGNORECASE):
+            url = "https://" + url
+        url = re.sub(r"^https?://(?:www\.)?github\.com/", "https://github.com/", url, flags=re.IGNORECASE)
+        try:
+            parse_github_url(url)
+        except ValueError:
+            raise ValueError("目前只支持公开 GitHub 项目、分支、Release、Issue 或 PR 链接。") from None
+        if url not in normalized:
+            normalized.append(url)
+    if len(normalized) != 1:
         raise ValueError("每次请发送一个 GitHub 链接。")
-    url = links[0].rstrip("。，,.;；！!？?")
-    try:
-        parse_github_url(url)
-    except ValueError:
-        raise ValueError("目前只支持公开 GitHub 项目、分支、Release、Issue 或 PR 链接。") from None
-    return url
+    return normalized[0]
 
 
 class Store:

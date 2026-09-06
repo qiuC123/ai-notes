@@ -75,6 +75,34 @@ class MobileQueueTests(unittest.TestCase):
         self.store.receive(event("other", "继续", chat="c2"), self.code)
         self.assertEqual(self.store.status()["jobs"], {"queued": 1})
 
+    def test_bare_link_with_chinese_question_starts_analysis_and_followup(self):
+        self.pair()
+        self.store.receive(event("bare", "github.com/gastownhall/gastown，介绍一下这个项目"), self.code)
+        self.store.receive(event("follow", "核心机制呢？"), self.code)
+        first, second = self.store.claim(), self.store.claim()
+        self.assertEqual(first["url"], "https://github.com/gastownhall/gastown")
+        self.assertIn("介绍一下", first["question"])
+        self.assertEqual(second["parent_id"], first["id"])
+
+    def test_link_wrappers_repeated_display_links_and_host_boundaries(self):
+        expected = "https://github.com/gastownhall/gastown"
+        for text in ("github.com/gastownhall/gastown", "看看github.com/gastownhall/gastown，介绍一下",
+                     "（github.com/gastownhall/gastown）", "www.github.com/gastownhall/gastown",
+                     "http://github.com/gastownhall/gastown", "[项目](" + expected + ")",
+                     "[github.com/gastownhall/gastown](" + expected + ")"):
+            with self.subTest(text=text):
+                self.assertEqual(core.project_url(text), expected)
+        for text in ("https://evil.test/github.com/a/b", "https://github.com.evil.test/a/b",
+                     "https://evil.test/?next=github.com/a/b", "github.com/a/b github.com/a/c"):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                core.project_url(text)
+        for text in ("evilgithub.com/a/b", "https://evil.test@github.com/a/b"):
+            with self.subTest(text=text):
+                if text.startswith("https:"):
+                    with self.assertRaises(ValueError): core.project_url(text)
+                else:
+                    self.assertIsNone(core.project_url(text))
+
     def test_restart_recovers_jobs_and_persisted_outbox_without_replaying_finished_job(self):
         self.pair()
         self.store.receive(event(), self.code)
