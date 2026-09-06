@@ -40,7 +40,7 @@ def startup():
 
 
 class ChemistRunnerTests(unittest.TestCase):
-    def run_fake(self, events, *, sealed=False, profile="impact"):
+    def run_fake(self, events, *, sealed=False, profile="impact", request=None):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             if sealed:
@@ -48,13 +48,33 @@ class ChemistRunnerTests(unittest.TestCase):
             queue_path = output / "queue.json"
             queue_path.write_text('{}', encoding="utf-8")
             process = FakePi(events)
+            request_args = []
+            if request is not None:
+                request_path = output / "request.json"
+                request_path.write_text(json.dumps(request), encoding="utf-8")
+                request_args = ["--request-file", str(request_path)]
             with patch.dict(os.environ, {"CHEMIST_RUN_DIR": directory, "CHEMIST_RUN_ID": "fixture", "CHEMIST_INPUT": str(queue_path)}), \
-                 patch.object(sys, "argv", ["run.py", "--pi-cli", str(output / "pi.js"), "--profile", profile]), \
+                 patch.object(sys, "argv", ["run.py", "--pi-cli", str(output / "pi.js"), "--profile", profile] + request_args), \
                  patch.object(runner.subprocess, "Popen", return_value=process) as popen, \
                  patch("builtins.print"):
                 code = runner.main()
             manifest = json.loads((output / "run-manifest.json").read_text(encoding="utf-8"))
             return code, manifest, process.sent, popen.call_args
+
+    def test_mobile_request_is_bound_and_only_allowed_for_learning(self):
+        request = {"question": "mobile-question", "previous_discussion": "earlier-discussion"}
+        events = startup()
+        events[-1]["message"] = "tools=chemist_context,chemist_read,chemist_submit"
+        code, manifest, sent, _ = self.run_fake(events + [{"type": "agent_settled"}], sealed=True,
+                                               profile="learning", request=request)
+        self.assertEqual(code, 0)
+        self.assertIn("request_file_sha256", manifest)
+        self.assertIn("mobile-question", sent)
+        self.assertIn("earlier-discussion", sent)
+        with self.assertRaises(ValueError):
+            self.run_fake(events, request=request)
+        with self.assertRaises(ValueError):
+            self.run_fake(events, profile="learning", request={"question": []})
 
     def test_learning_profile_uses_new_report_and_three_tools(self):
         events = startup()
