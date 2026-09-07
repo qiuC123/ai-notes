@@ -51,6 +51,16 @@ def project_url(text):
 
 
 class Store:
+    help_text = HELP
+    new_topic_text = "已开始新话题，请发送 GitHub 项目链接。历史文件已保留；已排队任务仍会完成。"
+    retry_text = "可重新发链接重试。"
+
+    def request_target(self, text, previous):
+        url = project_url(text)
+        if not url and not previous:
+            raise ValueError("请先发送一个 GitHub 项目链接，再继续追问。")
+        return url
+
     def __init__(self, path: Path):
         self.path = path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -123,16 +133,16 @@ class Store:
             if not inserted:
                 return
             if text.startswith("配对 "):
-                self.reply(db, mid, "配对成功。\n" + HELP, "paired")
+                self.reply(db, mid, "配对成功。\n" + self.help_text, "paired")
                 return
             if text in {"帮助", "help", "/help"} or not text:
-                self.reply(db, mid, HELP, "help")
+                self.reply(db, mid, self.help_text, "help")
                 return
             previous = db.execute("SELECT j.* FROM conversations c JOIN jobs j ON c.last_job=j.id "
                                   "WHERE c.chat_id=? AND c.user_id=?", (chat, user)).fetchone()
             if text == "新话题":
                 db.execute("DELETE FROM conversations WHERE chat_id=? AND user_id=?", (chat, user))
-                self.reply(db, mid, "已开始新话题，请发送 GitHub 项目链接。历史文件已保留；已排队任务仍会完成。", "new-topic")
+                self.reply(db, mid, self.new_topic_text, "new-topic")
                 return
             if text == "结果":
                 self.reply(db, mid, previous["report"] if previous and previous["report"] else "最近任务尚无结果。", "resend")
@@ -148,9 +158,7 @@ class Store:
             try:
                 if len(text) > 1800:
                     raise ValueError("消息过长，请缩短到1800字以内。")
-                url = project_url(text)
-                if not url and not previous:
-                    raise ValueError("请先发送一个 GitHub 项目链接，再继续追问。")
+                url = self.request_target(text, previous)
                 if db.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')").fetchone()[0] >= 20:
                     raise ValueError("已有20个待处理任务，请稍后再发。")
             except ValueError as error:
@@ -204,7 +212,7 @@ class Store:
     def fail(self, job, error):
         with self.connect() as db:
             db.execute("UPDATE jobs SET status='failed',error=? WHERE id=?", (error, job["id"]))
-            self.reply(db, job["message_id"], f"任务 {job['id'][:8]} 未完成：{error}\n可重新发链接重试。", "failed")
+            self.reply(db, job["message_id"], f"任务 {job['id'][:8]} 未完成：{error}\n{self.retry_text}", "failed")
 
     def pending_reply(self):
         with self.connect() as db:

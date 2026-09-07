@@ -120,7 +120,7 @@ class Feishu:
         client.start()
 
 
-def execute_job(job, parent, state):
+def execute_job(job, parent, state, analysis_script=None):
     request_dir = state / "requests"
     request_dir.mkdir(exist_ok=True)
     request_path, result_path = request_dir / (job["id"] + ".json"), request_dir / (job["id"] + ".result.json")
@@ -129,7 +129,7 @@ def execute_job(job, parent, state):
     env = {key: value for key, value in os.environ.items() if not key.startswith("CHEMIST_FEISHU_")}
     env.update(PYTHONPATH=str(REPO / "src"), PYTHONIOENCODING="utf-8")
     with (request_dir / (job["id"] + ".log")).open("a", encoding="utf-8") as log:
-        process = subprocess.Popen([sys.executable, str(HERE / "mobile_analysis.py"), str(request_path), str(result_path)],
+        process = subprocess.Popen([sys.executable, str(analysis_script or HERE / "mobile_analysis.py"), str(request_path), str(result_path)],
                                    cwd=REPO, env=env, stdout=log, stderr=log,
                                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                                    start_new_session=os.name != "nt")
@@ -143,14 +143,14 @@ def execute_job(job, parent, state):
     return json.loads(result_path.read_text(encoding="utf-8"))
 
 
-def worker(store, state, stop):
+def worker(store, state, stop, analysis_script=None):
     while not stop.is_set():
         try:
             job = store.claim()
             if job:
                 LOG.info("job_started id=%s", job["id"])
                 try:
-                    result = execute_job(job, store.context_parent(job), state)
+                    result = execute_job(job, store.context_parent(job), state, analysis_script)
                 except Exception as error:
                     LOG.error("job_failed id=%s type=%s", job["id"], type(error).__name__)
                     store.fail(job, "采集、模型或引用校验未完成，请检查本机运行记录。")
@@ -181,11 +181,11 @@ def sender(store, api, stop):
         stop.wait(1)
 
 
-def main():
+def main(argv=None, *, store_type=Store, analysis_script=None, default_state=None):
     parser = argparse.ArgumentParser(description="Feishu mobile co-learning")
     parser.add_argument("command", choices=("init", "doctor", "status", "serve", "check-app"))
-    parser.add_argument("--state", type=Path, default=REPO / "work/mobile-chemist")
-    args = parser.parse_args()
+    parser.add_argument("--state", type=Path, default=default_state or REPO / "work/mobile-chemist")
+    args = parser.parse_args(argv)
     state = args.state.resolve()
     config_path = state / "config.json"
     if args.command == "init":
@@ -202,7 +202,7 @@ def main():
         return 0 if checks["config"] and checks["credentials"] else 2
     if not config_path.is_file():
         raise RuntimeError("请先运行 init")
-    store = Store(state / "inbox.sqlite3")
+    store = store_type(state / "inbox.sqlite3")
     if args.command == "status":
         print(json.dumps(store.status(), ensure_ascii=False))
         return 0
@@ -222,7 +222,7 @@ def main():
         logging.basicConfig(filename=state / "service.log", level=logging.INFO,
                             format="%(asctime)s %(levelname)s %(message)s")
         stop = threading.Event()
-        threading.Thread(target=worker, args=(store, state, stop), daemon=True).start()
+        threading.Thread(target=worker, args=(store, state, stop, analysis_script), daemon=True).start()
         threading.Thread(target=sender, args=(store, api, stop), daemon=True).start()
         LOG.info("service_started pid=%s", os.getpid())
         write_json_atomic(state / "service.json", {"pid": os.getpid(), "started": time.time()})
