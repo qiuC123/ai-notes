@@ -1,6 +1,6 @@
 # 周报栏目与来源对照
 
-2026-09-07。根据用户确认的方向整合：实用开源项目为主，兼顾开发机会；合并语言栏目，Skills、AI 应用、Agent 框架与编排、MCP 服务与连接器、模型与运行工具、游戏、开源书籍与教程分别独立，与开源项目组成八个并列栏目。AIHOT 等聚合平台另列。
+2026-09-07。根据用户确认的方向整合：实用开源项目为主，兼顾开发机会；合并语言栏目，Skills、AI 应用、Agent 框架与编排、MCP 服务与连接器、模型与运行工具、游戏及“博客、帖子与访谈”分别独立，与开源项目组成八个并列栏目。AIHOT 等聚合平台另列。
 
 这是来源规划与当前状态清单，不表示下列来源已全部接入。现有 12 个 Release 源见 `config/ai_notes_sources.yaml`，雷达搜索策略见 `experiments/idea-radar/radar_analysis.py`；旧 AIHOT 等配置见 `config/sources.yaml`。完整内容分类与卡片字段见 [输出分类](WEEKLY_PROJECT_DIGEST_OUTPUT_DRAFT.md)。用户已确认分类，本轮同步到周报编辑规则，没有修改采集器或定时任务。
 
@@ -15,9 +15,11 @@
 | MCP 服务与连接器 | MCP 规范官方仓库、具体 MCP 服务作者仓库和文档 | 协议实质变化、连接的服务、工具能力、认证 / 调用费用 | 规范已有 Release 配置；具体 MCP 服务按候选读取。官方 Registry 另列为发现入口 |
 | 模型与运行工具 | Ollama、vLLM、SGLang、Transformers 官方仓库；[Hugging Face 模型作者页面](https://huggingface.co/models) | 新硬件支持、可运行条件、用户能感知的能力与性能变化 | 前四个已有 Release 配置；HF 模型来源仅旧配置保留，本轮未恢复定时采集 |
 | 游戏 | [itch.io](https://itch.io/) 作者游戏页 / devlog / [Game Jam 作品](https://itch.io/jams)、[Steam](https://store.steampowered.com/) 游戏页 / 公告 / 玩家评论、[CrazyGames](https://www.crazygames.com/) 与 [Poki](https://poki.com/) 具体游戏页、游戏作者 GitHub | 核心玩法、设备、试玩、更新、玩家反馈、开源状态 | itch.io / CrazyGames / Poki 已在雷达游戏查询词内；本轮入口可读不代表游戏已试玩、各平台 API 已接通；Steam 单游戏深读建议补充 |
-| 开源书籍与教程 | 作者书籍仓库、官方教程、课程作者原站、可操作示例 | 教什么、适合谁、前置知识、练习和可用性 | 目前按链接阅读，没有专门固定来源；每项核对许可，免费阅读不等于开源 |
+| 博客、帖子与访谈 | 作者个人博客、团队技术博客、HN / Reddit 等社区原帖、采访首发页面、播客或视频访谈的原始节目与可核对文字稿 | 核心观点、开发方法、产品经验、复盘过程，以及可借鉴的做法 | 来源规划以按需阅读原文为主，没有专门固定订阅；具体平台的访问与获取情况逐条记录，不代表已接入全部渠道 |
 
 同一宿主平台内也要区分发布者：GitHub 作者仓库是项目原文，GitHub Trending 是发现榜单；Steam 商店描述来自开发商，Steam 评论来自用户；Hugging Face 模型卡是作者陈述，不是独立评测。
+
+博客、帖子与访谈作为精选内容时，推荐的是文章或谈话本身的阅读价值；作为项目证据时，归入对应项目的来源。聚合站转述先回到原文，访谈和个人复盘中的收入、效果等陈述仍按作者自述标注。
 
 上述是周报输出分类，不直接沿用采集配置的 `category` 字段。成品应用的内容与同一项目独立提供的开发 SDK，按本次介绍的具体交付物归类，每个条目只进入一个主栏目。
 
@@ -34,7 +36,7 @@
 | [GitHub Trending](https://github.com/trending) | GitHub 热门发现榜单 | 各类开源工具、Skills 和游戏 | 建议作为补充发现入口，尚无专属采集器；不按 stars 直接选入 |
 | [MCP Registry](https://registry.modelcontextprotocol.io/) | 官方维护的 MCP 服务注册目录 | MCP 服务与连接器 | 本轮已读到入口，建议补充；目录官方不表示所有服务均由官方制作、审计或认证 |
 | [SteamDB](https://steamdb.info/) | 第三方 Steam 数据整理平台 | 游戏、游戏开发机会 | 已在雷达游戏查询词内；本轮主页可读，玩家数、价格等必须具体核对，不能把热度当成销量或收入 |
-| [阮一峰科技爱好者周刊](https://github.com/ruanyf/weekly) | 中文编辑精选、每周五发布 | 开源项目、开源书籍与教程、部分 AI 应用与工具 | 本轮核验官方仓库，新增备选，尚未进入固定采集；与 HelloGitHub 做项目去重 |
+| [阮一峰科技爱好者周刊](https://github.com/ruanyf/weekly) | 中文编辑精选、每周五发布 | 开源项目、博客、帖子与访谈、部分 AI 应用与工具 | 本轮核验官方仓库，新增备选，尚未进入固定采集；与 HelloGitHub 做项目去重 |
 
 CrazyGames / Poki 的目录、itch.io / Steam 的榜单也可以用于发现；上表游戏行只把具体游戏说明与试玩入口作为作品资料来源，不把榜单排名当玩法或需求证据。
 
