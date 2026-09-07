@@ -2,7 +2,7 @@
 
 2026-09-07。根据用户确认的方向整合：实用开源项目为主，兼顾开发机会；合并语言栏目，Skills、AI 应用、Agent 框架与编排、MCP 服务与连接器、模型与运行工具、游戏及“博客、帖子与访谈”分别独立，与开源项目组成八个并列栏目。AIHOT 等聚合平台另列。
 
-这是来源规划与当前状态清单，不表示下列来源已全部接入。现有 12 个 Release 源见 `config/ai_notes_sources.yaml`，雷达搜索策略见 `experiments/idea-radar/radar_analysis.py`；旧 AIHOT 等配置见 `config/sources.yaml`。完整内容分类与卡片字段见 [输出分类](WEEKLY_PROJECT_DIGEST_OUTPUT_DRAFT.md)。用户已确认分类，本轮同步到周报编辑规则，没有修改采集器或定时任务。
+这是来源规划与当前状态清单，不表示下列来源已全部接入。现有 12 个 Release 源见 `config/ai_notes_sources.yaml`，雷达搜索策略见 `experiments/idea-radar/radar_analysis.py`；旧 AIHOT 等配置见 `config/sources.yaml`。完整内容分类与文章规格见 [输出分类](WEEKLY_PROJECT_DIGEST_OUTPUT_DRAFT.md)。用户已确认八个栏目及每期目标 20～25 条的公众号文章规格；同步更新现有 Codex 周报提示词，采集器的独立限制不由本文件修改。
 
 ## 1. 各栏目使用的原始资料
 
@@ -56,4 +56,4 @@ Acquire.com 是前期讨论过的产品交易线索平台，可作为付费线�
 - 不把不同站点转述的同一公告计算为多条独立证据；按规范项目地址去重。
 - 模型、框架、标准只写对具体使用有意义的变化；arXiv 论文默认不进主刊。
 - Exa / Jina 是采集工具，Pi 是分析组件，飞书 / Codex 是输出入口，都不是原始内容来源。
-- 当前仍沿用精简周报篇幅，不为每个栏目规定必须凑齐的条数。未修改 Sunday 20:00 的既有调度或扩大自动采集范围。
+- 每期目标 20～25 条、3 个重点项目；按需初筛最多 80 个、深入核实最多 35 个候选，不为每个栏目规定必须凑齐的条数。扩大的是 Codex 周报的检索预算，不代表本表所有平台已接通，也不改变各采集器的独立上限。既有调度仍为每周日 20:00，在当前 Codex 任务交付。
