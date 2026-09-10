@@ -1,0 +1,51 @@
+{
+  "diagram_type": "architecture",
+  "output": "E:\\devlop\\ai-notes\\docs\\diagrams\\codex-weekly-digest.html",
+  "specification_sha256": "18a6291e75e165b676066e28514172622f85449bebaa7f886135649df1bdb6b5",
+  "specification_bytes": 3405,
+  "artifact_sha256": "5365854b6950bda45b1ea20b4867b1372c503c3fa9df053f0fb6c3606445cf64",
+  "artifact_bytes": 808158,
+  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "browser_evidence": "passed",
+  "visual_review": "passed",
+  "correction_rounds": 2,
+  "visual_review_scope": {
+    "method": "image-capable review of exact artifact screenshots",
+    "viewports": [
+      {
+        "width": 1440,
+        "height": 900,
+        "themes": [
+          "light",
+          "dark"
+        ]
+      },
+      {
+        "width": 2048,
+        "height": 1320,
+        "themes": [
+          "light",
+          "dark"
+        ]
+      }
+    ],
+    "observations": [
+      "READ view: state labels are visible without opening node details.",
+      "No node/edge/label overlap; both themes remain legible.",
+      "Largest viewport uses the available screen height without a blank lower band."
+    ],
+    "interaction_testing": "No additional manual interaction or export tests performed."
+  },
+  "snapshot": {
+    "date": "2026-09-10",
+    "scope": "Codex weekly digest only",
+    "weekly_automation": "Existing Sunday 20:00 task remains active with the original prompt.",
+    "daily_automation": "Not created",
+    "prototype": "Uncommitted local digest CLI; 16 candidates, 1 batch, 0 archived issues."
+  },
+  "source_evidence": [
+    "C:/Users/Mayn/.codex/automations/automation/automation.toml",
+    "E:/devlop/ai-notes/src/ai_notes/digest.py",
+    "E:/devlop/ai-notes/data/weekly_digest/digest.sqlite3"
+  ]
+}
