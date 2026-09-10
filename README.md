@@ -42,6 +42,16 @@ GitHub Release 只是“需要重新学习这个项目”的变化信号。真�
 - `docs/adr/0001-release-atom-staged-review-and-source-governance.md`
 - `CONTEXT.md`
 
+## Codex 日榜、周榜、月榜
+
+每天北京时间 19:00 由 Codex 搜索并保存最多 20 个候选，日榜、周榜、月榜从共享候选库独立精选，实用价值优先。日榜目标 5～8 条，次日 09:00 开始生成；周榜目标 20～25 条、3 个重点，下周一 10:00 开始；月榜至少 20 条，次月 1 日 11:00 开始。保留八个栏目，跨级允许重复，同级只有尚未报道的重要更新可以重推。月榜不足 20 条保留草稿、有界补采，延期仍保持原月归属。
+
+本地命令 `.\.venv\Scripts\python.exe -X utf8 -m ai_notes.digest status --root .` 可查看候选与归档状态；候选继续保存在 `data/weekly_digest/digest.sqlite3`，完整文章和按日／周／月分类的[历史入口](outputs/digest/index.md)保存在 `outputs/digest/`。正常候选积累保持安静，榜单摘要、重点与全文链接交付到原周报任务 `01a0747b-b12e-74f2-a22a-a4b24d5dea92`。Codex 负责事实核实和写作，CLI 负责时间归属、同级历史去重、草稿及正文校验和归档；与飞书、Pi、主共学试运行准入及旧 Release `daily` 命令独立。
+
+由于一个目标任务只允许一个 heartbeat，原周报自动化 `automation` 承载四项流程，每天 09:00、10:00、11:00、19:00 由本地 `dispatch` 分流；10:00 的非周一和 11:00 的非月初时槽静默退出。配置启用状态见 [运行步骤、调度与数据契约](docs/WEEKLY_PROJECT_DIGEST_WORKFLOW.md)。
+
+详情：[已确认设计](docs/DIGEST_RANKING_DESIGN.md)、[编辑规则](docs/WEEKLY_PROJECT_DIGEST.md)、[文章分类](docs/WEEKLY_PROJECT_DIGEST_OUTPUT_DRAFT.md)、[来源对照](docs/WEEKLY_PROJECT_DIGEST_SOURCES.md)。配置与结构测试不代表已连续采集一周或一月；2026-09-10 交接时只有当天的 1 个批次、16 个候选和 16 个观察，0 期正式归档，后续真实状态以本地账本为准。
+
 ## 当前来源
 
 `config/ai_notes_sources.yaml` 注册 12 个 `trial` 来源，覆盖：

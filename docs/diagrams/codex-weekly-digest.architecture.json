@@ -2,33 +2,36 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "Codex 周报架构 · 每日积累，周日成文",
+    "title": "Codex 日榜、周榜与月榜 · 共享候选，独立精选",
     "locale": "zh-CN",
     "quality_profile": "showcase",
-    "viewBox": [1240, 650]
+    "viewBox": [1310, 660]
   },
   "components": [
-    {"id": "source_entries", "type": "external", "label": "发现入口与原始资料", "sublabel": "HelloGitHub · Show HN · 作者原文", "tag": "联网读取", "pos": [40, 200], "size": [240, 92]},
-    {"id": "daily_research", "type": "backend", "label": "Codex 每日采集", "sublabel": "待启用 · 19:00 · 最多 20 条", "tag": "读取来源与记录候选", "pos": [370, 200], "size": [230, 92]},
-    {"id": "candidate_ledger", "type": "database", "label": "SQLite 候选库", "sublabel": "本地原型 · 已存 16 条候选", "tag": "来源合并 · 日期 · 核实状态", "pos": [700, 200], "size": [230, 92]},
-    {"id": "weekly_editor", "type": "backend", "label": "Codex 周日编辑", "sublabel": "待接库 · 初筛 80 · 深核 35", "tag": "核实原文与编写文章", "pos": [700, 455], "size": [230, 92]},
-    {"id": "issue_archive", "type": "backend", "label": "Python 校验与归档", "sublabel": "本地原型 · 证据与历史去重", "tag": "archive · 最近四期", "pos": [370, 455], "size": [230, 92]},
-    {"id": "article_delivery", "type": "frontend", "label": "文章与当前任务交付", "sublabel": "目标 20～25 条 · 正文与索引", "tag": "本地 Markdown", "pos": [40, 455], "size": [240, 92]},
-    {"id": "editorial_policy", "type": "database", "label": "编辑规则与来源清单", "sublabel": "8 个栏目 · 3 个重点项目", "tag": "已确认", "pos": [370, 35], "size": [230, 80]},
-    {"id": "weekly_schedule", "type": "messagebus", "label": "现有周报定时任务", "sublabel": "已启用 · 周日 20:00 · 旧流程", "tag": "当前仍集中搜索与成文", "pos": [1015, 455], "size": [205, 92]}
+    {"id": "original_sources", "type": "external", "label": "发现入口与原始资料", "sublabel": "社区线索 → 仓库、官网与原文", "tag": "只按实际读取说明覆盖", "pos": [30, 245], "size": [235, 92]},
+    {"id": "candidate_research", "type": "backend", "label": "Codex 每日候选积累", "sublabel": "19:00 开始 · 每次最多 20 条", "tag": "搜索与阅读 · 缺采如实记录", "pos": [355, 245], "size": [235, 92]},
+    {"id": "shared_candidate_pool", "type": "database", "label": "共享 SQLite 候选库", "sublabel": "发现、事件、核验与采集分开", "tag": "data/weekly_digest/", "pos": [680, 245], "size": [235, 92]},
+    {"id": "independent_editor", "type": "backend", "label": "Codex 按榜独立精选", "sublabel": "实用价值优先 · 八个栏目", "tag": "回读原文 · 筛选与写作", "pos": [1005, 245], "size": [260, 92]},
+    {"id": "ranking_schedule", "type": "messagebus", "label": "原 Codex heartbeat", "sublabel": "每日 09/10/11/19 时 · 北京时间", "tag": "ACTIVE · 保留原交付目标", "pos": [355, 30], "size": [235, 92]},
+    {"id": "local_dispatch", "type": "backend", "label": "Python dispatch 本地分流", "sublabel": "日09:00 · 周一10:00 · 月1日11:00", "tag": "非目标时槽静默 · 19时积累与一期延期", "pos": [680, 30], "size": [235, 92]},
+    {"id": "deterministic_gate", "type": "backend", "label": "Python 校验与定稿", "sublabel": "同级全部交付历史 + 稳定事件", "tag": "草稿不占位 · 正文清单一致", "pos": [1005, 485], "size": [260, 92]},
+    {"id": "period_archive", "type": "database", "label": "正文、清单与历史目录", "sublabel": "outputs/digest/ 按日周月分组", "tag": "正式归档不可悄悄覆盖", "pos": [680, 485], "size": [235, 92]},
+    {"id": "original_task_delivery", "type": "frontend", "label": "原 Codex 任务交付", "sublabel": "摘要、重点推荐与全文链接", "tag": "保留原周报交付入口", "pos": [355, 485], "size": [235, 92]}
   ],
   "connections": [
-    {"id": "source_to_daily", "from": "source_entries", "to": "daily_research", "label": "读取", "variant": "dashed"},
-    {"id": "daily_to_store", "from": "daily_research", "to": "candidate_ledger", "label": "ingest", "variant": "dashed"},
-    {"id": "store_to_editor", "from": "candidate_ledger", "to": "weekly_editor", "label": "查询本周候选", "variant": "dashed", "labelDy": 95},
-    {"id": "editor_to_archive", "from": "weekly_editor", "to": "issue_archive", "label": "正文与清单", "variant": "dashed"},
-    {"id": "archive_to_delivery", "from": "issue_archive", "to": "article_delivery", "label": "归档后交付", "variant": "dashed"},
-    {"id": "policy_to_daily", "from": "editorial_policy", "to": "daily_research", "label": "约束选题", "labelDy": 50},
-    {"id": "schedule_to_editor", "from": "weekly_schedule", "to": "weekly_editor", "label": "拟改为", "variant": "dashed"}
+    {"id": "sources_to_research", "from": "original_sources", "to": "candidate_research", "label": "读取"},
+    {"id": "research_to_pool", "from": "candidate_research", "to": "shared_candidate_pool", "label": "ingest", "labelDy": 28},
+    {"id": "pool_to_editor", "from": "shared_candidate_pool", "to": "independent_editor", "label": "候选查询", "labelDy": 28},
+    {"id": "schedule_to_dispatch", "from": "ranking_schedule", "to": "local_dispatch", "label": "唤起"},
+    {"id": "dispatch_to_research", "from": "local_dispatch", "to": "candidate_research", "label": "19:00"},
+    {"id": "dispatch_to_editor", "from": "local_dispatch", "to": "independent_editor", "label": "到期与延期"},
+    {"id": "editor_to_gate", "from": "independent_editor", "to": "deterministic_gate", "label": "正文与入选清单", "labelDy": 100},
+    {"id": "gate_to_archive", "from": "deterministic_gate", "to": "period_archive", "label": "合格定稿"},
+    {"id": "archive_to_task", "from": "period_archive", "to": "original_task_delivery", "label": "完成交付"}
   ],
   "cards": [
-    {"dot": "amber", "title": "当前状态 · 2026-09-10", "items": ["每日定时尚未创建；周日仍执行旧提示词。", "候选库与归档为未提交原型；正式归档 0 期。"]},
-    {"dot": "cyan", "title": "职责分工", "items": ["Codex：搜索、核实、选题与写作。", "Python：字段校验、去重与保存；不调用模型。"]},
-    {"dot": "emerald", "title": "本地持久化", "items": ["data/weekly_digest/：候选、观察与批次。", "outputs/weekly_digest/：文章与入选清单。"]}
+    {"dot": "cyan", "title": "三榜规格与重复推荐", "items": ["日 5～8 条；周 20～25 条、3 个重点；月 ≥20 条。", "跨级可重复，同级重推必须是未报道的重要更新。", "往期未选候选可向后用；同一更新换说法仍去重。"]},
+    {"dot": "amber", "title": "月榜草稿与时间归属", "items": ["不足 20 条保留草稿；19 时有界补采一期延期月榜。", "延期可用月末前已发现项，或原月新事件的补采。", "次月新发现的旧项目归次月；不倒填、不凑数。"]},
+    {"dot": "emerald", "title": "已实施 · 首次定时运行待验证", "items": ["16 候选、21 观察；三榜各 5 条草稿，0 正式归档。", "1 个 heartbeat 四槽已启用；实际采集仅 9/10。", "飞书、Pi、共学核心与旧 Release 管道保持独立。"]}
   ]
 }

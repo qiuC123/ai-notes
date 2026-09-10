@@ -1,51 +1,93 @@
 {
-  "diagram_type": "architecture",
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\devlop\\ai-notes\\docs\\diagrams\\codex-weekly-digest.architecture.json",
   "output": "E:\\devlop\\ai-notes\\docs\\diagrams\\codex-weekly-digest.html",
-  "specification_sha256": "18a6291e75e165b676066e28514172622f85449bebaa7f886135649df1bdb6b5",
-  "specification_bytes": 3405,
-  "artifact_sha256": "5365854b6950bda45b1ea20b4867b1372c503c3fa9df053f0fb6c3606445cf64",
-  "artifact_bytes": 808158,
-  "validation": "9/9 showcase, 0 errors, 0 warnings",
+  "specification": {
+    "sha256": "b6f5761b2f6fe49880d82f6aae707b1fdbf76a394c121ad007c2f0466dae2a5a",
+    "bytes": 4235
+  },
+  "artifact": {
+    "sha256": "e93c6ff2acc0175737f1775bad017b962ac1613a698620248febc69023be7cd9",
+    "bytes": 811939
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "compositionProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "diagram_type": "architecture",
   "browser_evidence": "passed",
   "visual_review": "passed",
   "correction_rounds": 2,
   "visual_review_scope": {
-    "method": "image-capable review of exact artifact screenshots",
+    "method": "Image-capable review of exact artifact screenshots",
     "viewports": [
       {
         "width": 1440,
-        "height": 900,
         "themes": [
           "light",
           "dark"
-        ]
+        ],
+        "height": 900
       },
       {
         "width": 2048,
-        "height": 1320,
         "themes": [
           "light",
           "dark"
-        ]
+        ],
+        "height": 1320
       }
     ],
     "observations": [
-      "READ view: state labels are visible without opening node details.",
-      "No node/edge/label overlap; both themes remain legible.",
-      "Largest viewport uses the available screen height without a blank lower band."
+      "READ view shows the original heartbeat with four time slots, local dispatch, all three schedule times, and the pending-first-run status.",
+      "No node, edge or relationship-label overlap; both themes remain readable.",
+      "The largest viewport uses the available height without a conspicuous empty lower band."
     ],
     "interaction_testing": "No additional manual interaction or export tests performed."
   },
   "snapshot": {
     "date": "2026-09-10",
-    "scope": "Codex weekly digest only",
-    "weekly_automation": "Existing Sunday 20:00 task remains active with the original prompt.",
-    "daily_automation": "Not created",
-    "prototype": "Uncommitted local digest CLI; 16 candidates, 1 batch, 0 archived issues."
+    "scope": "Codex daily, weekly and monthly curated digests",
+    "schema_version": 2,
+    "candidate_count": 16,
+    "observation_count": 21,
+    "batch_count": 2,
+    "draft_count": 3,
+    "draft_item_counts": [
+      5,
+      5,
+      5
+    ],
+    "archived_issue_count": 0,
+    "actual_collection_dates": [
+      "2026-09-10"
+    ],
+    "automation": {
+      "first_scheduled_execution": "not yet verified",
+      "kind": "heartbeat",
+      "slot_hours_beijing": [
+        9,
+        10,
+        11,
+        19
+      ],
+      "target_thread_id": "01a0747b-b12e-74f2-a22a-a4b24d5dea92",
+      "status": "ACTIVE",
+      "id": "automation"
+    },
+    "implementation_verification": "Migration and runtime counts, 27 digest tests and 224 independent regressions, and automation readback verified by the implementation task."
   },
   "source_evidence": [
-    "C:/Users/Mayn/.codex/automations/automation/automation.toml",
+    "E:/devlop/ai-notes/docs/DIGEST_RANKING_DESIGN.md",
     "E:/devlop/ai-notes/src/ai_notes/digest.py",
+    "C:/Users/Mayn/.codex/automations/automation/automation.toml",
     "E:/devlop/ai-notes/data/weekly_digest/digest.sqlite3"
   ]
 }

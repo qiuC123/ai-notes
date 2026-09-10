@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 2.17.0-dev.1">
-  <title>Codex 周报架构 · 每日积累，周日成文</title>
+  <title>Codex 日榜、周榜与月榜 · 共享候选，独立精选</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -5081,7 +5081,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
            data-preset-badge-blueprint="蓝图 / 修订 01"
            data-preset-badge-editorial="编辑风格 / 现场笔记">
         <div class="pulse-dot"></div>
-        <h1>Codex 周报架构 · 每日积累，周日成文</h1>
+        <h1>Codex 日榜、周榜与月榜 · 共享候选，独立精选</h1>
       </div>
     </div>
 
@@ -5130,8 +5130,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / 图版 04">
-      <svg viewBox="0 0 1240 650" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
-        <title id="archify-diagram-title">Codex 周报架构 · 每日积累，周日成文</title>
+      <svg viewBox="0 0 1310 660" role="img" lang="zh-CN" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
+        <title id="archify-diagram-title">Codex 日榜、周榜与月榜 · 共享候选，独立精选</title>
         <desc id="archify-diagram-description">由 Archify 生成的架构图。</desc>
         <!-- Definitions -->
         <defs>
@@ -5159,148 +5159,170 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 
         <!-- Connection paths (before components for correct z-order) -->
-        <path data-edge-from="source_entries" data-edge-to="daily_research" data-edge-label="读取" data-edge-key="0" data-edge-id="source_to_daily" data-composition-points="280,246;370,246" d="M 280 246 L 370 246" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="daily_research" data-edge-to="candidate_ledger" data-edge-label="ingest" data-edge-key="1" data-edge-id="daily_to_store" data-composition-points="600,246;700,246" d="M 600 246 L 700 246" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="candidate_ledger" data-edge-to="weekly_editor" data-edge-label="查询本周候选" data-edge-key="2" data-edge-id="store_to_editor" data-composition-points="815,292;815,455" d="M 815 292 L 815 455" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="weekly_editor" data-edge-to="issue_archive" data-edge-label="正文与清单" data-edge-key="3" data-edge-id="editor_to_archive" data-composition-points="700,501;600,501" d="M 700 501 L 600 501" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="issue_archive" data-edge-to="article_delivery" data-edge-label="归档后交付" data-edge-key="4" data-edge-id="archive_to_delivery" data-composition-points="370,501;280,501" d="M 370 501 L 280 501" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="editorial_policy" data-edge-to="daily_research" data-edge-label="约束选题" data-edge-key="5" data-edge-id="policy_to_daily" data-composition-points="485,115;485,200" d="M 485 115 L 485 200" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="weekly_schedule" data-edge-to="weekly_editor" data-edge-label="拟改为" data-edge-key="6" data-edge-id="schedule_to_editor" data-composition-points="1015,501;930,501" d="M 1015 501 L 930 501" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="original_sources" data-edge-to="candidate_research" data-edge-label="读取" data-edge-key="0" data-edge-id="sources_to_research" data-composition-points="265,291;355,291" d="M 265 291 L 355 291" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="candidate_research" data-edge-to="shared_candidate_pool" data-edge-label="ingest" data-edge-key="1" data-edge-id="research_to_pool" data-composition-points="590,298;680,298" d="M 590 298 L 680 298" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="shared_candidate_pool" data-edge-to="independent_editor" data-edge-label="候选查询" data-edge-key="2" data-edge-id="pool_to_editor" data-composition-points="915,298;1005,298" d="M 915 298 L 1005 298" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="ranking_schedule" data-edge-to="local_dispatch" data-edge-label="唤起" data-edge-key="3" data-edge-id="schedule_to_dispatch" data-composition-points="590,69;680,69" d="M 590 69 L 680 69" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="local_dispatch" data-edge-to="candidate_research" data-edge-label="19:00" data-edge-key="4" data-edge-id="dispatch_to_research" data-composition-points="680,83;635,83;635,284;590,284" d="M 680 83 L 643 83 Q 635 83 635 91 L 635 276 Q 635 284 627 284 L 590 284" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="local_dispatch" data-edge-to="independent_editor" data-edge-label="到期与延期" data-edge-key="5" data-edge-id="dispatch_to_editor" data-composition-points="915,76;960,76;960,284;1005,284" d="M 915 76 L 952 76 Q 960 76 960 84 L 960 276 Q 960 284 968 284 L 1005 284" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="independent_editor" data-edge-to="deterministic_gate" data-edge-label="正文与入选清单" data-edge-key="6" data-edge-id="editor_to_gate" data-composition-points="1135,337;1135,485" d="M 1135 337 L 1135 485" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="deterministic_gate" data-edge-to="period_archive" data-edge-label="合格定稿" data-edge-key="7" data-edge-id="gate_to_archive" data-composition-points="1005,531;915,531" d="M 1005 531 L 915 531" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="period_archive" data-edge-to="original_task_delivery" data-edge-label="完成交付" data-edge-key="8" data-edge-id="archive_to_task" data-composition-points="680,531;590,531" d="M 680 531 L 590 531" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 
         <!-- Components -->
-        <g id="node-source_entries" data-node-id="source_entries" data-node-label="发现入口与原始资料" tabindex="0" role="button" aria-label="聚焦发现入口与原始资料，HelloGitHub · Show HN · 作者原文, 架构组件" aria-pressed="false" data-node-kind="external" data-node-sublabel="HelloGitHub · Show HN · 作者原文" data-node-tag="联网读取" data-node-context="架构组件">
-          <title>发现入口与原始资料 · HelloGitHub · Show HN · 作者原文 · 架构组件 · 联网读取</title>
-          <rect x="40" y="200" width="240" height="92" rx="6" class="c-mask"/>
-          <rect x="40" y="200" width="240" height="92" rx="6" class="c-external" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(46 206) scale(0.6875)">
+        <g id="node-original_sources" data-node-id="original_sources" data-node-label="发现入口与原始资料" tabindex="0" role="button" aria-label="聚焦发现入口与原始资料，社区线索 → 仓库、官网与原文, 架构组件" aria-pressed="false" data-node-kind="external" data-node-sublabel="社区线索 → 仓库、官网与原文" data-node-tag="只按实际读取说明覆盖" data-node-context="架构组件">
+          <title>发现入口与原始资料 · 社区线索 → 仓库、官网与原文 · 架构组件 · 只按实际读取说明覆盖</title>
+          <rect x="30" y="245" width="235" height="92" rx="6" class="c-mask"/>
+          <rect x="30" y="245" width="235" height="92" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(36 251) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="160" y="244" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">发现入口与原始资料</text>
-        <text data-detail="context" x="160" y="260" class="t-muted" font-size="9" text-anchor="middle">HelloGitHub · Show HN · 作者原文</text>
-        <text data-detail="fine" x="160" y="284" class="t-external" font-size="7" text-anchor="middle">联网读取</text>
+          <text data-node-label="" data-detail-anchor="" x="147.5" y="289" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">发现入口与原始资料</text>
+        <text data-detail="context" x="147.5" y="305" class="t-muted" font-size="9" text-anchor="middle">社区线索 → 仓库、官网与原文</text>
+        <text data-detail="fine" x="147.5" y="329" class="t-external" font-size="7" text-anchor="middle">只按实际读取说明覆盖</text>
         </g>
 
-        <g id="node-daily_research" data-node-id="daily_research" data-node-label="Codex 每日采集" tabindex="0" role="button" aria-label="聚焦Codex 每日采集，待启用 · 19:00 · 最多 20 条, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="待启用 · 19:00 · 最多 20 条" data-node-tag="读取来源与记录候选" data-node-context="架构组件">
-          <title>Codex 每日采集 · 待启用 · 19:00 · 最多 20 条 · 架构组件 · 读取来源与记录候选</title>
-          <rect x="370" y="200" width="230" height="92" rx="6" class="c-mask"/>
-          <rect x="370" y="200" width="230" height="92" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(376 206) scale(0.6875)">
+        <g id="node-candidate_research" data-node-id="candidate_research" data-node-label="Codex 每日候选积累" tabindex="0" role="button" aria-label="聚焦Codex 每日候选积累，19:00 开始 · 每次最多 20 条, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="19:00 开始 · 每次最多 20 条" data-node-tag="搜索与阅读 · 缺采如实记录" data-node-context="架构组件">
+          <title>Codex 每日候选积累 · 19:00 开始 · 每次最多 20 条 · 架构组件 · 搜索与阅读 · 缺采如实记录</title>
+          <rect x="355" y="245" width="235" height="92" rx="6" class="c-mask"/>
+          <rect x="355" y="245" width="235" height="92" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(361 251) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="485" y="244" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Codex 每日采集</text>
-        <text data-detail="context" x="485" y="260" class="t-muted" font-size="9" text-anchor="middle">待启用 · 19:00 · 最多 20 条</text>
-        <text data-detail="fine" x="485" y="284" class="t-backend" font-size="7" text-anchor="middle">读取来源与记录候选</text>
+          <text data-node-label="" data-detail-anchor="" x="472.5" y="289" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Codex 每日候选积累</text>
+        <text data-detail="context" x="472.5" y="305" class="t-muted" font-size="9" text-anchor="middle">19:00 开始 · 每次最多 20 条</text>
+        <text data-detail="fine" x="472.5" y="329" class="t-backend" font-size="7" text-anchor="middle">搜索与阅读 · 缺采如实记录</text>
         </g>
 
-        <g id="node-candidate_ledger" data-node-id="candidate_ledger" data-node-label="SQLite 候选库" tabindex="0" role="button" aria-label="聚焦SQLite 候选库，本地原型 · 已存 16 条候选, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="本地原型 · 已存 16 条候选" data-node-tag="来源合并 · 日期 · 核实状态" data-node-context="架构组件">
-          <title>SQLite 候选库 · 本地原型 · 已存 16 条候选 · 架构组件 · 来源合并 · 日期 · 核实状态</title>
-          <rect x="700" y="200" width="230" height="92" rx="6" class="c-mask"/>
-          <rect x="700" y="200" width="230" height="92" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(706 206) scale(0.6875)">
+        <g id="node-shared_candidate_pool" data-node-id="shared_candidate_pool" data-node-label="共享 SQLite 候选库" tabindex="0" role="button" aria-label="聚焦共享 SQLite 候选库，发现、事件、核验与采集分开, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="发现、事件、核验与采集分开" data-node-tag="data/weekly_digest/" data-node-context="架构组件">
+          <title>共享 SQLite 候选库 · 发现、事件、核验与采集分开 · 架构组件 · data/weekly_digest/</title>
+          <rect x="680" y="245" width="235" height="92" rx="6" class="c-mask"/>
+          <rect x="680" y="245" width="235" height="92" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(686 251) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="815" y="244" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SQLite 候选库</text>
-        <text data-detail="context" x="815" y="260" class="t-muted" font-size="9" text-anchor="middle">本地原型 · 已存 16 条候选</text>
-        <text data-detail="fine" x="815" y="284" class="t-database" font-size="7" text-anchor="middle">来源合并 · 日期 · 核实状态</text>
+          <text data-node-label="" data-detail-anchor="" x="797.5" y="289" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">共享 SQLite 候选库</text>
+        <text data-detail="context" x="797.5" y="305" class="t-muted" font-size="9" text-anchor="middle">发现、事件、核验与采集分开</text>
+        <text data-detail="fine" x="797.5" y="329" class="t-database" font-size="7" text-anchor="middle">data/weekly_digest/</text>
         </g>
 
-        <g id="node-weekly_editor" data-node-id="weekly_editor" data-node-label="Codex 周日编辑" tabindex="0" role="button" aria-label="聚焦Codex 周日编辑，待接库 · 初筛 80 · 深核 35, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="待接库 · 初筛 80 · 深核 35" data-node-tag="核实原文与编写文章" data-node-context="架构组件">
-          <title>Codex 周日编辑 · 待接库 · 初筛 80 · 深核 35 · 架构组件 · 核实原文与编写文章</title>
-          <rect x="700" y="455" width="230" height="92" rx="6" class="c-mask"/>
-          <rect x="700" y="455" width="230" height="92" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(706 461) scale(0.6875)">
+        <g id="node-independent_editor" data-node-id="independent_editor" data-node-label="Codex 按榜独立精选" tabindex="0" role="button" aria-label="聚焦Codex 按榜独立精选，实用价值优先 · 八个栏目, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="实用价值优先 · 八个栏目" data-node-tag="回读原文 · 筛选与写作" data-node-context="架构组件">
+          <title>Codex 按榜独立精选 · 实用价值优先 · 八个栏目 · 架构组件 · 回读原文 · 筛选与写作</title>
+          <rect x="1005" y="245" width="260" height="92" rx="6" class="c-mask"/>
+          <rect x="1005" y="245" width="260" height="92" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1011 251) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="815" y="499" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Codex 周日编辑</text>
-        <text data-detail="context" x="815" y="515" class="t-muted" font-size="9" text-anchor="middle">待接库 · 初筛 80 · 深核 35</text>
-        <text data-detail="fine" x="815" y="539" class="t-backend" font-size="7" text-anchor="middle">核实原文与编写文章</text>
+          <text data-node-label="" data-detail-anchor="" x="1135" y="289" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Codex 按榜独立精选</text>
+        <text data-detail="context" x="1135" y="305" class="t-muted" font-size="9" text-anchor="middle">实用价值优先 · 八个栏目</text>
+        <text data-detail="fine" x="1135" y="329" class="t-backend" font-size="7" text-anchor="middle">回读原文 · 筛选与写作</text>
         </g>
 
-        <g id="node-issue_archive" data-node-id="issue_archive" data-node-label="Python 校验与归档" tabindex="0" role="button" aria-label="聚焦Python 校验与归档，本地原型 · 证据与历史去重, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="本地原型 · 证据与历史去重" data-node-tag="archive · 最近四期" data-node-context="架构组件">
-          <title>Python 校验与归档 · 本地原型 · 证据与历史去重 · 架构组件 · archive · 最近四期</title>
-          <rect x="370" y="455" width="230" height="92" rx="6" class="c-mask"/>
-          <rect x="370" y="455" width="230" height="92" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(376 461) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="485" y="499" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Python 校验与归档</text>
-        <text data-detail="context" x="485" y="515" class="t-muted" font-size="9" text-anchor="middle">本地原型 · 证据与历史去重</text>
-        <text data-detail="fine" x="485" y="539" class="t-backend" font-size="7" text-anchor="middle">archive · 最近四期</text>
-        </g>
-
-        <g id="node-article_delivery" data-node-id="article_delivery" data-node-label="文章与当前任务交付" tabindex="0" role="button" aria-label="聚焦文章与当前任务交付，目标 20～25 条 · 正文与索引, 架构组件" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="目标 20～25 条 · 正文与索引" data-node-tag="本地 Markdown" data-node-context="架构组件">
-          <title>文章与当前任务交付 · 目标 20～25 条 · 正文与索引 · 架构组件 · 本地 Markdown</title>
-          <rect x="40" y="455" width="240" height="92" rx="6" class="c-mask"/>
-          <rect x="40" y="455" width="240" height="92" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(46 461) scale(0.6875)">
-            <rect x="2" y="3" width="12" height="10" rx="2"/>
-            <path d="M2 6.5h12"/>
-            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
-            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="160" y="499" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">文章与当前任务交付</text>
-        <text data-detail="context" x="160" y="515" class="t-muted" font-size="9" text-anchor="middle">目标 20～25 条 · 正文与索引</text>
-        <text data-detail="fine" x="160" y="539" class="t-frontend" font-size="7" text-anchor="middle">本地 Markdown</text>
-        </g>
-
-        <g id="node-editorial_policy" data-node-id="editorial_policy" data-node-label="编辑规则与来源清单" tabindex="0" role="button" aria-label="聚焦编辑规则与来源清单，8 个栏目 · 3 个重点项目, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="8 个栏目 · 3 个重点项目" data-node-tag="已确认" data-node-context="架构组件">
-          <title>编辑规则与来源清单 · 8 个栏目 · 3 个重点项目 · 架构组件 · 已确认</title>
-          <rect x="370" y="35" width="230" height="80" rx="6" class="c-mask"/>
-          <rect x="370" y="35" width="230" height="80" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(376 41) scale(0.6875)">
-            <ellipse cx="8" cy="4" rx="5" ry="2"/>
-            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
-          </g>
-          <text data-node-label="" data-detail-anchor="" x="485" y="73" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">编辑规则与来源清单</text>
-        <text data-detail="context" x="485" y="89" class="t-muted" font-size="9" text-anchor="middle">8 个栏目 · 3 个重点项目</text>
-        <text data-detail="fine" x="485" y="107" class="t-database" font-size="7" text-anchor="middle">已确认</text>
-        </g>
-
-        <g id="node-weekly_schedule" data-node-id="weekly_schedule" data-node-label="现有周报定时任务" tabindex="0" role="button" aria-label="聚焦现有周报定时任务，已启用 · 周日 20:00 · 旧流程, 架构组件" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="已启用 · 周日 20:00 · 旧流程" data-node-tag="当前仍集中搜索与成文" data-node-context="架构组件">
-          <title>现有周报定时任务 · 已启用 · 周日 20:00 · 旧流程 · 架构组件 · 当前仍集中搜索与成文</title>
-          <rect x="1015" y="455" width="205" height="92" rx="6" class="c-mask"/>
-          <rect x="1015" y="455" width="205" height="92" rx="6" class="c-messagebus" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(1021 461) scale(0.6875)">
+        <g id="node-ranking_schedule" data-node-id="ranking_schedule" data-node-label="原 Codex heartbeat" tabindex="0" role="button" aria-label="聚焦原 Codex heartbeat，每日 09/10/11/19 时 · 北京时间, 架构组件" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="每日 09/10/11/19 时 · 北京时间" data-node-tag="ACTIVE · 保留原交付目标" data-node-context="架构组件">
+          <title>原 Codex heartbeat · 每日 09/10/11/19 时 · 北京时间 · 架构组件 · ACTIVE · 保留原交付目标</title>
+          <rect x="355" y="30" width="235" height="92" rx="6" class="c-mask"/>
+          <rect x="355" y="30" width="235" height="92" rx="6" class="c-messagebus" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(361 36) scale(0.6875)">
             <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
             <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
             <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
             <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1117.5" y="499" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">现有周报定时任务</text>
-        <text data-detail="context" x="1117.5" y="515" class="t-muted" font-size="9" text-anchor="middle">已启用 · 周日 20:00 · 旧流程</text>
-        <text data-detail="fine" x="1117.5" y="539" class="t-messagebus" font-size="7" text-anchor="middle">当前仍集中搜索与成文</text>
+          <text data-node-label="" data-detail-anchor="" x="472.5" y="74" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">原 Codex heartbeat</text>
+        <text data-detail="context" x="472.5" y="90" class="t-muted" font-size="9" text-anchor="middle">每日 09/10/11/19 时 · 北京时间</text>
+        <text data-detail="fine" x="472.5" y="114" class="t-messagebus" font-size="7" text-anchor="middle">ACTIVE · 保留原交付目标</text>
+        </g>
+
+        <g id="node-local_dispatch" data-node-id="local_dispatch" data-node-label="Python dispatch 本地分流" tabindex="0" role="button" aria-label="聚焦Python dispatch 本地分流，日09:00 · 周一10:00 · 月1日11:00, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="日09:00 · 周一10:00 · 月1日11:00" data-node-tag="非目标时槽静默 · 19时积累与一期延期" data-node-context="架构组件">
+          <title>Python dispatch 本地分流 · 日09:00 · 周一10:00 · 月1日11:00 · 架构组件 · 非目标时槽静默 · 19时积累与一期延期</title>
+          <rect x="680" y="30" width="235" height="92" rx="6" class="c-mask"/>
+          <rect x="680" y="30" width="235" height="92" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(686 36) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="797.5" y="74" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Python dispatch 本地分流</text>
+        <text data-detail="context" x="797.5" y="90" class="t-muted" font-size="9" text-anchor="middle">日09:00 · 周一10:00 · 月1日11:00</text>
+        <text data-detail="fine" x="797.5" y="114" class="t-backend" font-size="7" text-anchor="middle">非目标时槽静默 · 19时积累与一期延期</text>
+        </g>
+
+        <g id="node-deterministic_gate" data-node-id="deterministic_gate" data-node-label="Python 校验与定稿" tabindex="0" role="button" aria-label="聚焦Python 校验与定稿，同级全部交付历史 + 稳定事件, 架构组件" aria-pressed="false" data-node-kind="backend" data-node-sublabel="同级全部交付历史 + 稳定事件" data-node-tag="草稿不占位 · 正文清单一致" data-node-context="架构组件">
+          <title>Python 校验与定稿 · 同级全部交付历史 + 稳定事件 · 架构组件 · 草稿不占位 · 正文清单一致</title>
+          <rect x="1005" y="485" width="260" height="92" rx="6" class="c-mask"/>
+          <rect x="1005" y="485" width="260" height="92" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1011 491) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="1135" y="529" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Python 校验与定稿</text>
+        <text data-detail="context" x="1135" y="545" class="t-muted" font-size="9" text-anchor="middle">同级全部交付历史 + 稳定事件</text>
+        <text data-detail="fine" x="1135" y="569" class="t-backend" font-size="7" text-anchor="middle">草稿不占位 · 正文清单一致</text>
+        </g>
+
+        <g id="node-period_archive" data-node-id="period_archive" data-node-label="正文、清单与历史目录" tabindex="0" role="button" aria-label="聚焦正文、清单与历史目录，outputs/digest/ 按日周月分组, 架构组件" aria-pressed="false" data-node-kind="database" data-node-sublabel="outputs/digest/ 按日周月分组" data-node-tag="正式归档不可悄悄覆盖" data-node-context="架构组件">
+          <title>正文、清单与历史目录 · outputs/digest/ 按日周月分组 · 架构组件 · 正式归档不可悄悄覆盖</title>
+          <rect x="680" y="485" width="235" height="92" rx="6" class="c-mask"/>
+          <rect x="680" y="485" width="235" height="92" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(686 491) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="797.5" y="529" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">正文、清单与历史目录</text>
+        <text data-detail="context" x="797.5" y="545" class="t-muted" font-size="9" text-anchor="middle">outputs/digest/ 按日周月分组</text>
+        <text data-detail="fine" x="797.5" y="569" class="t-database" font-size="7" text-anchor="middle">正式归档不可悄悄覆盖</text>
+        </g>
+
+        <g id="node-original_task_delivery" data-node-id="original_task_delivery" data-node-label="原 Codex 任务交付" tabindex="0" role="button" aria-label="聚焦原 Codex 任务交付，摘要、重点推荐与全文链接, 架构组件" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="摘要、重点推荐与全文链接" data-node-tag="保留原周报交付入口" data-node-context="架构组件">
+          <title>原 Codex 任务交付 · 摘要、重点推荐与全文链接 · 架构组件 · 保留原周报交付入口</title>
+          <rect x="355" y="485" width="235" height="92" rx="6" class="c-mask"/>
+          <rect x="355" y="485" width="235" height="92" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(361 491) scale(0.6875)">
+            <rect x="2" y="3" width="12" height="10" rx="2"/>
+            <path d="M2 6.5h12"/>
+            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
+            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="472.5" y="529" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">原 Codex 任务交付</text>
+        <text data-detail="context" x="472.5" y="545" class="t-muted" font-size="9" text-anchor="middle">摘要、重点推荐与全文链接</text>
+        <text data-detail="fine" x="472.5" y="569" class="t-frontend" font-size="7" text-anchor="middle">保留原周报交付入口</text>
         </g>
 
         <!-- Connection labels -->
-        <g data-detail="context" data-edge-from="source_entries" data-edge-to="daily_research" data-edge-label="读取" data-edge-key="0" data-edge-id="source_to_daily">
-          <rect x="310" y="226" width="30" height="14" rx="3" class="c-mask"/>
-          <text x="325" y="236" class="t-messagebus" font-size="8" text-anchor="middle">读取</text>
+        <g data-detail="context" data-edge-from="original_sources" data-edge-to="candidate_research" data-edge-label="读取" data-edge-key="0" data-edge-id="sources_to_research">
+          <rect x="295" y="271" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="310" y="281" class="t-muted" font-size="8" text-anchor="middle">读取</text>
         </g>
-        <g data-detail="context" data-edge-from="daily_research" data-edge-to="candidate_ledger" data-edge-label="ingest" data-edge-key="1" data-edge-id="daily_to_store">
-          <rect x="630.6" y="226" width="38.8" height="14" rx="3" class="c-mask"/>
-          <text x="650" y="236" class="t-messagebus" font-size="8" text-anchor="middle">ingest</text>
+        <g data-detail="context" data-edge-from="candidate_research" data-edge-to="shared_candidate_pool" data-edge-label="ingest" data-edge-key="1" data-edge-id="research_to_pool">
+          <rect x="615.6" y="306" width="38.8" height="14" rx="3" class="c-mask"/>
+          <text x="635" y="316" class="t-muted" font-size="8" text-anchor="middle">ingest</text>
         </g>
-        <g data-detail="context" data-edge-from="candidate_ledger" data-edge-to="weekly_editor" data-edge-label="查询本周候选" data-edge-key="2" data-edge-id="store_to_editor">
-          <rect x="781.2" y="367" width="67.6" height="14" rx="3" class="c-mask"/>
-          <text x="815" y="377" class="t-messagebus" font-size="8" text-anchor="middle">查询本周候选</text>
+        <g data-detail="context" data-edge-from="shared_candidate_pool" data-edge-to="independent_editor" data-edge-label="候选查询" data-edge-key="2" data-edge-id="pool_to_editor">
+          <rect x="935.8" y="306" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="960" y="316" class="t-muted" font-size="8" text-anchor="middle">候选查询</text>
         </g>
-        <g data-detail="context" data-edge-from="weekly_editor" data-edge-to="issue_archive" data-edge-label="正文与清单" data-edge-key="3" data-edge-id="editor_to_archive">
-          <rect x="621" y="481" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="650" y="491" class="t-messagebus" font-size="8" text-anchor="middle">正文与清单</text>
+        <g data-detail="context" data-edge-from="ranking_schedule" data-edge-to="local_dispatch" data-edge-label="唤起" data-edge-key="3" data-edge-id="schedule_to_dispatch">
+          <rect x="620" y="49" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="635" y="59" class="t-muted" font-size="8" text-anchor="middle">唤起</text>
         </g>
-        <g data-detail="context" data-edge-from="issue_archive" data-edge-to="article_delivery" data-edge-label="归档后交付" data-edge-key="4" data-edge-id="archive_to_delivery">
-          <rect x="296" y="481" width="58" height="14" rx="3" class="c-mask"/>
-          <text x="325" y="491" class="t-messagebus" font-size="8" text-anchor="middle">归档后交付</text>
+        <g data-detail="context" data-edge-from="local_dispatch" data-edge-to="candidate_research" data-edge-label="19:00" data-edge-key="4" data-edge-id="dispatch_to_research">
+          <rect x="618" y="163.5" width="34" height="14" rx="3" class="c-mask"/>
+          <text x="635" y="173.5" class="t-muted" font-size="8" text-anchor="middle">19:00</text>
         </g>
-        <g data-detail="context" data-edge-from="editorial_policy" data-edge-to="daily_research" data-edge-label="约束选题" data-edge-key="5" data-edge-id="policy_to_daily">
-          <rect x="460.8" y="145" width="48.4" height="14" rx="3" class="c-mask"/>
-          <text x="485" y="155" class="t-muted" font-size="8" text-anchor="middle">约束选题</text>
+        <g data-detail="context" data-edge-from="local_dispatch" data-edge-to="independent_editor" data-edge-label="到期与延期" data-edge-key="5" data-edge-id="dispatch_to_editor">
+          <rect x="931" y="160" width="58" height="14" rx="3" class="c-mask"/>
+          <text x="960" y="170" class="t-muted" font-size="8" text-anchor="middle">到期与延期</text>
         </g>
-        <g data-detail="context" data-edge-from="weekly_schedule" data-edge-to="weekly_editor" data-edge-label="拟改为" data-edge-key="6" data-edge-id="schedule_to_editor">
-          <rect x="953.1" y="481" width="38.8" height="14" rx="3" class="c-mask"/>
-          <text x="972.5" y="491" class="t-messagebus" font-size="8" text-anchor="middle">拟改为</text>
+        <g data-detail="context" data-edge-from="independent_editor" data-edge-to="deterministic_gate" data-edge-label="正文与入选清单" data-edge-key="6" data-edge-id="editor_to_gate">
+          <rect x="1096.4" y="417" width="77.2" height="14" rx="3" class="c-mask"/>
+          <text x="1135" y="427" class="t-muted" font-size="8" text-anchor="middle">正文与入选清单</text>
+        </g>
+        <g data-detail="context" data-edge-from="deterministic_gate" data-edge-to="period_archive" data-edge-label="合格定稿" data-edge-key="7" data-edge-id="gate_to_archive">
+          <rect x="935.8" y="511" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="960" y="521" class="t-muted" font-size="8" text-anchor="middle">合格定稿</text>
+        </g>
+        <g data-detail="context" data-edge-from="period_archive" data-edge-to="original_task_delivery" data-edge-label="完成交付" data-edge-key="8" data-edge-id="archive_to_task">
+          <rect x="610.8" y="511" width="48.4" height="14" rx="3" class="c-mask"/>
+          <text x="635" y="521" class="t-muted" font-size="8" text-anchor="middle">完成交付</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
@@ -5308,26 +5330,26 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
         <!-- Legend -->
         <g data-legend="" data-legend-bridge="">
-          <text x="40" y="614" class="t-primary" font-size="12" font-weight="650">图例</text>
-          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="前端" data-legend-x="40" data-legend-baseline="634" data-legend-width="63">
-            <rect x="40" y="625" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
-            <text x="62" y="634" class="t-muted" font-size="10" font-weight="500">前端</text>
+          <text x="40" y="624" class="t-primary" font-size="12" font-weight="650">图例</text>
+          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="前端" data-legend-x="40" data-legend-baseline="644" data-legend-width="63">
+            <rect x="40" y="635" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
+            <text x="62" y="644" class="t-muted" font-size="10" font-weight="500">前端</text>
           </g>
-          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="后端" data-legend-x="125" data-legend-baseline="634" data-legend-width="63">
-            <rect x="125" y="625" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
-            <text x="147" y="634" class="t-muted" font-size="10" font-weight="500">后端</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="后端" data-legend-x="125" data-legend-baseline="644" data-legend-width="63">
+            <rect x="125" y="635" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
+            <text x="147" y="644" class="t-muted" font-size="10" font-weight="500">后端</text>
           </g>
-          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="数据库" data-legend-x="210" data-legend-baseline="634" data-legend-width="73">
-            <rect x="210" y="625" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
-            <text x="232" y="634" class="t-muted" font-size="10" font-weight="500">数据库</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="数据库" data-legend-x="210" data-legend-baseline="644" data-legend-width="73">
+            <rect x="210" y="635" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
+            <text x="232" y="644" class="t-muted" font-size="10" font-weight="500">数据库</text>
           </g>
-          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="消息总线" data-legend-x="305" data-legend-baseline="634" data-legend-width="83">
-            <rect x="305" y="625" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
-            <text x="327" y="634" class="t-muted" font-size="10" font-weight="500">消息总线</text>
+          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="消息总线" data-legend-x="305" data-legend-baseline="644" data-legend-width="83">
+            <rect x="305" y="635" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
+            <text x="327" y="644" class="t-muted" font-size="10" font-weight="500">消息总线</text>
           </g>
-          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="外部系统" data-legend-x="410" data-legend-baseline="634" data-legend-width="83">
-            <rect x="410" y="625" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
-            <text x="432" y="634" class="t-muted" font-size="10" font-weight="500">外部系统</text>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="外部系统" data-legend-x="410" data-legend-baseline="644" data-legend-width="83">
+            <rect x="410" y="635" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
+            <text x="432" y="644" class="t-muted" font-size="10" font-weight="500">外部系统</text>
           </g>
         </g>
       </svg>
@@ -5518,34 +5540,37 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
     <div class="cards">
       <div class="card">
         <div class="card-header">
-          <div class="card-dot amber"></div>
-          <h3>当前状态 · 2026-09-10</h3>
+          <div class="card-dot cyan"></div>
+          <h3>三榜规格与重复推荐</h3>
         </div>
         <ul>
-          <li>&bull; 每日定时尚未创建；周日仍执行旧提示词。</li>
-          <li>&bull; 候选库与归档为未提交原型；正式归档 0 期。</li>
+          <li>&bull; 日 5～8 条；周 20～25 条、3 个重点；月 ≥20 条。</li>
+          <li>&bull; 跨级可重复，同级重推必须是未报道的重要更新。</li>
+          <li>&bull; 往期未选候选可向后用；同一更新换说法仍去重。</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
-          <div class="card-dot cyan"></div>
-          <h3>职责分工</h3>
+          <div class="card-dot amber"></div>
+          <h3>月榜草稿与时间归属</h3>
         </div>
         <ul>
-          <li>&bull; Codex：搜索、核实、选题与写作。</li>
-          <li>&bull; Python：字段校验、去重与保存；不调用模型。</li>
+          <li>&bull; 不足 20 条保留草稿；19 时有界补采一期延期月榜。</li>
+          <li>&bull; 延期可用月末前已发现项，或原月新事件的补采。</li>
+          <li>&bull; 次月新发现的旧项目归次月；不倒填、不凑数。</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot emerald"></div>
-          <h3>本地持久化</h3>
+          <h3>已实施 · 首次定时运行待验证</h3>
         </div>
         <ul>
-          <li>&bull; data/weekly_digest/：候选、观察与批次。</li>
-          <li>&bull; outputs/weekly_digest/：文章与入选清单。</li>
+          <li>&bull; 16 候选、21 观察；三榜各 5 条草稿，0 正式归档。</li>
+          <li>&bull; 1 个 heartbeat 四槽已启用；实际采集仅 9/10。</li>
+          <li>&bull; 飞书、Pi、共学核心与旧 Release 管道保持独立。</li>
         </ul>
       </div>
     </div>
