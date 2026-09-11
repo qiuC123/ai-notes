@@ -13,7 +13,7 @@
 | AI 应用 | 应用官网、帮助文档、官方变更记录、开源仓库、作者发布的 Hugging Face Spaces 页面；Codex、Claude Code、OpenHands、Hermes 的成品 Agent 内容按此栏目整理 | 实际可用能力、限制、费用、有意义的更新 | 上述四个项目已有 Release 配置，均 `trial`；其余应用由雷达按需搜索，没有独立 AI 应用订阅表 |
 | Agent 框架与编排 | OpenAI Agents SDK、LangGraph、Google ADK 的官方仓库与文档；新框架候选的作者资料 | 新框架解决的问题，以及已关注框架的重要能力、修复和兼容变化 | 已列入 12 源中的 3 个 Release 源，均 `trial`；可持续追踪固定框架，不要求每期发现新框架，不代表持续无人值守运行 |
 | MCP 服务与连接器 | MCP 规范官方仓库、具体 MCP 服务作者仓库和文档 | 协议实质变化、连接的服务、工具能力、认证 / 调用费用 | 规范已有 Release 配置；具体 MCP 服务按候选读取。官方 Registry 另列为发现入口 |
-| 模型与运行工具 | Ollama、vLLM、SGLang、Transformers 官方仓库；[Hugging Face 模型作者页面](https://huggingface.co/models) | 新硬件支持、可运行条件、用户能感知的能力与性能变化 | 前四个已有 Release 配置；HF 模型来源仅旧配置保留，本轮未恢复定时采集 |
+| 模型与运行工具 | Ollama、vLLM、SGLang、Transformers 官方仓库；[Hugging Face 模型作者页面](https://huggingface.co/models) | 新硬件支持、可运行条件、用户能感知的能力与性能变化 | 前四个已有 Release 配置；2026-09-11 将 HF Models 加入 Codex 周四来源轮换，读取入口已核验，尚未完成该轮采集入库；不代表旧采集器恢复运行 |
 | 游戏 | [itch.io](https://itch.io/) 作者游戏页 / devlog / [Game Jam 作品](https://itch.io/jams)、[Steam](https://store.steampowered.com/) 游戏页 / 公告 / 玩家评论、[CrazyGames](https://www.crazygames.com/) 与 [Poki](https://poki.com/) 具体游戏页、游戏作者 GitHub | 核心玩法、设备、试玩、更新、玩家反馈、开源状态 | itch.io / CrazyGames / Poki 已在雷达游戏查询词内；本轮入口可读不代表游戏已试玩、各平台 API 已接通；Steam 单游戏深读建议补充 |
 | 博客、帖子与访谈 | 作者个人博客、团队技术博客、HN / Reddit 等社区原帖、采访首发页面、播客或视频访谈的原始节目与可核对文字稿 | 核心观点、开发方法、产品经验、复盘过程，以及可借鉴的做法 | 来源规划以按需阅读原文为主，没有专门固定订阅；具体平台的访问与获取情况逐条记录，不代表已接入全部渠道 |
 
@@ -39,6 +39,20 @@
 | [阮一峰科技爱好者周刊](https://github.com/ruanyf/weekly) | 中文编辑精选、每周五发布 | 开源项目、博客、帖子与访谈、部分 AI 应用与工具 | 本轮核验官方仓库，新增备选，尚未进入固定采集；与 HelloGitHub 做项目去重 |
 
 CrazyGames / Poki 的目录、itch.io / Steam 的榜单也可以用于发现；上表游戏行只把具体游戏说明与试玩入口作为作品资料来源，不把榜单排名当玩法或需求证据。
+
+### Hugging Face 直接来源（2026-09-11 加入）
+
+Hugging Face 单独管理，不依赖 AIHOT 转述。Spaces / Models 目录用于发现，具体作者的应用说明、模型卡、许可证与关联仓库用于核验。沿用八个栏目，不新增“HF”栏目：
+
+| 入口 | 采集重点 | 归属与安排 |
+| --- | --- | --- |
+| [Spaces](https://huggingface.co/spaces) | 能解决具体任务的应用，例如 OCR、音频、图像、文档工具；核对运行状态、使用限制及作者说明 | AI 应用；每周三轮换。2026-09-11 目录正文读取成功，未试玩具体应用 |
+| [Models](https://huggingface.co/models) | 有明确用途、运行条件和许可说明的模型及重要更新；热度仅作线索 | 模型与运行工具；每周四轮换。2026-09-11 入口与筛选项可读，未深核具体模型 |
+| [Blog](https://huggingface.co/blog) / [RSS](https://huggingface.co/blog/feed.xml) | 实用教程、工程经验、工具发布；区分官方文章与社区作者自述 | 博客、帖子与访谈；每周五轮换。旧配置已有 RSS，本次未核验 feed，实际执行时记录可读状态 |
+
+不默认采集 Daily Papers 或全量数据集，不为填数收录论文、重复模型变体或无实际用途的演示。以上是 Codex 任务的来源轮换变更，不是新建 API 常驻采集器；单次仍共享最多 20 个新候选的预算，不能把目录可读写成完整采集完成。
+
+**与 AIHOT 去重**：AIHOT 仍是单列的聚合发现源。2026-09-11 主页读取为空、selected 接口未取得可用响应，因此尚不能确认它当前是否、以及多大范围覆盖 HF。若两处指向同一作品，按作者规范项目地址归并，保留两个发现出处，不算两份独立证据。GitHub 仓库与 HF 演示仅在作者互链明确指向同一交付物时合并；同一作者的不同作品不合并。同级重复及重要更新仍遵守共同规则。
 
 ## 3. 用户反馈与开发机会
 
