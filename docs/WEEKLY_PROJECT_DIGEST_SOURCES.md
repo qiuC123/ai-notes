@@ -25,18 +25,19 @@
 
 ## 2. 聚合、精选、榜单与发布社区（单列）
 
+2026-09-15：HelloGitHub 已移出信息源，不再检查月刊或用于候选补采；只参考其公开编辑定位，详见[编辑规则](WEEKLY_PROJECT_DIGEST.md#hellogithub-仅作编辑参考2026-09-15)。历史来源记录保留。
+
 这些入口用来发现线索，随后仍回到上表原始资料。单列是来源管理，不把同一项目再发一次。
 
 | 平台 | 类型 | 对应栏目 | 当前状态 / 用法 |
 | --- | --- | --- | --- |
-| [HelloGitHub](https://github.com/521xueweihan/HelloGitHub) | 中文编辑精选 | 八个栏目均可从中寻找线索 | 已加入当前 Codex 周报任务的来源说明；月刊每月 28 日发布，本轮前已读取第 125 期。未改飞书雷达采集器 |
 | [AIHOT](https://aihot.virxact.com/) | AI 新闻聚合（按本项目旧配置定位） | AI 应用、Agent 框架与编排、MCP 服务与连接器、模型与运行工具；Skills 补充 | 旧配置有 selected、hot-topics 两接口且 `evidence_allowed: false`；本轮主页未取得可用正文，接口未重新实测，不算已恢复的周报源 |
 | [HN / Show HN](https://news.ycombinator.com/show) | 作者发布与技术讨论社区 | 开源项目、AI 应用、Agent 框架与编排等，以及游戏、开发机会 | 现有雷达按需搜索、周报已列入；不是全站完整同步 |
 | [Product Hunt](https://www.producthunt.com/) | 产品发布和社区榜单 | 开源项目候选、AI 应用、开发机会 | 已在雷达查询词内，官方 API 未完成接入；产品并非都开源 |
 | [GitHub Trending](https://github.com/trending) | GitHub 热门发现榜单 | 各类开源工具、Skills 和游戏 | 建议作为补充发现入口，尚无专属采集器；不按 stars 直接选入 |
 | [MCP Registry](https://registry.modelcontextprotocol.io/) | 官方维护的 MCP 服务注册目录 | MCP 服务与连接器 | 本轮已读到入口，建议补充；目录官方不表示所有服务均由官方制作、审计或认证 |
 | [SteamDB](https://steamdb.info/) | 第三方 Steam 数据整理平台 | 游戏、游戏开发机会 | 已在雷达游戏查询词内；本轮主页可读，玩家数、价格等必须具体核对，不能把热度当成销量或收入 |
-| [阮一峰科技爱好者周刊](https://github.com/ruanyf/weekly) | 中文编辑精选、每周五发布 | 开源项目、博客、帖子与访谈、部分 AI 应用与工具 | 本轮核验官方仓库，新增备选，尚未进入固定采集；与 HelloGitHub 做项目去重 |
+| [阮一峰科技爱好者周刊](https://github.com/ruanyf/weekly) | 中文编辑精选、每周五发布 | 开源项目、博客、帖子与访谈、部分 AI 应用与工具 | 本轮核验官方仓库，新增备选，尚未进入固定采集；按规范项目地址与共享候选库去重 |
 
 CrazyGames / Poki 的目录、itch.io / Steam 的榜单也可以用于发现；上表游戏行只把具体游戏说明与试玩入口作为作品资料来源，不把榜单排名当玩法或需求证据。
 
