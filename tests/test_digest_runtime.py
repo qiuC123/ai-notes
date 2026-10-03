@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import redirect_stdout
+import io
 import json
 from pathlib import Path
 import sys
@@ -18,6 +20,205 @@ class RuntimeTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        env = patch.dict(runtime.os.environ, {}, clear=True)
+        env.start()
+        self.addCleanup(env.stop)
+
+    def model_config(self, content=None):
+        path = self.root / 'model.env'
+        path.write_text(content if content is not None else (
+            'DIGEST_MODEL_BASE_URL=https://model.example/v1\n'
+            'DIGEST_MODEL_NAME=test\nDIGEST_MODEL_API_KEY=test-only\n'), encoding='utf-8-sig')
+        return path
+
+    def test_model_env_file_reads_bom_export_quotes_comments_and_key_alias(self):
+        path = self.model_config('\n# model config\n'
+            'export DIGEST_MODEL_BASE_URL="https://model.example/v1" # endpoint\n'
+            "DIGEST_MODEL_NAME='test model'\nDIGEST_MODEL_API_KEY_VAR=GLM_API_KEY\n"
+            'GLM_API_KEY="literal-${KEEP_ME}-$(no-shell)#tail"\n'
+            'DIGEST_MODEL_REASONING_EFFORT=low # bounded effort\n')
+        model = runtime.ModelClient(self.root, env_file=path)
+        self.assertEqual('https://model.example/v1', model.base_url)
+        self.assertEqual('test model', model.model)
+        self.assertEqual('literal-${KEEP_ME}-$(no-shell)#tail', model.api_key)
+        self.assertEqual('low', model.reasoning_effort)
+        self.assertFalse((self.root / runtime.DB_PATH).exists())
+
+    def test_original_model_environment_configuration_still_works(self):
+        with patch.dict(runtime.os.environ, {
+            'DIGEST_MODEL_BASE_URL': 'https://model.example/v1',
+            'DIGEST_MODEL_NAME': 'legacy', 'DIGEST_MODEL_API_KEY': 'legacy-test-key'}):
+            model = runtime.ModelClient(self.root)
+        self.assertEqual(('https://model.example/v1', 'legacy', 'legacy-test-key', None),
+                         (model.base_url, model.model, model.api_key, model.reasoning_effort))
+
+    def test_selected_model_file_does_not_mix_ambient_provider_configuration(self):
+        path = self.model_config('DIGEST_MODEL_BASE_URL=https://file.example/v1\nDIGEST_MODEL_NAME=file-model\n')
+        with patch.dict(runtime.os.environ, {
+            'DIGEST_MODEL_ENV_FILE': str(path), 'DIGEST_MODEL_API_KEY': 'ambient-secret',
+            'DIGEST_MODEL_REASONING_EFFORT': 'high'}):
+            with self.assertRaises(runtime.ConfigurationRequired):
+                runtime.ModelClient(self.root)
+            model = runtime.ModelClient(self.root, api_key='explicit-test-key')
+        self.assertEqual('https://file.example/v1', model.base_url)
+        self.assertEqual('explicit-test-key', model.api_key)
+        self.assertIsNone(model.reasoning_effort)
+        path = self.model_config('DIGEST_MODEL_API_KEY_VAR=GLM_API_KEY\nGLM_API_KEY=file-secret\n')
+        with patch.dict(runtime.os.environ, {
+            'DIGEST_MODEL_BASE_URL': 'https://ambient.example/v1', 'DIGEST_MODEL_NAME': 'ambient-model'}):
+            with self.assertRaises(runtime.ConfigurationRequired):
+                runtime.ModelClient(self.root, env_file=path)
+
+    def test_explicit_model_arguments_override_file_and_env_file_selection(self):
+        path = self.model_config()
+        with patch.dict(runtime.os.environ, {'DIGEST_MODEL_ENV_FILE': str(self.root / 'missing.env')}):
+            model = runtime.ModelClient(self.root, env_file=path, base_url='https://override.example/v1',
+                model='override', api_key='override-test-key', reasoning_effort='high')
+        self.assertEqual(('https://override.example/v1', 'override', 'override-test-key', 'high'),
+                         (model.base_url, model.model, model.api_key, model.reasoning_effort))
+
+    def test_model_configuration_errors_never_echo_secret_or_source_line(self):
+        for content in ('DO_NOT_ECHO_SECRET invalid assignment',
+                        'GLM_API_KEY="DO_NOT_ECHO_SECRET',
+                        'DIGEST_MODEL_API_KEY_VAR=DO_NOT_ECHO_SECRET!\n',
+                        'DIGEST_MODEL_REASONING_EFFORT=DO_NOT_ECHO_SECRET\n'):
+            with self.subTest(content=content):
+                with self.assertRaises(runtime.ConfigurationRequired) as error:
+                    runtime.ModelClient(self.root, env_file=self.model_config(content))
+                self.assertNotIn('DO_NOT_ECHO_SECRET', str(error.exception))
+        missing = self.root / 'DO_NOT_ECHO_SECRET.env'
+        with self.assertRaises(runtime.ConfigurationRequired) as error:
+            runtime.ModelClient(self.root, env_file=missing)
+        self.assertNotIn('DO_NOT_ECHO_SECRET', str(error.exception))
+        path = self.model_config()
+        path.write_bytes(b'GLM_API_KEY=DO_NOT_ECHO_SECRET\xff')
+        with self.assertRaises(runtime.ConfigurationRequired) as error:
+            runtime.ModelClient(self.root, env_file=path)
+        self.assertNotIn('DO_NOT_ECHO_SECRET', str(error.exception))
+        self.assertFalse((self.root / runtime.DB_PATH).exists())
+
+    def test_reasoning_effort_payload_and_receipt_identity(self):
+        payloads = []
+        def response(request):
+            payloads.append(json.loads(request.content))
+            return httpx.Response(200, json={'choices': [{'message': {'content': '{"ok":true}'}}]})
+        args = dict(stage='score', system='rules', material={'x': 1}, budget_key='reasoning')
+        with httpx.Client(transport=httpx.MockTransport(response)) as client:
+            config = dict(base_url='https://model.example/v1', model='test', api_key='test-only', client=client)
+            legacy = runtime.ModelClient(self.root, **config).request(**args)
+            blank = runtime.ModelClient(self.root, **config, reasoning_effort='').request(**args)
+            low = runtime.ModelClient(self.root, **config, reasoning_effort='low').request(**args)
+            high = runtime.ModelClient(self.root, **config, reasoning_effort='high').request(**args)
+            repeated = runtime.ModelClient(self.root, **config, reasoning_effort='low').request(**args)
+        self.assertEqual(runtime._hash({'endpoint': config['base_url'], 'model': config['model'],
+            'stage': 'score', 'system': 'rules', 'material': {'x': 1}, 'max_tokens': 4096,
+            'format': 'json-object.v1'}), legacy['request_id'])
+        self.assertTrue(blank['reused'])
+        self.assertTrue(repeated['reused'])
+        self.assertEqual(3, len({legacy['request_id'], low['request_id'], high['request_id']}))
+        self.assertEqual(3, len(payloads))
+        self.assertNotIn('reasoning_effort', payloads[0])
+        self.assertEqual(['low', 'high'], [payload['reasoning_effort'] for payload in payloads[1:]])
+
+    def test_supported_reasoning_efforts_and_empty_override(self):
+        path = self.model_config('DIGEST_MODEL_BASE_URL=https://model.example/v1\n'
+            'DIGEST_MODEL_NAME=test\nDIGEST_MODEL_API_KEY=test-only\nDIGEST_MODEL_REASONING_EFFORT=low\n')
+        for effort in ('minimal', 'none', 'low', 'medium', 'high', 'max', 'xhigh', ''):
+            with self.subTest(effort=effort):
+                self.assertEqual(effort, runtime.ModelClient(self.root, env_file=path,
+                                                           reasoning_effort=effort).reasoning_effort)
+
+    def test_model_check_is_offline_safe_and_does_not_create_database(self):
+        path = self.model_config()
+        output = io.StringIO()
+        with patch.object(runtime.httpx, 'Client') as network, redirect_stdout(output):
+            code = runtime.main(['--model-env-file', str(path), 'model-check', '--root', str(self.root)])
+        self.assertEqual(0, code)
+        self.assertEqual({'endpoint': 'https://model.example/v1', 'model': 'test',
+            'reasoning_effort': None, 'key_configured': True}, json.loads(output.getvalue()))
+        self.assertNotIn('test-only', output.getvalue())
+        network.assert_not_called()
+        self.assertNotIn('DIGEST_MODEL_ENV_FILE', runtime.os.environ)
+        self.assertFalse((self.root / runtime.DB_PATH).exists())
+
+    def test_model_check_rejects_incomplete_config_and_restores_environment(self):
+        path = self.model_config('DIGEST_MODEL_BASE_URL=https://model.example/v1\n')
+        with patch.dict(runtime.os.environ, {'DIGEST_MODEL_ENV_FILE': 'old-model.env'}):
+            output = io.StringIO()
+            with redirect_stdout(output):
+                code = runtime.main(['model-check', '--model-env-file', str(path), '--root', str(self.root)])
+            self.assertEqual('old-model.env', runtime.os.environ['DIGEST_MODEL_ENV_FILE'])
+        self.assertEqual(1, code)
+        self.assertEqual('error', json.loads(output.getvalue())['status'])
+        self.assertFalse((self.root / runtime.DB_PATH).exists())
+
+    def test_cli_env_file_reaches_work_without_scheduling(self):
+        path = self.model_config()
+        def check_work(root, *, job_id):
+            self.assertEqual(str(path), runtime.os.environ['DIGEST_MODEL_ENV_FILE'])
+            self.assertEqual('test', runtime.ModelClient(root).model)
+            return {'status': 'idle'}
+        with patch.object(runtime, 'work_once', side_effect=check_work) as work, \
+                patch.object(runtime, 'schedule') as schedule, redirect_stdout(io.StringIO()):
+            self.assertEqual(0, runtime.main(['work', '--model-env-file', str(path), '--root', str(self.root)]))
+        work.assert_called_once_with(self.root, job_id=None)
+        schedule.assert_not_called()
+        self.assertNotIn('DIGEST_MODEL_ENV_FILE', runtime.os.environ)
+
+    def test_model_smoke_has_one_request_budget_and_reuses_receipt(self):
+        path = self.model_config()
+        seen = []
+        def response(request):
+            seen.append(json.loads(request.content))
+            return httpx.Response(200, json={'choices': [{'message': {'content': '{"ok":true}'}}],
+                'usage': {'prompt_tokens': 8, 'completion_tokens': 4}})
+        client = httpx.Client(transport=httpx.MockTransport(response))
+        self.addCleanup(client.close)
+        results = []
+        with patch.object(runtime.httpx, 'Client', return_value=client), \
+                patch.object(runtime, 'schedule') as schedule, patch.object(runtime, 'work_once') as work:
+            for _ in range(2):
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(0, runtime.main(['model-smoke', '--root', str(self.root), '--model-env-file', str(path)]))
+                results.append(json.loads(output.getvalue()))
+            with patch.dict(runtime.os.environ, {'DIGEST_MODEL_ENV_FILE': str(path)}):
+                model = runtime.ModelClient(self.root, reasoning_effort='high')
+                with self.assertRaisesRegex(runtime.RuntimeError, 'budget'):
+                    model.request(stage='other', system='rules', material={}, budget_key='model-smoke', max_requests=1)
+        self.assertFalse(results[0]['reused'])
+        self.assertTrue(results[1]['reused'])
+        self.assertEqual(results[0]['request_id'], results[1]['request_id'])
+        self.assertEqual(1, len(seen))
+        self.assertEqual(1024, seen[0]['max_tokens'])
+        self.assertEqual({'type': 'json_object'}, seen[0]['response_format'])
+        state = runtime.status(self.root)
+        self.assertEqual([], state['jobs'])
+        self.assertEqual([], state['pending_notices'])
+        self.assertEqual(['model-smoke'], [request['budget_key'] for request in state['requests']])
+        self.assertEqual(8, state['usage']['prompt_tokens'])
+        schedule.assert_not_called()
+        work.assert_not_called()
+
+    def test_model_smoke_rejects_wrong_output_without_automatic_repeat(self):
+        path = self.model_config()
+        calls = []
+        def response(request):
+            calls.append(request)
+            return httpx.Response(200, json={'choices': [{'message': {'content': '{"ok":1}'}}]})
+        client = httpx.Client(transport=httpx.MockTransport(response))
+        self.addCleanup(client.close)
+        with patch.object(runtime.httpx, 'Client', return_value=client):
+            for _ in range(2):
+                with self.assertRaisesRegex(runtime.RuntimeError, 'model smoke response'):
+                    runtime.model_smoke(self.root, env_file=path)
+        self.assertEqual(1, len(calls))
+
+    def test_read_only_commands_do_not_create_database(self):
+        for command in ('status', 'notices'):
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(0, runtime.main([command, '--root', str(self.root)]))
+        self.assertFalse((self.root / runtime.DB_PATH).exists())
 
     def test_enqueue_is_business_key_idempotent_and_claim_exclusive(self):
         action = {'action': 'generate', 'ranking_type': 'daily', 'period': '2026-10-02'}

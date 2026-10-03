@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import sys
 import time
@@ -35,6 +36,32 @@ class ConfigurationRequired(RuntimeError):
 
 class RequestUncertain(RuntimeError):
     pass
+
+
+def _model_env(path):
+    """Read a single, explicit dotenv file without shell evaluation/interpolation."""
+    try:
+        lines = Path(path).read_text(encoding='utf-8-sig').splitlines()
+    except (OSError, UnicodeError, ValueError):
+        raise ConfigurationRequired('cannot read model env file as UTF-8') from None
+    values = {}
+    for number, line in enumerate(lines, 1):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        match = re.fullmatch(r'(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)', line)
+        if match is None:
+            raise ConfigurationRequired(f'invalid model env assignment at line {number}')
+        name, value = match.groups()
+        if value.startswith(('"', "'")):
+            quoted = re.fullmatch(r'''(?:"([^"]*)"|'([^']*)')\s*(?:#.*)?''', value)
+            if quoted is None:
+                raise ConfigurationRequired(f'invalid model env quoting at line {number}')
+            value = next(part for part in quoted.groups() if part is not None)
+        else:
+            value = re.split(r'(?:^|\s+)#', value, maxsplit=1)[0].rstrip()
+        values[name] = value
+    return values
 
 
 def _json(value):
@@ -233,13 +260,25 @@ class ModelClient:
     transport-ambiguous request is NOT resubmitted automatically. No credentials
     or request headers are written into receipts or surfaced in errors.
     """
-    def __init__(self, root, *, base_url=None, model=None, api_key=None, client=None):
+    def __init__(self, root, *, base_url=None, model=None, api_key=None, client=None,
+                 env_file=None, reasoning_effort=None):
         self.root = Path(root)
-        self.base_url = base_url or os.getenv('DIGEST_MODEL_BASE_URL')
-        self.model = model or os.getenv('DIGEST_MODEL_NAME')
-        self.api_key = api_key or os.getenv('DIGEST_MODEL_API_KEY')
+        env_file = env_file if env_file is not None else os.getenv('DIGEST_MODEL_ENV_FILE')
+        # A selected file is a complete configuration source: never combine its
+        # provider endpoint with credentials inherited from another provider.
+        config = _model_env(env_file) if env_file is not None else os.environ
+        key_var = config.get('DIGEST_MODEL_API_KEY_VAR', 'DIGEST_MODEL_API_KEY')
+        if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', key_var):
+            raise ConfigurationRequired('DIGEST_MODEL_API_KEY_VAR must be an environment variable name')
+        self.base_url = base_url if base_url is not None else config.get('DIGEST_MODEL_BASE_URL')
+        self.model = model if model is not None else config.get('DIGEST_MODEL_NAME')
+        self.api_key = api_key if api_key is not None else config.get(key_var)
+        effort = reasoning_effort if reasoning_effort is not None else config.get('DIGEST_MODEL_REASONING_EFFORT')
+        self.reasoning_effort = effort.strip() if isinstance(effort, str) else effort
+        if self.reasoning_effort not in (None, '', 'low', 'medium', 'high', 'max', 'minimal', 'none', 'xhigh'):
+            raise ConfigurationRequired('unsupported DIGEST_MODEL_REASONING_EFFORT')
         if not all((self.base_url, self.model, self.api_key)):
-            raise ConfigurationRequired('configure DIGEST_MODEL_BASE_URL, DIGEST_MODEL_NAME and DIGEST_MODEL_API_KEY')
+            raise ConfigurationRequired('configure DIGEST_MODEL_BASE_URL, DIGEST_MODEL_NAME and the selected API key')
         digest._url(self.base_url, 'model endpoint')
         self.client = client
 
@@ -250,8 +289,11 @@ class ModelClient:
             raise RuntimeError('output token budget must be bounded')
         if len(system) + len(_json(material)) > 60000:
             raise RuntimeError('model input exceeds 60000 character budget')
-        key = _hash({'endpoint': self.base_url, 'model': self.model, 'stage': stage, 'system': system,
-                     'material': material, 'max_tokens': max_output_tokens, 'format': 'json-object.v1'})
+        fingerprint = {'endpoint': self.base_url, 'model': self.model, 'stage': stage, 'system': system,
+                       'material': material, 'max_tokens': max_output_tokens, 'format': 'json-object.v1'}
+        if self.reasoning_effort:
+            fingerprint['reasoning_effort'] = self.reasoning_effort
+        key = _hash(fingerprint)
         with _db(self.root) as con, con:
             con.execute('BEGIN IMMEDIATE')
             previous = con.execute('SELECT * FROM requests WHERE request_id=?', (key,)).fetchone()
@@ -269,6 +311,8 @@ class ModelClient:
                         (key, budget_key, stage, self.model, 'pending', time.time(), time.time()))
         payload = {'model': self.model, 'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': _json(material)}],
                    'response_format': {'type': 'json_object'}, 'max_tokens': max_output_tokens}
+        if self.reasoning_effort:
+            payload['reasoning_effort'] = self.reasoning_effort
         client = self.client or httpx.Client(timeout=90, follow_redirects=False)
         try:
             response = client.post(self.base_url.rstrip('/') + '/chat/completions', json=payload,
@@ -299,6 +343,21 @@ class ModelClient:
             con.execute('UPDATE requests SET status=?,output=?,usage=?,error=?,updated_at=? WHERE request_id=?',
                         (status, _json(output) if output is not None else None, _json(usage or {}), error, finished, key))
         return finished
+
+
+def model_check(root, *, env_file=None):
+    model = ModelClient(root, env_file=env_file)
+    return {'endpoint': model.base_url, 'model': model.model,
+            'reasoning_effort': model.reasoning_effort or None, 'key_configured': bool(model.api_key)}
+
+
+def model_smoke(root, *, env_file=None):
+    result = ModelClient(root, env_file=env_file).request(
+        stage='model-smoke', system='Return exactly the JSON object {"ok":true}.',
+        material={'ok': True}, budget_key='model-smoke', max_requests=1, max_output_tokens=1024)
+    if set(result['output']) != {'ok'} or result['output']['ok'] is not True:
+        raise RuntimeError('model smoke response must be exactly the JSON object {"ok":true}')
+    return {'status': 'succeeded', **result}
 
 
 def resolve_request(root, request_id, document):
@@ -389,17 +448,23 @@ def work_once(root, *, handlers=None, job_id=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('schedule', 'work', 'status', 'retry', 'notices', 'ack', 'resolve-request', 'retry-request'))
+    parser.add_argument('command', choices=('schedule', 'work', 'status', 'retry', 'notices', 'ack', 'resolve-request', 'retry-request', 'model-check', 'model-smoke'))
     parser.add_argument('--root', type=Path, default=Path('.'))
+    parser.add_argument('--model-env-file', type=Path)
     parser.add_argument('--id')
     parser.add_argument('--receipt')
     parser.add_argument('--input', type=Path)
     parser.add_argument('--reason')
     args = parser.parse_args(argv)
     root = args.root.resolve()
+    previous_env_file = os.environ.get('DIGEST_MODEL_ENV_FILE')
+    if args.model_env_file is not None:
+        os.environ['DIGEST_MODEL_ENV_FILE'] = str(args.model_env_file)
     try:
         if args.command == 'schedule': result = schedule(root)
         elif args.command == 'work': result = work_once(root, job_id=args.id)
+        elif args.command == 'model-check': result = model_check(root)
+        elif args.command == 'model-smoke': result = model_smoke(root)
         elif args.command == 'status': result = status(root)
         elif args.command == 'notices': result = notices(root)
         elif args.command == 'retry': result = retry(root, args.id)
@@ -415,6 +480,12 @@ def main(argv=None):
     except (ValueError, sqlite3.Error, OSError) as exc:
         print(json.dumps({'status': 'error', 'error': str(exc)}, ensure_ascii=False))
         return 1
+    finally:
+        if args.model_env_file is not None:
+            if previous_env_file is None:
+                os.environ.pop('DIGEST_MODEL_ENV_FILE', None)
+            else:
+                os.environ['DIGEST_MODEL_ENV_FILE'] = previous_env_file
 
 
 if __name__ == '__main__':

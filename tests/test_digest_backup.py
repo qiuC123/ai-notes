@@ -153,6 +153,22 @@ class DigestBackupTests(unittest.TestCase):
         self.assertEqual(['--id','current-a'],run.call_args_list[1].args[0][-2:])
         self.assertEqual(['--id','current-b'],run.call_args_list[2].args[0][-2:])
 
+    def test_tick_forwards_private_config_path_without_reading_its_contents(self):
+        program = runpy.run_path(str(Path(__file__).resolve().parents[1] / 'deploy/digest/one_tick.py'))
+        private_file = self.base / 'private model.env'
+        private_file.write_text('DIGEST_MODEL_API_KEY=private-test-only', encoding='utf-8')
+        values = [{'dispatch': {'actions': [{'action': 'collect'}]}, 'jobs': [{'job_id': 'current'}]}, {'status': 'completed'}]
+        responses = [program['subprocess'].CompletedProcess([], 0, json.dumps(value), '') for value in values]
+        stdout = io.StringIO()
+        with patch.object(program['subprocess'], 'run', side_effect=responses) as run:
+            with contextlib.redirect_stdout(stdout):
+                code = program['main'](['--root', str(self.root), '--model-env-file', str(private_file), '--execute'])
+        self.assertEqual(0, code)
+        for call in run.call_args_list:
+            self.assertEqual(['--model-env-file', str(private_file.resolve())], call.args[0][-2:])
+            self.assertNotIn('private-test-only', str(call.args))
+        self.assertNotIn('private-test-only', stdout.getvalue())
+
 
 if __name__ == '__main__':
     unittest.main()

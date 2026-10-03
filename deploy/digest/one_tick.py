@@ -12,6 +12,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True, help='private digest state root')
     parser.add_argument('--max-jobs', type=int, default=3)
+    parser.add_argument('--model-env-file', type=Path, help='explicit private model configuration file')
     parser.add_argument('--execute', action='store_true')
     args = parser.parse_args(argv)
     if not 1 <= args.max_jobs <= 8:
@@ -20,7 +21,8 @@ def main(argv=None):
     state_root = args.root.resolve()
     prefix = [sys.executable, '-X', 'utf8', '-m', 'ai_notes.digest_runtime']
     def command(name, job_id=None):
-        return [*prefix, name, '--root', str(state_root), *(['--id',job_id] if job_id else [])]
+        return [*prefix, name, '--root', str(state_root), *(['--id',job_id] if job_id else []),
+                *(['--model-env-file', str(args.model_env_file.resolve())] if args.model_env_file else [])]
     if not args.execute:
         print(json.dumps({'status': 'preview_only', 'cwd': str(code_root),
                           'schedule': command('schedule'), 'work': command('work'),

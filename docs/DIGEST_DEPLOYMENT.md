@@ -1,6 +1,6 @@
 # 三榜私密备份与单执行者部署
 
-本轮提供可检查的备份、恢复和部署样例，没有选择云厂商、申请主机、安装服务、启用定时器或修改现有 Codex heartbeat。模型供应商、模型与 API 凭据也尚未决定。先在本地把筛选质量验证好，再按这里迁移。
+本项目提供可检查的备份、恢复和部署样例，尚未安装云服务或启用定时器。2026-10-03 用户确认使用智谱官方普通 API 的 `glm-5.3-flash`，现有 Codex heartbeat 已按用户要求暂停。先在本地验证模型接入和筛选质量，再按这里迁移。
 
 ## 运行边界
 
@@ -17,6 +17,31 @@
 | `DIGEST_MODEL_API_KEY` | 对应密钥，仅保存在机器环境或仓库外权限受限文件 |
 
 不提供默认供应商和默认密钥。缺少配置时生成任务进入待处理状态，不能宣称已完成真实模型评分或文章生成。网络超时且收费结果不明确时，保留请求记录并要求核对供应商回执；不得通过删除账本来重试付费请求。
+
+### 显式读取仓库外的模型配置
+
+可以通过 `--model-env-file <path>` 或 `DIGEST_MODEL_ENV_FILE` 指定 UTF-8 `.env` 文件。程序不自动搜索凭据目录，不执行文件中的命令或变量插值。文件模式将该文件视为一套完整配置，不混入环境中另一供应商的地址或密钥；原有三个进程环境变量的方式继续支持。
+
+当前本机文件为 `C:/Users/Mayn/.config/ai-secrets/glm.env`，结构如下（这里没有真实密钥）：
+
+```dotenv
+GLM_API_KEY=在本机私密文件中填写
+DIGEST_MODEL_API_KEY_VAR=GLM_API_KEY
+DIGEST_MODEL_BASE_URL=https://open.bigmodel.cn/api/paas/v4
+DIGEST_MODEL_NAME=glm-5.3-flash
+DIGEST_MODEL_REASONING_EFFORT=low
+```
+
+`DIGEST_MODEL_API_KEY_VAR` 引用同文件中的密钥变量，避免复制密钥；不填写时使用 `DIGEST_MODEL_API_KEY`。推理档位可省略，保留供应商默认值；设置后参与请求指纹，切换档位不会误用旧结果。GLM-5.3-Flash 强制开启思考，支持 `low/high/max`，此处用 `low` 做首次连通检查，不代表已完成评分质量校准。地址与参数来自[智谱模型文档](https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash)和[对话补全 API](https://docs.bigmodel.cn/api-reference/模型-api/对话补全)。
+
+以下检查不调度榜单、不启动定时器。`model-check` 不联网、不创建模型账本；`model-smoke` 通过真实模型客户端发送最多一次固定 JSON 测试，输出上限 1024 token，账本保存在指定沙箱，成功后重跑复用回执。它可能产生供应商 API 费用，不能当作完整评分质量验收。
+
+```powershell
+.venv/Scripts/python.exe -X utf8 -m ai_notes.digest_runtime model-check --model-env-file C:/Users/Mayn/.config/ai-secrets/glm.env
+.venv/Scripts/python.exe -X utf8 -m ai_notes.digest_runtime model-smoke --root work/glm-api-check-20261003 --model-env-file C:/Users/Mayn/.config/ai-secrets/glm.env
+```
+
+本机私密文件不提交 Git；其他机器需要自行配置文件路径及凭据。用户确认恢复任务前，不运行 schedule/work，也不加 `-Execute` 启动正式流程。
 
 ## 备份内容与恢复约束
 
@@ -61,6 +86,8 @@ Windows 示例（这里只是命令，不会由文档自动执行）：
 
 ```powershell
 ./deploy/digest/run-once.ps1 -StateRoot E:/private-digest-state-restored
+# 也可以显式选择私密配置；不加 -Execute 时仍只预览命令。
+./deploy/digest/run-once.ps1 -StateRoot E:/private-digest-state-restored -ModelEnvFile C:/Users/Mayn/.config/ai-secrets/glm.env
 # 配置完成且明确切换后才加 -Execute。
 ```
 
