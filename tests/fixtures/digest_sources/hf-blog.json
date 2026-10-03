@@ -1,0 +1,10 @@
+{
+  "https://huggingface.co/blog/feed.xml": {
+    "status_code": 200,
+    "headers": {
+      "content-type": "application/atom+xml",
+      "etag": "offline-example-v1"
+    },
+    "body": "<feed xmlns=\"http://www.w3.org/2005/Atom\"><entry><title>Offline discovery example</title><link href=\"https://example.org/tutorial\"/><summary>Fixture only: a concrete workflow to review, with unknown publication time.</summary></entry></feed>"
+  }
+}

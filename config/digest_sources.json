@@ -1,0 +1,35 @@
+{
+  "schema_version": "digest-sources.v1",
+  "sources": [
+    {
+      "id": "show-hn",
+      "type": "show_hn",
+      "url": "https://hacker-news.firebaseio.com/v0/showstories.json",
+      "weekdays": [0, 1, 2, 3, 4, 5, 6],
+      "max_items": 30
+    },
+    {
+      "id": "hf-spaces",
+      "type": "hf_spaces",
+      "url": "https://huggingface.co/api/spaces?sort=lastModified&direction=-1&limit=30",
+      "weekdays": [2],
+      "max_items": 30
+    },
+    {
+      "id": "hf-models",
+      "type": "hf_models",
+      "url": "https://huggingface.co/api/models?sort=lastModified&direction=-1&limit=30",
+      "weekdays": [3],
+      "max_items": 30
+    },
+    {
+      "id": "hf-blog",
+      "type": "rss",
+      "url": "https://huggingface.co/blog/feed.xml",
+      "weekdays": [4],
+      "kind": "reading",
+      "category": "博客、帖子与访谈",
+      "max_items": 30
+    }
+  ]
+}
