@@ -1,0 +1,539 @@
+{
+  "schema": "ai-notes-public-context-snapshot.v1",
+  "project": "ai-notes-digest",
+  "repository": "https://github.com/qiuC123/ai-notes",
+  "code_commit": "9d139763b2d6532df5020279e4b8cac08694564b",
+  "observed_at_beijing": "2026-10-03T17:29:27+08:00",
+  "purpose": "Evidence for planning local digest improvements inspired by AIHOT, followed by a possible cloud deployment; not a live status API.",
+  "collector_report": {
+    "schema_version": 2,
+    "project_id": "ai-notes-digest",
+    "observed_at": "2026-10-03T09:29:26+00:00",
+    "observations": [
+      {
+        "source_id": "readme-md",
+        "kind": "document_hash",
+        "observed_at": "2026-10-03T09:29:26+00:00",
+        "data": {
+          "bytes": 16806,
+          "modified_at": "2026-09-10T07:48:21+00:00",
+          "sha256": "a1725e61ccc078ed6bdc74001d335f9b35ff05d5111a215e55eb24634ec1908a"
+        },
+        "status": "observed",
+        "project_relative_path": "README.md"
+      },
+      {
+        "source_id": "pyproject-toml",
+        "kind": "document_hash",
+        "observed_at": "2026-10-03T09:29:26+00:00",
+        "data": {
+          "bytes": 543,
+          "modified_at": "2026-09-06T02:42:29+00:00",
+          "sha256": "ac75525059540aef8cb80084c90de0e98dc0f8a5d3f9d6b85e00de492d64d961"
+        },
+        "status": "observed",
+        "project_relative_path": "pyproject.toml"
+      },
+      {
+        "source_id": "src-ai-notes-digest-py",
+        "kind": "document_hash",
+        "observed_at": "2026-10-03T09:29:26+00:00",
+        "data": {
+          "bytes": 62650,
+          "modified_at": "2026-09-10T07:48:11+00:00",
+          "sha256": "08d53dc4d8ffe4e10387b4108070e36a7680c97e38370ef285c32f97b29b2701"
+        },
+        "status": "observed",
+        "project_relative_path": "src/ai_notes/digest.py"
+      },
+      {
+        "source_id": "tests-test-digest-py",
+        "kind": "document_hash",
+        "observed_at": "2026-10-03T09:29:26+00:00",
+        "data": {
+          "bytes": 28879,
+          "modified_at": "2026-09-10T07:48:11+00:00",
+          "sha256": "3f85251c62ff12f92791fa7ed0d531a41568b1063cd3ad924bd0bbefcd17be17"
+        },
+        "status": "observed",
+        "project_relative_path": "tests/test_digest.py"
+      },
+      {
+        "source_id": "docs-digest-ranking-design-md",
+        "kind": "document_hash",
+        "observed_at": "2026-10-03T09:29:26+00:00",
+        "data": {
+          "bytes": 16719,
+          "modified_at": "2026-09-15T11:17:55+00:00",
+          "sha256": "cfaa269e80baf1547062409374ec52845d7248a8e14b5518d623e179e247cef8"
+        },
+        "status": "observed",
+        "project_relative_path": "docs/DIGEST_RANKING_DESIGN.md"
+      },
+      {
+        "source_id": "docs-weekly-project-digest-workflow-md",
+        "kind": "document_hash",
+        "observed_at": "2026-10-03T09:29:26+00:00",
+        "data": {
+          "bytes": 19511,
+          "modified_at": "2026-09-15T11:17:55+00:00",
+          "sha256": "0eb439382198babad7c9c9fdc7cef851513b30bb83722c9d6121d96073f07f45"
+        },
+        "status": "observed",
+        "project_relative_path": "docs/WEEKLY_PROJECT_DIGEST_WORKFLOW.md"
+      },
+      {
+        "source_id": "docs-weekly-project-digest-md",
+        "kind": "document_hash",
+        "observed_at": "2026-10-03T09:29:26+00:00",
+        "data": {
+          "bytes": 14233,
+          "modified_at": "2026-09-15T11:17:55+00:00",
+          "sha256": "5ee7ba122c495bc3cca40beaebe0e3bcca15c4ad30c66fecfe2f7a122b0750d9"
+        },
+        "status": "observed",
+        "project_relative_path": "docs/WEEKLY_PROJECT_DIGEST.md"
+      },
+      {
+        "source_id": "docs-weekly-project-digest-output-draft-md",
+        "kind": "document_hash",
+        "observed_at": "2026-10-03T09:29:26+00:00",
+        "data": {
+          "bytes": 11721,
+          "modified_at": "2026-09-10T07:27:50+00:00",
+          "sha256": "6a0d92782ca8e364f8db56061196df95cd019797a8d3db3c2aa64fa0f25c7da7"
+        },
+        "status": "observed",
+        "project_relative_path": "docs/WEEKLY_PROJECT_DIGEST_OUTPUT_DRAFT.md"
+      },
+      {
+        "source_id": "docs-weekly-project-digest-sources-md",
+        "kind": "document_hash",
+        "observed_at": "2026-10-03T09:29:26+00:00",
+        "data": {
+          "bytes": 12096,
+          "modified_at": "2026-09-15T11:17:55+00:00",
+          "sha256": "62383c9309e9c79d8f5dc4c9dde51a56c061761cd2983bcfb254042a926c3f0a"
+        },
+        "status": "observed",
+        "project_relative_path": "docs/WEEKLY_PROJECT_DIGEST_SOURCES.md"
+      },
+      {
+        "source_id": "digest-table-counts",
+        "kind": "sqlite_table_counts",
+        "observed_at": "2026-10-03T09:29:26+00:00",
+        "data": {
+          "table_counts": {
+            "batches": 47,
+            "observations": 287,
+            "drafts": 3,
+            "ranked_issues": 22,
+            "ranked_selections": 169,
+            "issues": 0,
+            "selections": 0
+          },
+          "scope": "retained rows; not a time-windowed count or business-success metric"
+        },
+        "status": "observed"
+      },
+      {
+        "source_id": "archived-by-type",
+        "kind": "sqlite_group_counts",
+        "observed_at": "2026-10-03T09:29:26+00:00",
+        "data": {
+          "retained_rows": 22,
+          "group_counts": {
+            "daily": 18,
+            "weekly": 3,
+            "monthly": 1
+          },
+          "other_count": 0,
+          "scope": "retained rows; category meaning belongs to the project, not the collector"
+        },
+        "status": "observed"
+      },
+      {
+        "source_id": "drafts-by-type",
+        "kind": "sqlite_group_counts",
+        "observed_at": "2026-10-03T09:29:26+00:00",
+        "data": {
+          "retained_rows": 3,
+          "group_counts": {
+            "daily": 3,
+            "weekly": 0,
+            "monthly": 0
+          },
+          "other_count": 0,
+          "scope": "retained rows; category meaning belongs to the project, not the collector"
+        },
+        "status": "observed"
+      }
+    ],
+    "limitations": [
+      "Separate sources are observed sequentially, not as one atomic snapshot.",
+      "No network request or model call; raw log text and database rows are not exported.",
+      "Stored service status does not establish that the process is currently alive."
+    ],
+    "completed_at": "2026-10-03T09:29:26+00:00",
+    "complete": true
+  },
+  "project_observations": {
+    "observed_at": "2026-10-03T17:29:27+08:00",
+    "candidate_count": 103,
+    "collection_dates": [
+      {
+        "date": "2026-09-10",
+        "batch_count": 3
+      },
+      {
+        "date": "2026-09-11",
+        "batch_count": 1
+      },
+      {
+        "date": "2026-09-12",
+        "batch_count": 2
+      },
+      {
+        "date": "2026-09-13",
+        "batch_count": 1
+      },
+      {
+        "date": "2026-09-14",
+        "batch_count": 3
+      },
+      {
+        "date": "2026-09-15",
+        "batch_count": 2
+      },
+      {
+        "date": "2026-09-16",
+        "batch_count": 2
+      },
+      {
+        "date": "2026-09-17",
+        "batch_count": 1
+      },
+      {
+        "date": "2026-09-18",
+        "batch_count": 2
+      },
+      {
+        "date": "2026-09-19",
+        "batch_count": 2
+      },
+      {
+        "date": "2026-09-20",
+        "batch_count": 2
+      },
+      {
+        "date": "2026-09-21",
+        "batch_count": 4
+      },
+      {
+        "date": "2026-09-22",
+        "batch_count": 1
+      },
+      {
+        "date": "2026-09-23",
+        "batch_count": 2
+      },
+      {
+        "date": "2026-09-24",
+        "batch_count": 2
+      },
+      {
+        "date": "2026-09-25",
+        "batch_count": 2
+      },
+      {
+        "date": "2026-09-26",
+        "batch_count": 2
+      },
+      {
+        "date": "2026-09-27",
+        "batch_count": 1
+      },
+      {
+        "date": "2026-09-28",
+        "batch_count": 3
+      },
+      {
+        "date": "2026-09-29",
+        "batch_count": 2
+      },
+      {
+        "date": "2026-09-30",
+        "batch_count": 2
+      },
+      {
+        "date": "2026-10-01",
+        "batch_count": 3
+      },
+      {
+        "date": "2026-10-02",
+        "batch_count": 1
+      },
+      {
+        "date": "2026-10-03",
+        "batch_count": 1
+      }
+    ],
+    "latest_batch": {
+      "collected_at": "2026-10-03T09:08:06+08:00",
+      "local_date": "2026-10-03"
+    },
+    "retained_source_attempt_status_counts": {
+      "ok": 325,
+      "empty": 13,
+      "failed": 11
+    },
+    "archived_periods": [
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-11",
+        "item_count": 5,
+        "archived_at": "2026-09-12T09:03:37.316903+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-12",
+        "item_count": 5,
+        "archived_at": "2026-09-13T09:02:59.825671+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-13",
+        "item_count": 5,
+        "archived_at": "2026-09-14T09:03:53.022501+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-15",
+        "item_count": 5,
+        "archived_at": "2026-09-16T09:05:55.749950+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-16",
+        "item_count": 5,
+        "archived_at": "2026-09-17T09:04:05.879322+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-17",
+        "item_count": 5,
+        "archived_at": "2026-09-18T09:03:20.908886+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-18",
+        "item_count": 5,
+        "archived_at": "2026-09-19T09:33:30.296164+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-19",
+        "item_count": 5,
+        "archived_at": "2026-09-20T09:04:55.025682+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-20",
+        "item_count": 5,
+        "archived_at": "2026-09-21T09:04:52.757016+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-21",
+        "item_count": 5,
+        "archived_at": "2026-09-22T09:04:12.825281+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-22",
+        "item_count": 4,
+        "archived_at": "2026-09-23T10:00:54.923047+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-24",
+        "item_count": 5,
+        "archived_at": "2026-09-25T09:03:43.542434+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-25",
+        "item_count": 5,
+        "archived_at": "2026-09-26T09:04:41.904795+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-27",
+        "item_count": 5,
+        "archived_at": "2026-09-28T09:04:24.871281+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-28",
+        "item_count": 5,
+        "archived_at": "2026-09-29T09:07:02.438895+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-29",
+        "item_count": 4,
+        "archived_at": "2026-09-30T09:04:31.542015+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-09-30",
+        "item_count": 3,
+        "archived_at": "2026-10-01T09:06:00.000748+08:00"
+      },
+      {
+        "ranking_type": "daily",
+        "period": "2026-10-02",
+        "item_count": 8,
+        "archived_at": "2026-10-03T09:08:49.988935+08:00"
+      },
+      {
+        "ranking_type": "monthly",
+        "period": "2026-09",
+        "item_count": 20,
+        "archived_at": "2026-10-01T11:08:12.983173+08:00"
+      },
+      {
+        "ranking_type": "weekly",
+        "period": "2026-09-07",
+        "item_count": 20,
+        "archived_at": "2026-09-14T10:08:06.622218+08:00"
+      },
+      {
+        "ranking_type": "weekly",
+        "period": "2026-09-14",
+        "item_count": 20,
+        "archived_at": "2026-09-21T10:06:53.888644+08:00"
+      },
+      {
+        "ranking_type": "weekly",
+        "period": "2026-09-21",
+        "item_count": 20,
+        "archived_at": "2026-09-28T10:06:55.426933+08:00"
+      }
+    ],
+    "archive_files": {
+      "checked": 22,
+      "all_match": true,
+      "mismatches": []
+    },
+    "pending_draft_count": 3,
+    "sqlite_integrity": "ok"
+  },
+  "metric_definitions": {
+    "candidate_count": "COUNT(DISTINCT canonical_url) from retained observations; no separate candidates table.",
+    "batches": "Retained ingest batches, including collection and pre-publication verification; not successful scheduled runs.",
+    "observations": "Retained candidate observation rows; a candidate may have several.",
+    "ranked_issues": "Archived issue rows grouped by daily, weekly and monthly.",
+    "ranked_selections": "Selected item rows across all archived issues; cross-level repeats are allowed.",
+    "drafts": "Retained draft records; all three observed drafts are daily, none monthly.",
+    "retained_source_attempt_status_counts": "Counts of source status entries retained in batch payloads; not unique sources or uptime.",
+    "collection_dates": "Dates with at least one saved batch; do not establish continuous source coverage.",
+    "archive_files": "All 22 Markdown export SHA-256 values and parsed JSON manifests compared with their SQLite records.",
+    "sqlite_integrity": "SQLite PRAGMA integrity_check, not editorial quality validation."
+  },
+  "verification": {
+    "executed_on": "2026-10-03",
+    "command": ".venv/Scripts/python.exe -X utf8 -m unittest discover -s tests",
+    "tests_run": 251,
+    "elapsed_seconds": 109.878,
+    "exit_code": 0,
+    "result": "OK",
+    "notes": [
+      "Expected failure-path output appeared in tests.",
+      "Third-party deprecation and event-loop warnings appeared.",
+      "No AIHOT runtime installation, cloud deployment, live collection E2E run or editorial gold-set evaluation was performed."
+    ]
+  },
+  "aihot_reference": {
+    "repository": "https://github.com/KKKKhazix/AIHOT",
+    "commit": "4ed5e7603962e8589adee4e1cd23abff6fae106b",
+    "files": [
+      {
+        "path": "README.md",
+        "git_blob_sha": "55567caf504448da9ef24908200b6d43643590c4",
+        "sha256": "653c0faffe30370dbb2b4aebf68cb73ed9f7a6ba70fb7835226bf2575440e437",
+        "url": "https://github.com/KKKKhazix/AIHOT/blob/4ed5e7603962e8589adee4e1cd23abff6fae106b/README.md"
+      },
+      {
+        "path": "LICENSE",
+        "git_blob_sha": "2d848c9f3fed5317d59e0b88cafa289b42a29d2d",
+        "sha256": "b7f53d07ea4ae2eef26a4f8b28cb7d4df95586e2aa713df408f1ffde9f5a0fea",
+        "url": "https://github.com/KKKKhazix/AIHOT/blob/4ed5e7603962e8589adee4e1cd23abff6fae106b/LICENSE"
+      },
+      {
+        "path": "NOTICE",
+        "git_blob_sha": "21ed03e168fca5882b819d03cc7de8c304807be9",
+        "sha256": "eacc8a589ba389506648a5614c7bd5115942294fe7730b6418da6f7831a903f3",
+        "url": "https://github.com/KKKKhazix/AIHOT/blob/4ed5e7603962e8589adee4e1cd23abff6fae106b/NOTICE"
+      },
+      {
+        "path": "docs/architecture.md",
+        "git_blob_sha": "7e65bcec435badc0b3e8c840c3f41ad581e98252",
+        "sha256": "f51afe4c6afc72fa41678a7a18425cbc8ba57c4533758fd6a73c846965d17d9a",
+        "url": "https://github.com/KKKKhazix/AIHOT/blob/4ed5e7603962e8589adee4e1cd23abff6fae106b/docs/architecture.md"
+      },
+      {
+        "path": "docs/selection.md",
+        "git_blob_sha": "96035d7be55c10539a9b89d79729b648b322dbf6",
+        "sha256": "c0d28169a2f3178838be1ab660d05df55069f1138c2536ba7d0eac6e8abc4856",
+        "url": "https://github.com/KKKKhazix/AIHOT/blob/4ed5e7603962e8589adee4e1cd23abff6fae106b/docs/selection.md"
+      },
+      {
+        "path": "docs/grouping.md",
+        "git_blob_sha": "83df9bff6db43a91591e173479a96d5b68fbfcd7",
+        "sha256": "d7b5d814d649cb894c54e31c0f2935aa32bbae92dc1c69024ed2d564fb7f07f8",
+        "url": "https://github.com/KKKKhazix/AIHOT/blob/4ed5e7603962e8589adee4e1cd23abff6fae106b/docs/grouping.md"
+      },
+      {
+        "path": "docs/deploy.md",
+        "git_blob_sha": "d852e5c6d33b3b886755131f39b3ab10405c68c3",
+        "sha256": "d3b48c2b4bb7d5dbf413ac0c2fdfaffeed89e97d459a378f3fd59a29f20808db",
+        "url": "https://github.com/KKKKhazix/AIHOT/blob/4ed5e7603962e8589adee4e1cd23abff6fae106b/docs/deploy.md"
+      },
+      {
+        "path": "docs/sources.md",
+        "git_blob_sha": "9d66e60ccb35ea3773535110fe25e49cd0283133",
+        "sha256": "dc13a3a4f09421876c92a0ba68ec4f79d1bb31f6d5586e6c02c80e11e45a91c5",
+        "url": "https://github.com/KKKKhazix/AIHOT/blob/4ed5e7603962e8589adee4e1cd23abff6fae106b/docs/sources.md"
+      },
+      {
+        "path": "industry/selection.ts",
+        "git_blob_sha": "ce4d64e67c34ad7f7c4f25b17d7385c2638bde5b",
+        "sha256": "ecbf1ab0106bfd951a20ddf0a579f9677a0caf792773e66a86c306af6b88775f",
+        "url": "https://github.com/KKKKhazix/AIHOT/blob/4ed5e7603962e8589adee4e1cd23abff6fae106b/industry/selection.ts"
+      },
+      {
+        "path": "industry/prompts/selection-score.md",
+        "git_blob_sha": "2f80469d40abc1d17685e809739f8ad324ccb9c7",
+        "sha256": "11700da358cfa0a07b73deaf872ac7fcf43cf665e47e8a6b40e594fa82447ace",
+        "url": "https://github.com/KKKKhazix/AIHOT/blob/4ed5e7603962e8589adee4e1cd23abff6fae106b/industry/prompts/selection-score.md"
+      },
+      {
+        "path": "industry/sources.json",
+        "git_blob_sha": "6d7455945571fac29c207c56371596cc3ff4fc30",
+        "sha256": "6669fe7f0af2159b9e0d6c17a91f8339cb016f48937b949920bbd90d4f3b02f3",
+        "url": "https://github.com/KKKKhazix/AIHOT/blob/4ed5e7603962e8589adee4e1cd23abff6fae106b/industry/sources.json"
+      }
+    ]
+  },
+  "limitations": [
+    "Frozen evidence; refresh before using as current operational state.",
+    "Sources were sampled sequentially, not in one atomic transaction.",
+    "Public artifact contains aggregates, period metadata and file fingerprints, not private database contents or raw observation text.",
+    "SQLite measurements used read-only mode and query_only. Preliminary status/due/history CLI inspection preceded the measurements; history refreshed local export indexes.",
+    "No ingest/draft/archive/dispatch command was run for this snapshot.",
+    "README fingerprint predates the addition of the snapshot navigation links.",
+    "Source configuration does not prove working source connectivity or collection completeness.",
+    "Counts and successful automated tests do not establish editorial quality or unattended cloud readiness."
+  ]
+}
