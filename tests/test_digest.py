@@ -308,7 +308,7 @@ class DigestTests(unittest.TestCase):
             archive(self.root, changed)
         self.assertEqual(1, digest.status(self.root)['issue_count'])
 
-    def test_interrupted_export_removes_orphan_and_replay_is_single_archive(self):
+    def test_interrupted_export_keeps_committed_archive_and_replay_is_single_archive(self):
         digest.ingest(self.root, batch())
         original = digest._write_archive_file
         def fail(path, content):
@@ -316,11 +316,11 @@ class DigestTests(unittest.TestCase):
                 raise OSError('interrupted manifest export')
             return original(path, content)
         with patch.object(digest, '_write_archive_file', side_effect=fail):
-            with self.assertRaises(OSError):
+            with self.assertRaisesRegex(digest.DigestError, 'archive committed; export pending'):
                 archive(self.root, issue())
-        self.assertEqual(0, digest.status(self.root)['issue_count'])
-        self.assertFalse((self.root / digest.ARTICLE_DIR / 'daily/2026-09-07.md').exists())
-        self.assertEqual('archived', archive(self.root, issue())['status'])
+        self.assertEqual(1, digest.status(self.root)['issue_count'])
+        self.assertTrue((self.root / digest.ARTICLE_DIR / 'daily/2026-09-07.md').exists())
+        self.assertEqual('unchanged', archive(self.root, issue())['status'])
         self.assertEqual(1, digest.status(self.root)['issue_count'])
 
     def test_stale_prepared_cannot_finalize_delayed_draft_but_replay_is_timeless(self):

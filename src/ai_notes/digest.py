@@ -31,7 +31,7 @@ DB_PATH = Path("data/weekly_digest/digest.sqlite3")
 ARTICLE_DIR = Path("outputs/digest")
 RANKINGS = ("daily", "weekly", "monthly")
 RANKING_NAMES = {"daily": "日榜", "weekly": "周榜", "monthly": "月榜"}
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class DigestError(ValueError):
@@ -247,10 +247,11 @@ def _migrate(connection: sqlite3.Connection, path: Path, existed: bool) -> str |
     before = {}
     if existed and _has_table(connection, "batches"):
         before = {name: connection.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0]
-                  for name in ("batches", "observations", "issues", "selections") if _has_table(connection, name)}
+                  for name in ("batches", "observations", "issues", "selections", "ranked_issues", "ranked_selections", "drafts")
+                  if _has_table(connection, name)}
         backup_dir = path.parent / "backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
-        backup = backup_dir / f"digest-v{version}-before-v2-{_now().strftime('%Y%m%dT%H%M%S%f')}.sqlite3"
+        backup = backup_dir / f"digest-v{version}-before-v{SCHEMA_VERSION}-{_now().strftime('%Y%m%dT%H%M%S%f')}.sqlite3"
         target = sqlite3.connect(backup)
         try:
             connection.backup(target)
@@ -272,16 +273,24 @@ def _migrate(connection: sqlite3.Connection, path: Path, existed: bool) -> str |
     ]
     with connection:
         connection.execute("BEGIN IMMEDIATE")
-        for definition in definitions:
-            connection.execute(definition)
+        if version < 2:
+            for definition in definitions:
+                connection.execute(definition)
         # Preserve legacy deliveries and their text verbatim. They count in weekly
         # all-history checks even if their old period was not a natural week.
-        for row in connection.execute("SELECT * FROM issues").fetchall():
+        for row in connection.execute("SELECT * FROM issues").fetchall() if version < 2 else []:
             issue_id = "weekly:legacy-" + row["date"]
             connection.execute("INSERT INTO ranked_issues VALUES (?,?,?,?,?,?,?,?,?,?)", (
                 issue_id, "weekly", "legacy-" + row["date"], row["title"], row["content_hash"],
                 row["manifest"], row["content_hash"], row["article"], row["article_hash"], row["date"]))
             connection.execute("INSERT INTO ranked_selections SELECT ?,canonical_url,payload FROM selections WHERE issue_date=?", (issue_id, row["date"]))
+        # Formal archives already retain exact text and hashes. Version 3 gives
+        # drafts the same recovery boundary, plus known prior export hashes for
+        # a draft update interrupted between its two file replacements.
+        for name in ("manifest", "manifest_hash", "article_hash", "previous_article_hash", "previous_manifest_hash"):
+            connection.execute(f"ALTER TABLE drafts ADD COLUMN {name} TEXT")
+        for row in connection.execute("SELECT issue_id,article FROM drafts").fetchall():
+            connection.execute("UPDATE drafts SET article_hash=? WHERE issue_id=?", (_hash(row["article"]), row["issue_id"]))
         for name, count in before.items():
             if connection.execute(f"SELECT COUNT(*) FROM {name}").fetchone()[0] != count:
                 raise DigestError("migration changed existing row counts")
@@ -452,21 +461,58 @@ def _dedup_error(item: dict, prior: list[dict]) -> str | None:
     return None
 
 
+def _candidate_events(records: list[dict], prior: list[dict], *, deduplicate: bool) -> list[dict]:
+    """Keep verification attached to a concrete event, never to the whole project.
+
+    Event URLs preserve release/changelog anchors. An ID rename at the same URL
+    does not create a different event or evade the all-history gate.
+    """
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for record in records:
+        event = record.get("event")
+        key = (record["kind"], _event_url(event["url"]) if event else "")
+        groups.setdefault(key, []).append(record)
+    events = []
+    for (kind, event_url), observations in groups.items():
+        verified = [record for record in observations if record["evidence_status"] == "verified"]
+        effective = copy.deepcopy(max(verified or observations, key=lambda record: (
+            _timestamp(record["verified_at"] if verified else record["collected_at"], "observation time"),
+            _timestamp(record["collected_at"], "collected_at"))))
+        block = _dedup_error(effective, prior) if deduplicate else None
+        effective.update(event_key=kind + ":" + event_url, selection_block=block,
+                         selection_status="blocked" if block else "available" if verified else "needs_evidence",
+                         last_verified_at=effective["verified_at"] if verified else None,
+                         event_last_collected_at=max((record["collected_at"] for record in observations),
+                                                     key=lambda value: _timestamp(value, "collected_at")),
+                         observation_count=len(observations))
+        events.append(effective)
+    # This chooses a representative event, not a project's editorial score.
+    events.sort(key=lambda record: (
+        {"available": 2, "needs_evidence": 1, "blocked": 0}[record["selection_status"]],
+        _timestamp(record.get("event", {}).get("occurred_at") or record["discovered_at"], "event time"),
+        _timestamp(record["last_verified_at"] or record["collected_at"], "observation time")), reverse=True)
+    return events
+
+
 def candidates(root: Path, since: str | None = None, until: str | None = None, limit: int = 80, *,
-               ranking_type: str | None = None, period: str | None = None) -> dict:
+               ranking_type: str | None = None, period: str | None = None,
+               offset: int = 0, include_history: bool = True) -> dict:
     if ranking_type:
         start, end, _ = period_window(ranking_type, period)
         since, until = start.isoformat(), end.isoformat()
     else:
         start, end = _date(since, "since"), _date(until, "until")
-    if start > end or type(limit) is not int or not 1 <= limit <= 1000:
-        raise DigestError("invalid date window or limit (1..1000)")
+    if (start > end or type(limit) is not int or not 1 <= limit <= 1000
+            or type(offset) is not int or offset < 0 or type(include_history) is not bool):
+        raise DigestError("invalid date window, limit (1..1000), offset (>=0), or include_history")
     connection = _connect(root)
     result = {"status": "empty" if connection is None else "ok", "ranking_type": ranking_type, "period": period,
               "window": {"since": since, "until": until, "timezone": "Asia/Shanghai", "inclusive": True},
               **_coverage(_runs(connection, since, until), start, end), "candidates": [], "total_candidates": 0,
-              "returned_count": 0, "limit": limit, "truncated": False,
-              "ordering": "editorial selection required; practical value is not inferred from recency"}
+              "returned_count": 0, "limit": limit, "offset": offset, "next_offset": None, "truncated": False,
+              "available_count": 0, "needs_evidence_count": 0, "blocked_count": 0, "eligible_count": 0,
+              "blocked_candidates": [], "include_history": include_history,
+              "ordering": "canonical URL for stable pagination, not practical value; continue next_offset before restarting a review pass"}
     if connection is None:
         return result
     try:
@@ -483,19 +529,30 @@ def candidates(root: Path, since: str | None = None, until: str | None = None, l
                 records = [entry for entry in history if entry["collection_date"] <= until]
             if not records:
                 continue
-            verified = [entry for entry in records if entry["evidence_status"] == "verified"]
-            effective = copy.deepcopy((verified or records)[0])
             prior = _selection_history(connection, row["canonical_url"], ranking_type)
-            reason = _dedup_error(effective, prior) if ranking_type else None
+            events = _candidate_events(records, prior, deduplicate=bool(ranking_type))
+            effective = copy.deepcopy(events[0])
             effective.update(canonical_url=row["canonical_url"], first_discovered_at=first,
                              source_urls=sorted({url for record in history for url in record["source_urls"]}),
-                             last_collected_at=history[0]["collected_at"], last_verified_at=verified[0]["verified_at"] if verified else None,
-                             latest_observation=records[0], history=[{**record, "in_window": since <= record["collection_date"] <= until} for record in history],
-                             issue_history=prior, selection_block=reason,
+                             last_collected_at=history[0]["collected_at"],
+                             latest_observation=records[0], history=[{**record, "in_window": since <= record["collection_date"] <= until} for record in history] if include_history else [],
+                             issue_history=prior if include_history else [], event_candidates=events,
                              period_label="往期候选" if _timestamp(first, "first_discovered").astimezone(BEIJING).date() < start else
                              "原期事件补采" if _timestamp(first, "first_discovered").astimezone(BEIJING).date() > end else "新发现")
             found.append(effective)
-        result.update(candidates=found[:limit], total_candidates=len(found), returned_count=min(len(found), limit), truncated=len(found) > limit)
+        eligible = [record for record in found if record["selection_status"] != "blocked"]
+        blocked = [record for record in found if record["selection_status"] == "blocked"]
+        page = eligible[offset:offset + limit]
+        next_offset = offset + len(page) if offset + len(page) < len(eligible) else None
+        # Keep blocked cards compact and separate; they never consume the review
+        # limit. Full evidence/history remains available through include_history.
+        result.update(candidates=page, total_candidates=len(found), returned_count=len(page),
+                      truncated=next_offset is not None, next_offset=next_offset, eligible_count=len(eligible),
+                      available_count=sum(record["selection_status"] == "available" for record in found),
+                      needs_evidence_count=sum(record["selection_status"] == "needs_evidence" for record in found),
+                      blocked_count=len(blocked), blocked_candidates=[{
+                          key: record[key] for key in ("canonical_url", "title", "kind", "event_key", "selection_status", "selection_block")
+                      } for record in blocked])
         return result
     finally:
         connection.close()
@@ -746,6 +803,117 @@ def _exports(root: Path, ranking_type: str, period: str, *, draft: bool = False)
     return folder / (period + ".md"), folder / (period + ".json")
 
 
+def _snapshot_exports(root: Path, row: dict, *, draft: bool) -> list[dict]:
+    """Describe exact database text; recovery never re-renders archived material."""
+    article_path, manifest_path = _exports(root, row["ranking_type"], row["period"], draft=draft)
+    entries = []
+    for label, path, text, expected, previous in (
+        ("article", article_path, row["article"], row["article_hash"], row.get("previous_article_hash") if draft else None),
+        ("manifest", manifest_path, row.get("manifest"), row.get("manifest_hash") if draft else row["content_hash"], row.get("previous_manifest_hash") if draft else None),
+    ):
+        if text is not None and _hash(text) != expected:
+            raise DigestError(f"database {label} hash mismatch for {row['issue_id']}; exports cannot be trusted")
+        current = hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+        state = ("legacy_untracked" if text is None else "missing" if current is None else "ok" if current == expected else
+                 "previous_revision" if draft and previous and current == previous else "conflict")
+        entries.append({"path": path, "text": text, "expected_sha256": expected, "actual_sha256": current,
+                        "state": state, "draft": draft})
+    return entries
+
+
+def _sync_snapshot(root: Path, row: dict, *, draft: bool) -> list[str]:
+    entries = _snapshot_exports(root, row, draft=draft)
+    for entry in entries:
+        if entry["state"] == "conflict":
+            raise DigestError(f"export conflict; inspect with recover before replacing: {entry['path']}")
+        if entry["state"] == "legacy_untracked" and entry["actual_sha256"] is not None:
+            raise DigestError(f"legacy draft has no saved manifest; recover --apply --quarantine preserves its old export before refreshing: {entry['path']}")
+    replaced = []
+    for entry in entries:
+        if entry["text"] is None or entry["state"] == "ok":
+            continue
+        if entry["state"] == "previous_revision":
+            _atomic_write(entry["path"], entry["text"])
+            replaced.append(str(entry["path"].resolve()))
+        else:
+            _write_archive_file(entry["path"], entry["text"])
+    return replaced
+
+
+def recover(root: Path, *, ranking_type: str, period: str, apply: bool = False, quarantine: bool = False) -> dict:
+    """Inspect exports by default; explicitly restore DB text or preserve conflicts.
+
+    Quarantining an orphan never imports it as an archive or bypasses freshness
+    checks. Its text is preserved for review, then a normal fresh archive is due.
+    """
+    period_window(ranking_type, period)
+    if quarantine and not apply:
+        raise DigestError("quarantine requires --apply; inspect first without either flag")
+    issue_id = ranking_type + ":" + period
+    connection = _connect(root)
+    entries, snapshot_rows, retired_draft_hashes = [], [], {}
+    try:
+        for draft, table in ((False, "ranked_issues"), (True, "drafts")):
+            raw = connection.execute(f"SELECT * FROM {table} WHERE issue_id=?", (issue_id,)).fetchone() if connection and _has_table(connection, table) else None
+            if raw:
+                row = dict(raw)
+                if draft:
+                    row.setdefault("manifest", None)
+                    row.setdefault("manifest_hash", None)
+                    row.setdefault("article_hash", _hash(row["article"]))
+                else:
+                    retired_draft_hashes = json.loads(row["manifest"]).get("superseded_draft_exports", {})
+                entries.extend(_snapshot_exports(root, row, draft=draft))
+                snapshot_rows.append((draft, row))
+            else:
+                for path in _exports(root, ranking_type, period, draft=draft):
+                    if path.exists():
+                        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+                        entries.append({"path": path, "text": None, "expected_sha256": None,
+                                        "actual_sha256": actual,
+                                        "state": "superseded_draft" if draft and actual in retired_draft_hashes.get(path.suffix, []) else "orphan", "draft": draft})
+        report = {"status": "inspection", "issue_id": issue_id,
+                  "exports": [{key: str(value.resolve()) if key == "path" else value for key, value in entry.items() if key != "text"} for entry in entries],
+                  "quarantined": [], "restored": [], "removed_superseded_drafts": [],
+                  "note": "Database is authoritative; orphan exports are never accepted as a formal archive."}
+        if not apply:
+            return report
+        unsafe = [entry for entry in entries if entry["state"] in ("conflict", "orphan")
+                  or (entry["state"] == "legacy_untracked" and entry["actual_sha256"] is not None)]
+        if unsafe and not quarantine:
+            raise DigestError("export conflict or orphan requires explicit recover --apply --quarantine; inspect first")
+        backup_dir = root / ARTICLE_DIR / "recovery" / _now().strftime("%Y%m%dT%H%M%S%f")
+        for entry in unsafe:
+            path = entry["path"]
+            relative = path.resolve().relative_to(root.resolve())
+            if hashlib.sha256(path.read_bytes()).hexdigest() != entry["actual_sha256"]:
+                raise DigestError("export changed during recovery inspection; retry inspection")
+            backup = backup_dir / relative
+            backup.parent.mkdir(parents=True, exist_ok=True)
+            if backup.exists():
+                raise DigestError("recovery backup already exists; inspect before retrying")
+            os.replace(path, backup)
+            report["quarantined"].append({"path": str(path.resolve()), "backup_path": str(backup.resolve()), "sha256": entry["actual_sha256"]})
+        for draft, row in snapshot_rows:
+            _sync_snapshot(root, row, draft=draft)
+        for entry in entries:
+            if entry["state"] == "superseded_draft":
+                if hashlib.sha256(entry["path"].read_bytes()).hexdigest() != entry["actual_sha256"]:
+                    raise DigestError("superseded draft changed during recovery; inspect again")
+                entry["path"].unlink()
+                report["removed_superseded_drafts"].append(str(entry["path"].resolve()))
+        for entry in entries:
+            if entry["text"] is not None and entry["state"] != "ok":
+                report["restored"].append(str(entry["path"].resolve()))
+        if connection:
+            report["history_path"] = _write_indexes(root, connection)
+        report["status"] = "requires_draft_refresh" if any(entry["state"] == "legacy_untracked" for entry in entries) else "recovered"
+        return report
+    finally:
+        if connection:
+            connection.close()
+
+
 def _history_summary(row: dict) -> dict:
     manifest = json.loads(row["manifest"])
     legacy = row["period"].startswith("legacy-")
@@ -776,24 +944,44 @@ def _write_indexes(root: Path, connection: sqlite3.Connection) -> str:
 def save_draft(root: Path, issue: dict) -> dict:
     _validate_issue(issue)
     connection = _connect(root, create=True)
+    committed = False
     try:
         with connection:
             connection.execute("BEGIN IMMEDIATE")
             issue_id = issue["ranking_type"] + ":" + issue["period"]
             if connection.execute("SELECT 1 FROM ranked_issues WHERE issue_id=?", (issue_id,)).fetchone():
                 raise DigestError("issue is already formally archived; cannot replace it with a draft")
+            previous = connection.execute("SELECT * FROM drafts WHERE issue_id=?", (issue_id,)).fetchone()
+            if previous:
+                # Finish any earlier committed export before replacing this
+                # revision; only known database bytes may be overwritten.
+                _sync_snapshot(root, dict(previous), draft=True)
             document = _prepare(connection, issue)
             article = _render(document, draft=True)
             article_path, manifest_path = _exports(root, issue["ranking_type"], issue["period"], draft=True)
             text = json.dumps({**document, "status": "draft"}, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-            connection.execute("INSERT INTO drafts VALUES (?,?,?,?,?,?) ON CONFLICT(issue_id) DO UPDATE SET payload=excluded.payload,article=excluded.article,updated_at=excluded.updated_at",
-                               (issue_id, issue["ranking_type"], issue["period"], _json(issue), article, issue["prepared_at"]))
-            _atomic_write(article_path, article)
-            _atomic_write(manifest_path, text)
+            if not previous and any(path.exists() for path in (article_path, manifest_path)):
+                raise DigestError("orphan draft exports exist; inspect recover before saving a new draft")
+            connection.execute("""INSERT INTO drafts
+                (issue_id,ranking_type,period,payload,article,updated_at,manifest,manifest_hash,article_hash,previous_article_hash,previous_manifest_hash)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(issue_id) DO UPDATE SET
+                payload=excluded.payload,article=excluded.article,updated_at=excluded.updated_at,
+                manifest=excluded.manifest,manifest_hash=excluded.manifest_hash,article_hash=excluded.article_hash,
+                previous_article_hash=excluded.previous_article_hash,previous_manifest_hash=excluded.previous_manifest_hash""",
+                (issue_id, issue["ranking_type"], issue["period"], _json(issue), article, issue["prepared_at"], text, _hash(text), _hash(article),
+                 previous["article_hash"] if previous else None, previous["manifest_hash"] if previous else None))
+        committed = True
+        row = dict(connection.execute("SELECT * FROM drafts WHERE issue_id=?", (issue_id,)).fetchone())
+        replaced = _sync_snapshot(root, row, draft=True)
         index = _write_indexes(root, connection)
         return {"status": "draft", "issue_id": issue_id, "item_count": len(issue["items"]),
                 "shortfall": max(0, {"daily": 5, "weekly": 20, "monthly": 20}[issue["ranking_type"]] - len(issue["items"])),
-                "article_path": str(article_path.resolve()), "manifest_path": str(manifest_path.resolve()), "history_path": index}
+                "article_path": str(article_path.resolve()), "manifest_path": str(manifest_path.resolve()), "history_path": index,
+                "article_sha256": _hash(article), "manifest_sha256": _hash(text), "updated_previous_exports": replaced}
+    except (OSError, DigestError) as exc:
+        if committed:
+            raise DigestError(f"draft committed; export pending for {issue_id}; use recover --apply: {exc}") from exc
+        raise
     finally:
         connection.close()
 
@@ -805,17 +993,19 @@ def archive(root: Path, issue: dict, article: str | None = None) -> dict:
     connection = _connect(root, create=True)
     issue_id = issue["ranking_type"] + ":" + issue["period"]
     article_path, manifest_path = _exports(root, issue["ranking_type"], issue["period"])
-    created_exports: list[tuple[Path, str]] = []
     committed = False
     try:
         with connection:
             connection.execute("BEGIN IMMEDIATE")
             previous = connection.execute("SELECT * FROM ranked_issues WHERE issue_id=?", (issue_id,)).fetchone()
+            old_draft = connection.execute("SELECT * FROM drafts WHERE issue_id=?", (issue_id,)).fetchone()
             if previous:
                 if previous["input_hash"] != _hash(_json(issue)) or (article is not None and article != previous["article"]):
                     raise DigestError("issue already exists with different content; existing issues cannot be overwritten")
                 rendered, manifest_text = previous["article"], previous["manifest"]
             else:
+                if any(path.exists() for path in (article_path, manifest_path)):
+                    raise DigestError("orphan archive exports exist without a committed issue; inspect recover and quarantine before retrying")
                 if _now() - _timestamp(issue["prepared_at"], "prepared_at") > timedelta(hours=24):
                     raise DigestError("stale prepared_at: re-check sources and same-level history before finalizing a delayed draft")
                 if any(_now() - _timestamp(item["verified_at"], "item.verified_at") > timedelta(hours=24) for item in issue["items"]):
@@ -825,34 +1015,33 @@ def archive(root: Path, issue: dict, article: str | None = None) -> dict:
                 if article is not None and article != rendered:
                     raise DigestError("article must exactly match the structured render; body and selection cannot diverge")
                 document.update(status="archived", article_path=article_path.relative_to(root).as_posix(), article_sha256=_hash(rendered), issue_sha256=_hash(_json(issue)))
+                if old_draft:
+                    document["superseded_draft_exports"] = {
+                        ".md": [value for value in (old_draft["article_hash"], old_draft["previous_article_hash"]) if value],
+                        ".json": [value for value in (old_draft["manifest_hash"], old_draft["previous_manifest_hash"]) if value],
+                    }
                 manifest_text = json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
                 connection.execute("INSERT INTO ranked_issues VALUES (?,?,?,?,?,?,?,?,?,?)", (
                     issue_id, issue["ranking_type"], issue["period"], issue["title"], _hash(_json(issue)), manifest_text,
                     _hash(manifest_text), rendered, _hash(rendered), _now().isoformat()))
                 connection.executemany("INSERT INTO ranked_selections VALUES (?,?,?)", [
                     (issue_id, item["canonical_url"], _json(item)) for item in document["items"]])
-            # Preflight both immutable files before creating either.
-            for path, content in ((article_path, rendered), (manifest_path, manifest_text)):
-                if path.exists() and path.read_bytes() != content.encode("utf-8"):
-                    raise DigestError(f"archive file already exists with different content: {path}")
-            for path, content in ((article_path, rendered), (manifest_path, manifest_text)):
-                if not path.exists():
-                    created_exports.append((path, content))
-                _write_archive_file(path, content)
             connection.execute("DELETE FROM drafts WHERE issue_id=?", (issue_id,))
         committed = True
+        row = dict(connection.execute("SELECT * FROM ranked_issues WHERE issue_id=?", (issue_id,)).fetchone())
+        _sync_snapshot(root, row, draft=False)
         index = _write_indexes(root, connection)
-        for draft_file in _exports(root, issue["ranking_type"], issue["period"], draft=True):
-            if draft_file.exists():
-                draft_file.unlink()
+        if old_draft:
+            # Unrecognized edits are left for explicit recovery, not deleted.
+            for entry in _snapshot_exports(root, dict(old_draft), draft=True):
+                if entry["state"] in ("ok", "previous_revision"):
+                    entry["path"].unlink()
         return {"status": "unchanged" if previous else "archived", "issue_id": issue_id, "item_count": len(issue["items"]),
                 "article_path": str(article_path.resolve()), "manifest_path": str(manifest_path.resolve()), "history_path": index,
                 "article_sha256": _hash(rendered), "manifest_sha256": _hash(manifest_text)}
-    except Exception:
-        if not committed:
-            for path, content in created_exports:
-                if path.exists() and path.read_bytes() == content.encode("utf-8"):
-                    path.unlink()
+    except (OSError, DigestError) as exc:
+        if committed:
+            raise DigestError(f"archive committed; export pending for {issue_id}; use recover --apply: {exc}") from exc
         raise
     finally:
         connection.close()
@@ -953,7 +1142,7 @@ def main(argv: list[str] | None = None) -> int:
             raise DigestError(message)
     parser = Parser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("ingest", "candidates", "render", "draft", "archive", "status", "migrate", "due", "dispatch", "history"):
+    for name in ("ingest", "candidates", "render", "draft", "archive", "status", "migrate", "due", "dispatch", "history", "recover"):
         command = commands.add_parser(name)
         command.add_argument("--root", type=Path, required=True)
         if name in ("ingest", "render", "draft", "archive"):
@@ -969,6 +1158,13 @@ def main(argv: list[str] | None = None) -> int:
             command.add_argument("--type", choices=RANKINGS, dest="ranking_type")
             command.add_argument("--period")
             command.add_argument("--limit", type=int, default=80)
+            command.add_argument("--offset", type=int, default=0)
+            command.add_argument("--compact", action="store_true", help="omit full observation and issue history")
+        if name == "recover":
+            command.add_argument("--type", choices=RANKINGS, dest="ranking_type", required=True)
+            command.add_argument("--period", required=True)
+            command.add_argument("--apply", action="store_true", help="restore missing exports from committed database text")
+            command.add_argument("--quarantine", action="store_true", help="preserve conflicts/orphans in recovery backups before restoring; requires --apply")
         if name in ("due", "dispatch"):
             command.add_argument("--now")
     try:
@@ -979,7 +1175,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "candidates":
             if (args.ranking_type or args.period) and (not args.ranking_type or not args.period or args.since or args.until):
                 raise DigestError("use --type with --period, or --since with --until")
-            result = candidates(root, args.since, args.until, args.limit, ranking_type=args.ranking_type, period=args.period)
+            result = candidates(root, args.since, args.until, args.limit, ranking_type=args.ranking_type, period=args.period,
+                                offset=args.offset, include_history=not args.compact)
         elif args.command == "render":
             content = render(root, _read_json(args.file), draft=not args.final)
             if args.output:
@@ -1000,6 +1197,8 @@ def main(argv: list[str] | None = None) -> int:
             result = due(root, args.now)
         elif args.command == "dispatch":
             result = dispatch(root, args.now)
+        elif args.command == "recover":
+            result = recover(root, ranking_type=args.ranking_type, period=args.period, apply=args.apply, quarantine=args.quarantine)
         elif args.command == "history":
             connection = _connect(root)
             try:
