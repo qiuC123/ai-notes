@@ -25,7 +25,8 @@ class PipelineTests(unittest.TestCase):
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes((project/file).read_bytes())
         self.now = digest._now()
-        self.period = (self.now.date()-timedelta(days=1)).isoformat()
+        # A fully due period even when these tests run before the 09:00 slot.
+        self.period = (self.now.date()-timedelta(days=2)).isoformat()
         self.calls=[]
         self.defer=False
         self.text='Organizes local files. Install with Python. MIT License.'
@@ -54,7 +55,7 @@ class PipelineTests(unittest.TestCase):
     def fetch(self,root,url):
         raw=self.text.encode(); sha=hashlib.sha256(raw).hexdigest()
         path=self.root/'source.txt'; path.write_bytes(raw)
-        return dict(url=url,body_path='source.txt',sha256=sha,content_type='text/plain',fetched_at=self.now.isoformat(),checked_at=self.now.isoformat())
+        return dict(url=url,body_path='source.txt',sha256=sha,content_type='text/html' if getattr(self,'html',False) else 'text/plain',fetched_at=self.now.isoformat(),checked_at=self.now.isoformat())
 
     def respond(self,request):
         payload=json.loads(request.content)
@@ -76,6 +77,10 @@ class PipelineTests(unittest.TestCase):
                         [('summary','Organizes local files.'),('usage_conditions','Install with Python.'),('license','MIT License.'),('category','Organizes local files.')]])
                 if material['candidate']['kind']=='update':
                     facts['claims'].append(dict(field='change_note',text='Adds local file organization.',evidence_url=url,quote='Organizes local files.'))
+                if material['candidate']['kind']=='news':
+                    facts.update(category='模型与运行工具',open_source_status='closed',event_date=self.news_date)
+                    facts['claims']=[c for c in facts['claims'] if c['field']!='license']
+                    facts['claims'].append(dict(field='event_date',text=self.news_date,evidence_url=url,quote=self.news_date))
                 output={'qualified':True,'reason':'Original documents support it','facts':facts}
         else:
             url=material['card']['evidence_context'][0]['url']
@@ -179,6 +184,53 @@ class PipelineTests(unittest.TestCase):
         model=self.real_model(self.root,base_url='https://provider.example/v1',model='fixture',api_key='fixture-only',client=self.client)
         value=pipeline._review_original(self.root,job,'owner',model,record,'update-test',37)
         self.assertEqual('Adds local file organization.',value['observation']['change_note'])
+
+    def add_news(self, days_ago=2):
+        self.news_date=(self.now-timedelta(days=days_ago)).isoformat()
+        self.text+=' Announced '+self.news_date
+        url='https://news.example/model-announcement'
+        digest.ingest(self.root,dict(schema_version='digest-batch.v2',run_id='news-fixture',collected_at=self.now.isoformat(),
+            sources=[dict(name='official',url=url,status='ok',detail='Synthetic news discovery')],candidates=[
+                dict(url=url,title='Model announcement',category='模型与运行工具',summary='News discovery',reason='Possible reader impact',
+                     source_urls=[url],published_at=None,kind='news',evidence_status='discovered',evidence_urls=[],
+                     verification_level='documented',verified_at=None,discovered_at=self.now.isoformat(),change_note='')]))
+
+    def test_news_gets_original_event_and_can_archive_without_open_source_license(self):
+        self.add_news()
+        self.html=True
+        self.text=f'<html><p>Organizes local files. Install with Python. MIT License.</p><time datetime="{self.news_date}">Announcement day</time></html>'
+        _,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual(7,result['result']['item_count'])
+        issue=pipeline._existing(self.root,'daily',self.period)
+        news=next(item for item in issue['items'] if item['kind']=='news')
+        self.assertEqual(self.news_date,news['event']['occurred_at'])
+        self.assertEqual(news['url'],news['event']['url'])
+        self.assertIn('AI 动态',issue['title'])
+        self.assertEqual('documented',news['verification_level'])
+
+    def test_old_news_date_is_saved_but_not_repackaged_for_today(self):
+        self.add_news(days_ago=3)
+        _,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual(6,result['result']['item_count'])
+        self.assertFalse(any(item['kind']=='news' for item in pipeline._existing(self.root,'daily',self.period)['items']))
+
+    def test_news_and_project_update_share_one_issue_slot_for_same_event(self):
+        self.add_news()
+        discovered=(self.now-timedelta(days=40)).isoformat()
+        event_url='https://news.example/model-announcement'
+        digest.ingest(self.root,dict(schema_version='digest-batch.v2',run_id='update-fixture',collected_at=self.now.isoformat(),
+            sources=[dict(name='original',url=event_url,status='ok',detail='Synthetic update of same event')],candidates=[
+                dict(url='https://projects.example/same-model',title='Same model update',category='开源项目',summary='Update',reason='Changed workflow',
+                     source_urls=[event_url],published_at=None,kind='update',evidence_status='discovered',evidence_urls=[],
+                     event=dict(id='v2',url=event_url,occurred_at=self.news_date,type='update'),
+                     verification_level='documented',verified_at=None,discovered_at=discovered,change_note='Updated files')]))
+        _,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual(7,result['result']['item_count'])
+        issue=pipeline._existing(self.root,'daily',self.period)
+        self.assertEqual(1,sum(item.get('event',{}).get('url')==event_url for item in issue['items']))
 
 
 if __name__=='__main__':

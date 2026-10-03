@@ -1,14 +1,16 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v1-uncalibrated",
-  "calibration_status": "Uncalibrated initial editorial policy; thresholds require human-labelled dev evidence.",
+  "version": "v2-reader-fit-uncalibrated",
+  "calibration_status": "Uncalibrated reader-fit policy; thresholds require human-labelled dev evidence. Frozen v1 experiments retain their original policy.",
   "dimensions": ["value", "novelty", "evidence", "usability", "interest"],
   "profiles": {
     "practical": {"value": 4, "novelty": 1, "evidence": 1, "usability": 3, "interest": 1},
     "learning": {"value": 3, "novelty": 2, "evidence": 2, "usability": 2, "interest": 1},
     "play": {"value": 1, "novelty": 2, "evidence": 1, "usability": 2, "interest": 4},
-    "reading": {"value": 3, "novelty": 3, "evidence": 2, "usability": 1, "interest": 1}
+    "reading": {"value": 3, "novelty": 3, "evidence": 2, "usability": 1, "interest": 1},
+    "news": {"value": 3, "novelty": 3, "evidence": 3, "usability": 1, "interest": 0}
   },
+  "kind_profiles": {"news": "news"},
   "category_profiles": {
     "开源项目": "practical",
     "Skills": "practical",
@@ -24,7 +26,15 @@
     "unsupported_promotion": {"value": 4, "evidence": 3},
     "routine_update": {"novelty": 3},
     "unfulfilled_announcement": {"usability": 2, "evidence": 4},
-    "unclear_usage": {"usability": 3}
+    "unclear_usage": {"usability": 3},
+    "reader_mismatch": {"value": 3, "usability": 3},
+    "insufficient_usage_evidence": {"evidence": 4, "usability": 4}
   },
-  "defer_flags": ["unsupported_promotion", "unfulfilled_announcement", "unclear_usage"]
+  "flag_kinds": {
+    "routine_update": ["update", "news"],
+    "unfulfilled_announcement": ["project", "update", "reading"],
+    "unclear_usage": ["project", "update", "reading"],
+    "insufficient_usage_evidence": ["project", "update", "reading"]
+  },
+  "defer_flags": ["unsupported_promotion", "unfulfilled_announcement", "unclear_usage", "reader_mismatch", "insufficient_usage_evidence"]
 }

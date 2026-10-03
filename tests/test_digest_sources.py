@@ -74,6 +74,27 @@ class DigestSourceTests(unittest.TestCase):
         self.assertEqual(1, result['known_observations'])
         self.assertEqual(2, result['ingest']['observations'])
 
+    def test_news_feed_is_only_discovery_and_preserves_article_url(self):
+        self.configure([{'id':'news','type':'rss','url':'https://example.com/feed','kind':'news','category':'AI 应用'}])
+        url='https://github.com/example/tool/releases/tag/v2'
+        result=sources.collect(self.root,client=self.client(lambda _:httpx.Response(200,text=self.feed([url]))),run_id='news')
+        item=json.loads((self.root/result['batch_path']).read_text(encoding='utf-8'))['candidates'][0]
+        self.assertEqual(url,item['url'])
+        self.assertEqual('news',item['kind'])
+        self.assertEqual('discovered',item['evidence_status'])
+        self.assertEqual(self.now.isoformat(),item['published_at'])
+        self.assertNotIn('event',item)
+        self.assertTrue(result['ingest']['read_back_confirmed'])
+
+    def test_news_feed_refresh_date_does_not_become_publication_or_event(self):
+        self.configure([{'id':'news','type':'rss','url':'https://example.com/feed','kind':'news','category':'AI 应用'}])
+        content=self.feed(['https://example.com/news']).replace('<published>','<updated>').replace('</published>','</updated>')
+        result=sources.collect(self.root,client=self.client(lambda _:httpx.Response(200,text=content)),run_id='news-unknown-date')
+        item=json.loads((self.root/result['batch_path']).read_text(encoding='utf-8'))['candidates'][0]
+        self.assertIsNone(item['published_at'])
+        self.assertNotIn('event',item)
+        self.assertEqual('discovered',item['evidence_status'])
+
     def test_304_keeps_original_fetch_timestamp_and_checks_cached_hash(self):
         client = self.client(lambda request: httpx.Response(200, text='real evidence', headers={'etag': 'abc'}))
         first = sources.fetch(self.root, 'https://example.com/a', client=client)

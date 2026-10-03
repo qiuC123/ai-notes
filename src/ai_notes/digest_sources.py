@@ -286,7 +286,7 @@ def load_config(root: Path, path: Path | None = None) -> dict:
             raise SourceError('source max_items must be 1 to 80')
         if item.get('category', '博客、帖子与访谈') not in digest.CATEGORIES:
             raise SourceError('source category must be one of the eight digest columns')
-        if item.get('kind', 'reading') not in ('project', 'reading'):
+        if item.get('kind', 'reading') not in ('project', 'reading', 'news'):
             raise SourceError('discovery may not label an update important automatically')
     return config
 
@@ -366,7 +366,7 @@ def _source_items(root: Path, source: dict, client: httpx.Client | None,
         items.append({'url': urljoin(response['final_url'], link), 'title': _clean(fields.get('title')),
                       'summary': _clean(fields.get('summary') or fields.get('description') or fields.get('content') or fields.get('encoded')),
                       'source_url': source['url'], 'observed_publication': observed,
-                      'published_at': published.isoformat() if published and kind == 'reading' else None,
+                      'published_at': published.isoformat() if published and kind in ('reading', 'news') else None,
                       'kind': kind, 'category': source.get('category', '博客、帖子与访谈'), 'response': response})
     return items, len(entries)
 
@@ -545,7 +545,8 @@ def collect(root: Path, *, source_ids: list[str] | None = None, limit: int = 20,
                 candidates[identity] = {
                     'url': identity, 'title': title, 'category': entry['category'],
                     'summary': entry['summary'] or title,
-                    'reason': f'来源发现「{title}」这一具体作品或文章；保存供复核用途、许可、分类与实用价值，尚未通过价值筛选。',
+                    'reason': (f'来源发现「{title}」这一新闻线索；原始事件、日期、影响与分类待核对，订阅日期不等于事件日期。'
+                               if entry['kind']=='news' else f'来源发现「{title}」这一具体作品或文章；保存供复核用途、许可、分类与实用价值，尚未通过价值筛选。'),
                     'source_urls': [entry['source_url']], 'published_at': entry['published_at'],
                     'kind': entry['kind'], 'evidence_status': 'discovered', 'evidence_urls': [], 'change_note': '',
                     'discovered_at': known.get(identity, _stamp()), 'verified_at': None, 'verification_level': 'documented',

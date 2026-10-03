@@ -6,15 +6,20 @@
 
 | 入口 | 读取方式 | 默认轮换 | 记录性质 |
 | --- | --- | --- | --- |
+| OpenAI News / Google AI | 官方 RSS | 每日，与其他来源共享预算 | `news` 发现线索；订阅发布时间不冒充原始事件发生时间 |
 | Show HN | 官方 Firebase API 的 `showstories` 与有限条目详情 | 每日 | 作者发布线索；帖子时间不是项目首发时间 |
 | Hugging Face Spaces | 公开 API，最近修改排序 | 周三 | 应用入口；修改时间不等于重要更新 |
 | Hugging Face Models | 公开 API，最近修改排序 | 周四 | 模型入口；不根据目录猜用途、许可或运行效果 |
 | Hugging Face Blog | RSS / Atom | 周五 | 文章；缺失发布日期保留未知 |
-| 其他 RSS / Atom | 配置同一 reader | 显式配置 | 可设置八栏中的主栏目和 project / reading |
+| 其他 RSS / Atom | 配置同一 reader | 显式配置 | 可设置八栏中的主栏目和 project / reading / news |
 | GitHub 原文 | 官方 API 解析 commit，再按 commit 读 README | 按需 `github` 命令 | 原始响应、固定版本 README 与 SHA-256 |
 | 通用公开原文 | 有界 HTTP GET | 按需 `fetch` 命令 | 原始字节和请求凭据（receipt），不运行页面脚本 |
 
-配置在 `config/digest_sources.json`，周一为 `0`、周日为 `6`。Show HN 每日保留，其余入口轮换。配置只是目前接通的有限采集范围；原有来源规划中 GitHub Trending、MCP Registry、游戏等仍需独立 reader 或按需人工读取。本轮不宣称八个栏目均已自动覆盖。HelloGitHub 不接受作为采集源。
+配置在 `config/digest_sources.json`，周一为 `0`、周日为 `6`。OpenAI News、Google AI 和 Show HN 每日保留，HF 入口继续轮换。配置只是目前接通的有限采集范围；原有来源规划中 GitHub Trending、MCP Registry、游戏等仍需独立 reader 或按需人工读取。本轮不宣称八个栏目均已自动覆盖。HelloGitHub 不接受作为采集源。
+
+2026-10-04 00:34 北京时间，本机使用同一有界 HTTP reader 只读验证：OpenAI News RSS HTTP 200，解析 1,245 个条目；Google AI RSS HTTP 200，解析 20 个条目。配置只各取最多 20 条、按 48 小时窗口处理，并和所有来源共用最多 20 个新候选预算；上述解析总数不等于实际采集数。临时缓存已清理，无生产入库、模型调用或自动化恢复。
+
+新闻 RSS 保留可解析的文章发布时间；只有 updated/刷新日期时 `published_at` 保持未知，不创建 event、不自动 verified。正文核验阶段须独立核对原始事件和日期；新闻不因为是官方源就自动入选。不默认接入 AIHOT 实际 API 或扩大研究/融资类配额。
 
 ## 调用
 

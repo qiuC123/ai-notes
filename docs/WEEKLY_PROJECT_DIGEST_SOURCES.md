@@ -4,6 +4,12 @@
 
 这是来源规划与历史核验状态清单，不表示下列来源已全部接入，也不将 2026-09-07 的可读结果当成持续可用。现有 12 个 Release 源见 `config/ai_notes_sources.yaml`，雷达搜索策略见 `experiments/idea-radar/radar_analysis.py`；旧 AIHOT 等配置见 `config/sources.yaml`。完整内容分类与文章规格见 [输出分类](WEEKLY_PROJECT_DIGEST_OUTPUT_DRAFT.md)。2026-09-10 已确认共享候选、独立精选的三榜：日榜 5～8 条、周榜 20～25 条且 3 个重点、月榜至少 20 条；沿用八个栏目及原始来源核验。轮换来源、预算和持久化规则见 [运行流程](WEEKLY_PROJECT_DIGEST_WORKFLOW.md)。采集器的独立限制不由本文件修改。
 
+## 2026-10-04 新闻与易用工具定位
+
+用户已确认日报动态＋易用工具、周月成熟项目和方法精选。八栏目保留；新闻是一种内容类型，不新增栏目。独立采集配置新增 [OpenAI News RSS](https://openai.com/news/rss.xml)、[Google AI RSS](https://blog.google/technology/ai/rss/)，每日轮换与既有来源共用 20 个新候选预算。两源已只读核对返回有效 XML，不等于新闻正文已核验或完整覆盖。具体 reader、验证时间和限制见 [来源运行说明](DIGEST_SOURCES_RUNTIME.md)。自动化保持暂停。
+
+AIHOT 已核对公开源码和匿名只读 API，实际范围包含新闻，不仅是项目；这次借鉴分类判断而未接入其线上采集 API。下面 AIHOT 表格保留旧配置历史边界，最新核查见 [读者反馈](DIGEST_READER_FEEDBACK.md#aihot-的范围核查)。HelloGitHub 继续不作为候选源。
+
 ## 1. 各栏目使用的原始资料
 
 | 栏目 | 原始资料来源 | 看什么 | 本机接入状态 |

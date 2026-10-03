@@ -57,7 +57,7 @@ class SelectionTests(unittest.TestCase):
         result = selection.record(self.root, self.review(prepared))
         self.assertEqual(80, result["total_score"])
         self.assertEqual("select", result["decision"])
-        self.assertEqual("v1-uncalibrated", result["policy_version"])
+        self.assertEqual("v2-reader-fit-uncalibrated", result["policy_version"])
         self.assertEqual("unchanged", selection.record(self.root, self.review(prepared))["status"])
         ranked = selection.rank(self.root, prepared["prepare_id"])
         self.assertEqual(1, len(ranked["available"]))
@@ -298,6 +298,110 @@ class SelectionTests(unittest.TestCase):
         ranked = selection.rank(self.root, exact["prepare_id"])
         self.assertEqual(1, len(ranked["available"]))
         self.assertEqual("v2", ranked["available"][0]["event"]["id"])
+
+    def test_reader_fit_and_usage_evidence_flags_defer_even_high_scores(self):
+        prepared = self.prepare()
+        for code, capped in (("reader_mismatch", {"value": 3, "usability": 3}),
+                             ("insufficient_usage_evidence", {"evidence": 4, "usability": 4})):
+            with self.subTest(flag=code):
+                raw = self.review(prepared, score=10)
+                raw["flags"] = [dict(code=code, reason="Only an unsupported author claim, with no reader-usable workflow.", evidence_refs=[sample()["url"]])]
+                assessment = {key: raw[key] for key in ("precheck", "scores", "flags", "reason")}
+                bound = selection.build_review(self.root, prepared["prepare_id"], raw["candidate_id"], assessment, raw["reviewer"])
+                result = selection.record(self.root, bound)
+                self.assertEqual("defer", result["decision"])
+                for dimension, ceiling in capped.items():
+                    self.assertEqual(ceiling, result["effective_scores"][dimension])
+
+    def test_explicit_reader_exclusion_blocks_even_high_scores(self):
+        prepared = self.prepare()
+        raw = self.review(prepared, score=10)
+        raw["precheck"] = dict(status="BLOCK", reasons=["Its only purpose is compiling application code in CI."], evidence_refs=[sample()["url"]])
+        assessment = {key: raw[key] for key in ("precheck", "scores", "flags", "reason")}
+        bound = selection.build_review(self.root, prepared["prepare_id"], raw["candidate_id"], assessment, raw["reviewer"])
+        self.assertEqual("reject", selection.record(self.root, bound)["decision"])
+
+    def test_news_profile_values_event_impact_without_tool_usage_flags(self):
+        url = "https://example.com/announcements/model-access"
+        prepared = self.prepare([sample(url=url, kind="news", category="模型与运行工具",
+            published_at="2026-10-01T10:00:00+08:00",
+            event=dict(id="model-access", url=url, occurred_at="2026-10-01T10:00:00+08:00", type="news"))])
+        card = prepared["cards"][0]
+        self.assertEqual("daily", card["ranking_type"])
+        self.assertEqual("news", card["profile"])
+        raw = self.review(prepared, score=8)
+        raw["scores"]["usability"]["score"] = 0
+        raw["scores"]["interest"]["score"] = 0
+        result = selection.record(self.root, raw)
+        self.assertEqual(72, result["total_score"])
+        self.assertEqual("select", result["decision"])
+        for code in ("unfulfilled_announcement", "unclear_usage", "insufficient_usage_evidence"):
+            with self.subTest(flag=code), self.assertRaises(selection.SelectionError):
+                invalid = copy.deepcopy(raw)
+                invalid["flags"] = [dict(code=code, reason="News need not be installable.", evidence_refs=[url])]
+                selection.record(self.root, invalid)
+
+    def test_news_identity_survives_event_enrichment_and_distinguishes_articles(self):
+        url = "https://github.com/example/tool/discussions/41"
+        discovered = sample(url=url, kind="news")
+        verified = {**discovered, "event": dict(id="official-announcement", url=url,
+            occurred_at="2026-10-01T10:00:00+08:00", type="news")}
+        self.assertEqual(selection.candidate_id(discovered), selection.candidate_id(verified))
+        self.assertNotEqual(selection.candidate_id(discovered), selection.candidate_id({**discovered, "url": url + "2"}))
+
+    def test_current_policy_rejects_routine_update_flag_on_project_and_reading(self):
+        prepared = self.prepare()
+        raw = self.review(prepared)
+        assessment = {key: raw[key] for key in ("precheck", "scores", "flags", "reason")}
+        assessment["flags"] = [dict(code="routine_update", reason="No new release does not diminish the whole project.", evidence_refs=[sample()["url"]])]
+        for kind in ("project", "reading"):
+            card = copy.deepcopy(prepared["cards"][0])
+            card["material"]["kind"] = kind
+            with self.subTest(kind=kind), self.assertRaises(selection.SelectionError):
+                selection._validate_assessment(prepared["policy"], card, assessment)
+        for kind in ("update", "news"):
+            card = copy.deepcopy(prepared["cards"][0])
+            card["material"]["kind"] = kind
+            result = selection._validate_assessment(prepared["policy"], card, assessment)
+            self.assertEqual(3, result["effective_scores"]["novelty"])
+
+    def test_optional_policy_extensions_preserve_legacy_frozen_reviews(self):
+        current = selection.load_policy(self.root)
+        legacy = copy.deepcopy(current)
+        legacy["version"] = "v1-uncalibrated"
+        for key in ("kind_profiles", "flag_kinds"):
+            legacy.pop(key)
+        legacy["profiles"].pop("news")
+        for flag in ("reader_mismatch", "insufficient_usage_evidence"):
+            legacy["flag_caps"].pop(flag)
+            legacy["defer_flags"].remove(flag)
+        path = self.root / "config/digest_selection.json"
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+        prepared = self.prepare()
+        path.write_text(json.dumps(current), encoding="utf-8")
+        raw = self.review(prepared, score=10)
+        raw["flags"] = [dict(code="routine_update", reason="Legacy policy allowed this flag on projects.", evidence_refs=[sample()["url"]])]
+        result = selection.record(self.root, raw)
+        self.assertEqual("v1-uncalibrated", result["policy_version"])
+        self.assertEqual(93, result["total_score"])
+        self.assertEqual(prepared["policy_hash"], result["policy_hash"])
+
+    def test_policy_extensions_reject_unknown_profiles_flags_and_kinds(self):
+        good = selection.load_policy(self.root)
+        malformed = [
+            ("kind_profiles", {"project": "missing"}),
+            ("kind_profiles", {"unknown": "practical"}),
+            ("kind_profiles", {"news": []}),
+            ("flag_kinds", {"missing": ["project"]}),
+            ("flag_kinds", {"routine_update": []}),
+            ("flag_kinds", {"routine_update": ["unknown"]}),
+            ("flag_kinds", {"routine_update": ["update", "update"]}),
+        ]
+        for key, value in malformed:
+            bad = {**good, key: value}
+            (self.root / "config/digest_selection.json").write_text(json.dumps(bad), encoding="utf-8")
+            with self.subTest(key=key, value=value), self.assertRaises(selection.SelectionError):
+                selection.load_policy(self.root)
 
 
 if __name__ == "__main__":

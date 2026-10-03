@@ -1,6 +1,6 @@
-# 三榜筛选与评分 v1
+# 三榜筛选与评分：读者适配与新闻
 
-状态：已实现可审计评分流程；**权重和阈值尚未经过真实人工标注集校准，不声称选题质量已经提升**。配置版本 `v1-uncalibrated`。主入口为 `python -m ai_notes.digest_selection`。
+状态：已实现可审计评分流程；**权重和阈值尚未经过真实人工标注集校准，不声称选题质量已经提升**。当前配置版本 `v2-reader-fit-uncalibrated`（2026-10-04 用户确认定位后更新）；历史冻结 v1 输入和对比结果保持原样。主入口为 `python -m ai_notes.digest_selection`。
 
 本轮重点是回答“为什么选、为什么暂缓、为什么淘汰”。保留 Python＋SQLite 和三榜规则，不把 AIHOT 的新闻注意力分直接当成实用项目价值分，也不按来源名气给不同门槛。
 
@@ -10,7 +10,7 @@
 
 主要调整：AIHOT 把事件压缩为总注意力分；这里保存每一维分数、理由、原文 URL、模型/编辑身份和人工覆盖原因。项目价值、发表资格、实际归档三个判断分别保存。AIHOT 按来源级别设置门槛、周月汇编日报的规则不采用；这里继续共享候选库独立筛选。一次评分的完整分项便于先定位错例；追加评分保留历史，但不把多次重试中最高的一次冒充双评分平均。
 
-## 2. 四组权重映射八栏目
+## 2. 四组类别权重与独立新闻权重
 
 每维为 0–10 **整数**，权重和为 10，总分 0–100。模型或人工提供分项，Python 计算原始总分、限制后总分、建议。不从关键词、星数、热度自动伪造分数。
 
@@ -20,6 +20,7 @@
 | learning：Agent 框架与编排、模型与运行工具 | 3 | 2 | 2 | 2 | 1 |
 | play：游戏 | 1 | 2 | 1 | 2 | 4 |
 | reading：博客、帖子与访谈 | 3 | 3 | 2 | 1 | 1 |
+| news：`kind=news`，优先于所属主题的类别权重 | 3 | 3 | 3 | 1 | 0 |
 
 游戏不需要证明办公效率，阅读内容可以提供认知和可迁移方法；小众工具可以对特定人群很有价值。老项目不因日期旧扣分；novelty 指具体差异/新认识。用户已有某类工具，不代表同类项目一律淘汰。更新项评价本次变化，不能拿整个项目多年的累积价值给小补丁高分。
 
@@ -33,6 +34,12 @@
 | routine_update | novelty≤3 | 仍按总分判断，不机械淘汰 |
 | unfulfilled_announcement | usability≤2，evidence≤4 | 暂缓等兑现 |
 | unclear_usage | usability≤3 | 暂缓澄清入口/条件 |
+| reader_mismatch | value≤3、usability≤3 | 不适合当前读者，暂缓 |
+| insufficient_usage_evidence | evidence≤4、usability≤4 | 工具/方法使用依据不足，留待观察 |
+
+当前读者不太会代码。纯编译测试/CI/代码内务工作流和实际树莓派硬件走有证据的 BLOCK；CLI/MCP/Skills 不一律排除，软件 Pi 不能按名字排除。可执行步骤、可查看演示与独立使用记录是不同层次证据，作者演示不能写成独立口碑；周月成熟度主张需要对应依据。Star 无硬门槛，高星不免核验、低星不自动淘汰。
+
+`flag_kinds` 限制适用范围：routine_update 只作用于 update/news；新闻不使用 unfulfilled_announcement、unclear_usage、insufficient_usage_evidence 三种工具门槛。已核实的公告可有新闻价值，尚未兑现的效果必须写成计划。新闻看事件变化、影响与原始证据，不能套安装或开源要求。日报偏动态及易用工具，周月看持续使用和保留价值；不设置条数配比。
 
 每个 flag 都要理由及已读取材料的引用，不通过关键词匹配自动触发。初始门槛：≥65 建议入选、<45 建议淘汰，中间暂缓。**这只是待校准编辑标准，不是已测得最优阈值。**
 
@@ -70,7 +77,7 @@
 .venv/Scripts/python.exe -X utf8 -m ai_notes.digest_selection rank --root . --prepare-id PREPARE_ID --output work/ranked.json
 ```
 
-`prepare` 返回 `digest-selection.prepare.v1`：prepare_id、prepared_at、ranking_type、period、policy、policy_hash、prompt_hash、prompt_text、cards、coverage、blocked_candidates。cards 中 input_hash 绑定 material、evidence_context、observation、profile、eligibility。`--offset` 继续分页，coverage.next_offset 为 null 表示结束。调用方必须累计已审阅集合，不能反复只取首屏。
+`prepare` 返回 `digest-selection.prepare.v1`：prepare_id、prepared_at、ranking_type、period、policy、policy_hash、prompt_hash、prompt_text、cards、coverage、blocked_candidates。cards 中 input_hash 绑定 ranking_type、material、evidence_context、observation、profile、eligibility。可选 kind_profiles 和 flag_kinds 进入冻结 policy；旧配置无新键时保留旧行为。新闻以原始文章 URL 作为无 event 时的身份回退，补齐同 URL 事件不改变候选 ID。`--offset` 继续分页，coverage.next_offset 为 null 表示结束。调用方必须累计已审阅集合，不能反复只取首屏。
 
 精确集合 CLI 使用可重复的 `--candidate-id ID`；Python 传 `candidate_ids=[candidate_id(record), ...]`。`requested_candidate_ids` 和 `coverage.exact_scan_count` 保存集合与扫描范围；扫描只为定位已选定身份，不额外评分或增加深核预算。
 

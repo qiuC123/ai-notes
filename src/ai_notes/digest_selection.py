@@ -65,7 +65,7 @@ def _strings(value: Any, label: str, *, nonempty: bool = True) -> list:
 
 def load_policy(root: Path, policy_path: Path | None = None) -> dict:
     policy = json.loads((policy_path or root / POLICY_PATH).read_text(encoding="utf-8"))
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy")
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds"))
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -80,6 +80,11 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
             raise SelectionError("profile weights must sum to 10")
     if any(profile not in policy["profiles"] for profile in policy["category_profiles"].values()):
         raise SelectionError("unknown category profile")
+    kind_profiles = policy.get("kind_profiles", {})
+    if not isinstance(kind_profiles, dict) or set(kind_profiles) - set(digest.KINDS):
+        raise SelectionError("kind_profiles must map known candidate kinds")
+    if any(not isinstance(profile, str) or profile not in policy["profiles"] for profile in kind_profiles.values()):
+        raise SelectionError("unknown kind profile")
     thresholds = _object(policy["thresholds"], ("select", "reject_below"), "thresholds")
     if _integer(thresholds["reject_below"], 0, 100, "reject_below") > _integer(thresholds["select"], 0, 100, "select"):
         raise SelectionError("reject threshold exceeds select threshold")
@@ -92,6 +97,13 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
             _integer(value, 0, 10, "cap")
     if set(_strings(policy["defer_flags"], "defer_flags", nonempty=False)) - set(policy["flag_caps"]):
         raise SelectionError("unknown defer flag")
+    flag_kinds = policy.get("flag_kinds", {})
+    if not isinstance(flag_kinds, dict) or set(flag_kinds) - set(policy["flag_caps"]):
+        raise SelectionError("flag_kinds must map known flags")
+    for kinds in flag_kinds.values():
+        checked = _strings(kinds, "flag_kinds")
+        if len(checked) != len(set(checked)) or set(checked) - set(digest.KINDS):
+            raise SelectionError("flag_kinds must contain distinct known candidate kinds")
     return policy
 
 
@@ -149,7 +161,7 @@ def candidate_id(record: dict) -> str:
     event = record.get("event")
     # Renaming a release ID at the same canonical event URL is not a new review
     # identity. The complete event still participates in the frozen input hash.
-    event_url = digest._event_url(event["url"]) if event else ""
+    event_url = digest._event_url(event["url"]) if event else (digest._event_url(record["url"]) if record["kind"] == "news" else "")
     return _hash({"canonical_url": identity, "kind": record["kind"], "event_url": event_url})[:24]
 
 
@@ -266,8 +278,8 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
         # Discovered source text may be read but does not promote verification.
         if not relevant:
             relevant = [copy.deepcopy(context) for context in contexts if context["url"] in record.get("source_urls", [])]
-        card = {"candidate_id": cid, "canonical_url": record["canonical_url"],
-                "profile": policy["category_profiles"][record["category"]],
+        card = {"candidate_id": cid, "canonical_url": record["canonical_url"], "ranking_type": ranking_type,
+                "profile": policy.get("kind_profiles", {}).get(record["kind"], policy["category_profiles"][record["category"]]),
                 "material": material, "evidence_context": relevant,
                 "observation": {key: record.get(key) for key in ("run_id", "collected_at", "verified_at", "first_discovered_at", "period_label")},
                 "eligibility": _eligibility(record, bool(relevant))}
@@ -350,6 +362,9 @@ def _validate_assessment(policy: dict, card: dict, review: dict) -> dict:
         _text(flag["code"], "flag.code")
         if flag["code"] not in policy["flag_caps"] or flag["code"] in seen_flags:
             raise SelectionError("unknown or repeated flag")
+        allowed_kinds = policy.get("flag_kinds", {}).get(flag["code"])
+        if allowed_kinds is not None and card["material"]["kind"] not in allowed_kinds:
+            raise SelectionError("flag does not apply to candidate kind: " + flag["code"])
         seen_flags.add(flag["code"])
         _text(flag["reason"], "flag.reason")
         _refs(flag["evidence_refs"], allowed, "flag.evidence_refs")

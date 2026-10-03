@@ -2,6 +2,24 @@
   "schema_version": "digest-sources.v1",
   "sources": [
     {
+      "id": "openai-news",
+      "type": "rss",
+      "url": "https://openai.com/news/rss.xml",
+      "weekdays": [0, 1, 2, 3, 4, 5, 6],
+      "kind": "news",
+      "category": "AI 应用",
+      "max_items": 20
+    },
+    {
+      "id": "google-ai-news",
+      "type": "rss",
+      "url": "https://blog.google/technology/ai/rss/",
+      "weekdays": [0, 1, 2, 3, 4, 5, 6],
+      "kind": "news",
+      "category": "AI 应用",
+      "max_items": 20
+    },
+    {
       "id": "show-hn",
       "type": "show_hn",
       "url": "https://hacker-news.firebaseio.com/v0/showstories.json",

@@ -25,7 +25,7 @@ CATEGORIES = (
     "开源项目", "Skills", "AI 应用", "Agent 框架与编排",
     "MCP 服务与连接器", "模型与运行工具", "游戏", "博客、帖子与访谈",
 )
-KINDS = ("project", "update", "reading")
+KINDS = ("project", "update", "reading", "news")
 BEIJING = timezone(timedelta(hours=8))
 DB_PATH = Path("data/weekly_digest/digest.sqlite3")
 ARTICLE_DIR = Path("outputs/digest")
@@ -115,7 +115,7 @@ def canonical_url(value: str, kind: str = "project") -> str:
         pieces[1] = re.sub(r"\.git$", "", pieces[1], flags=re.IGNORECASE).lower()
         if not pieces[1]:
             raise DigestError("GitHub repository name is empty")
-        if kind != "reading":
+        if kind not in ("reading", "news"):
             return "https://github.com/" + "/".join(pieces[:2])
         host, path = "github.com", "/" + "/".join(pieces)
     elif ":" in host:  # Preserve valid IPv6 netloc formatting.
@@ -157,7 +157,7 @@ def _validate_batch(batch: Any) -> list[str]:
         if candidate["category"] not in CATEGORIES:
             raise DigestError("candidate.category must be one of the eight digest categories")
         if candidate["kind"] not in KINDS:
-            raise DigestError("candidate.kind must be project, update, or reading")
+            raise DigestError("candidate.kind must be project, update, reading, or news")
         if candidate["evidence_status"] not in ("discovered", "verified"):
             raise DigestError("candidate.evidence_status must be discovered or verified")
         _urls(candidate["source_urls"], "candidate.source_urls", nonempty=True)
@@ -187,6 +187,12 @@ def _validate_batch(batch: Any) -> list[str]:
                 raise DigestError("a verified update requires a stable event")
         if candidate.get("event"):
             _event(candidate["event"], candidate["kind"], collected)
+        if candidate["kind"] == "news" and candidate["evidence_status"] == "verified":
+            if not candidate.get("event"):
+                raise DigestError("verified news requires a stable event")
+            _event(candidate["event"], "news", _timestamp(candidate.get("verified_at") or batch["collected_at"], "news verification"))
+            if _event_url(candidate["event"]["url"]) not in {_event_url(url) for url in candidate["evidence_urls"]}:
+                raise DigestError("news event URL must be included in original evidence_urls")
         identities.append(canonical_url(candidate["url"], candidate["kind"]))
     return identities
 
@@ -202,8 +208,9 @@ def _event(value: Any, kind: str, observed: datetime) -> dict:
     occurred = _timestamp(value["occurred_at"], "event.occurred_at")
     if occurred > observed:
         raise DigestError("event cannot occur after its observation")
-    if value["type"] not in ("release", "update") or (kind == "update" and value["type"] != "update"):
-        raise DigestError("event.type must be release or update; update items require update events")
+    allowed = ("news",) if kind == "news" else ("update",) if kind == "update" else ("release", "update")
+    if value["type"] not in allowed:
+        raise DigestError("event.type must match its kind: news requires news; update requires update; other kinds require release or update")
     return value
 
 
@@ -411,6 +418,15 @@ def _first_discovered(history: list[dict]) -> str:
 
 def _eligible(record: dict, first_discovered: str, start: date, end: date) -> bool:
     event = record.get("event")
+    if record["kind"] == "news" and not event:
+        # Initial source-review eligibility is not final Q12 eligibility. A late
+        # discovery may describe an earlier event; publication metadata alone
+        # cannot establish that event. Verified news and issues require it.
+        return record["evidence_status"] == "discovered"
+    # News belongs to the event's actual natural period, not a later discovery
+    # or re-verification date. Undated discoveries can still reach source review.
+    if record["kind"] == "news" and event and not start <= _timestamp(event["occurred_at"], "event.occurred_at").astimezone(BEIJING).date() <= end:
+        return False
     if event and _timestamp(event["occurred_at"], "event.occurred_at").astimezone(BEIJING).date() > end:
         return False
     if _timestamp(first_discovered, "discovered_at").astimezone(BEIJING).date() <= end:
@@ -440,11 +456,27 @@ def _selection_history(connection: sqlite3.Connection, identity: str, ranking_ty
             for row in connection.execute("SELECT * FROM selections WHERE canonical_url=?", (identity,))]
 
 
-def _dedup_error(item: dict, prior: list[dict]) -> str | None:
+def _reported_event_urls(connection: sqlite3.Connection, ranking_type: str) -> set[str]:
+    """Catch an event retold under another candidate URL or content kind."""
+    if _has_table(connection, "ranked_selections"):
+        rows = connection.execute("""SELECT s.payload FROM ranked_selections s
+            JOIN ranked_issues i USING(issue_id) WHERE i.ranking_type=?""", (ranking_type,))
+    elif ranking_type == "weekly":
+        rows = connection.execute("SELECT payload FROM selections")
+    else:
+        return set()
+    return {_event_url(item["event"]["url"]) for row in rows
+            if (item := json.loads(row["payload"])).get("event")}
+
+
+def _dedup_error(item: dict, prior: list[dict], reported_event_urls: set[str] | None = None) -> str | None:
+    event = item.get("event")
+    event_url = _event_url(event["url"]) if event else _event_url(item["url"]) if item["kind"] == "news" else None
+    if event_url and event_url in (reported_event_urls or set()):
+        return "same event already reported in same-level history (candidate URL and kind cannot bypass its original URL)"
     if not prior:
         return None
-    event = item.get("event")
-    if item["kind"] != "update" or not event:
+    if item["kind"] not in ("update", "news") or not event:
         return "already selected in same-level history; an unreported important update is required"
     for previous in prior:
         earlier = previous.get("event")
@@ -461,7 +493,8 @@ def _dedup_error(item: dict, prior: list[dict]) -> str | None:
     return None
 
 
-def _candidate_events(records: list[dict], prior: list[dict], *, deduplicate: bool) -> list[dict]:
+def _candidate_events(records: list[dict], prior: list[dict], *, deduplicate: bool,
+                      reported_event_urls: set[str] | None = None) -> list[dict]:
     """Keep verification attached to a concrete event, never to the whole project.
 
     Event URLs preserve release/changelog anchors. An ID rename at the same URL
@@ -470,7 +503,11 @@ def _candidate_events(records: list[dict], prior: list[dict], *, deduplicate: bo
     groups: dict[tuple[str, str], list[dict]] = {}
     for record in records:
         event = record.get("event")
-        key = (record["kind"], _event_url(event["url"]) if event else "")
+        # A news discovery already identifies its article. Source review adds
+        # event facts to that same card instead of leaving a second unverified
+        # card that can overwrite or revive the verified/reported event.
+        event_url = _event_url(event["url"]) if event else _event_url(record["url"]) if record["kind"] == "news" else ""
+        key = (record["kind"], event_url)
         groups.setdefault(key, []).append(record)
     events = []
     for (kind, event_url), observations in groups.items():
@@ -478,7 +515,7 @@ def _candidate_events(records: list[dict], prior: list[dict], *, deduplicate: bo
         effective = copy.deepcopy(max(verified or observations, key=lambda record: (
             _timestamp(record["verified_at"] if verified else record["collected_at"], "observation time"),
             _timestamp(record["collected_at"], "collected_at"))))
-        block = _dedup_error(effective, prior) if deduplicate else None
+        block = _dedup_error(effective, prior, reported_event_urls) if deduplicate else None
         effective.update(event_key=kind + ":" + event_url, selection_block=block,
                          selection_status="blocked" if block else "available" if verified else "needs_evidence",
                          last_verified_at=effective["verified_at"] if verified else None,
@@ -517,12 +554,21 @@ def candidates(root: Path, since: str | None = None, until: str | None = None, l
         return result
     try:
         found = []
+        reported_event_urls = _reported_event_urls(connection, ranking_type) if ranking_type else set()
         identities = connection.execute("SELECT DISTINCT canonical_url FROM observations ORDER BY canonical_url").fetchall()
         for row in identities:
             history = _observations(connection, row["canonical_url"])
             first = _first_discovered(history)
             if ranking_type:
-                records = [entry for entry in history if _eligible(entry, first, start, end)]
+                # Once an article's event is verified, its undated discovery
+                # follows that event's period instead of reopening source review
+                # in every other period. Keep the observations themselves intact.
+                verified_news = {_event_url(entry["event"]["url"]): entry for entry in reversed(history)
+                                 if entry["kind"] == "news" and entry["evidence_status"] == "verified" and entry.get("event")}
+                records = [entry for entry in history if _eligible(
+                    verified_news.get(_event_url(entry["url"]), entry)
+                    if entry["kind"] == "news" and not entry.get("event") else entry,
+                    first, start, end)]
             else:
                 if not any(since <= record["collection_date"] <= until for record in history):
                     continue
@@ -530,7 +576,7 @@ def candidates(root: Path, since: str | None = None, until: str | None = None, l
             if not records:
                 continue
             prior = _selection_history(connection, row["canonical_url"], ranking_type)
-            events = _candidate_events(records, prior, deduplicate=bool(ranking_type))
+            events = _candidate_events(records, prior, deduplicate=bool(ranking_type), reported_event_urls=reported_event_urls)
             effective = copy.deepcopy(events[0])
             effective.update(canonical_url=row["canonical_url"], first_discovered_at=first,
                              source_urls=sorted({url for record in history for url in record["source_urls"]}),
@@ -586,7 +632,7 @@ def _validate_issue(issue: Any, *, final: bool = False) -> tuple[date, date, lis
     for field in ("screened_count", "verified_count"):
         if field in issue and (type(issue[field]) is not int or issue[field] < count):
             raise DigestError(f"{field} must be an integer >= selected count")
-    identities, featured, nonreading = [], 0, 0
+    identities, event_urls, featured, nonreading = [], set(), 0, 0
     for item in items:
         _object(item, ("url", "kind", "featured", "title", "category", "summary", "reason", "audience", "usage_conditions",
                        "verification_level", "verified_at", "evidence_urls", "change_note"), "item")
@@ -610,12 +656,18 @@ def _validate_issue(issue: Any, *, final: bool = False) -> tuple[date, date, lis
         if item["kind"] == "update":
             if not item["change_note"].strip() or not item.get("event"):
                 raise DigestError("an important update requires change_note and a stable event")
+        if item["kind"] == "news" and not item.get("event"):
+            raise DigestError("news requires a stable event")
         if item.get("event"):
             _event(item["event"], item["kind"], verified)
             if _event_url(item["event"]["url"]) not in {_event_url(url) for url in item["evidence_urls"]}:
                 raise DigestError("event URL must be included in original evidence_urls")
-            if item["kind"] != "reading" and _event_url(item["event"]["url"]) == canonical_url(item["url"]):
+            if item["kind"] not in ("reading", "news") and _event_url(item["event"]["url"]) == canonical_url(item["url"]):
                 raise DigestError("event URL must locate an original release or update, not just project home")
+            event_url = _event_url(item["event"]["url"])
+            if event_url in event_urls:
+                raise DigestError("the same original event cannot occur twice in an issue, including different kinds")
+            event_urls.add(event_url)
         if item["kind"] == "reading":
             _text(item.get("author"), "reading.author")
             _date(item.get("original_date"), "reading.original_date")
@@ -665,6 +717,7 @@ def _prepare(connection: sqlite3.Connection | None, issue: dict, *, final: bool 
     supplemental_ids = set()
     if identities and connection is None:
         raise DigestError("candidate ledger does not exist; ingest verified observations first")
+    reported_event_urls = _reported_event_urls(connection, issue["ranking_type"]) if connection else set()
     for identity, item in zip(identities, result["items"]):
         records = _observations(connection, identity, prepared)
         if not records:
@@ -688,7 +741,7 @@ def _prepare(connection: sqlite3.Connection | None, issue: dict, *, final: bool 
         if not matching:
             raise DigestError("candidate belongs to a later period; Q12 forbids backdating a new discovery: " + identity)
         prior = _selection_history(connection, identity, issue["ranking_type"])
-        problem = _dedup_error(item, prior)
+        problem = _dedup_error(item, prior, reported_event_urls)
         if problem:
             raise DigestError(problem + ": " + identity)
         observation = matching[0]
@@ -726,8 +779,9 @@ def _render(document: dict, *, draft: bool) -> str:
         for item in items:
             if item["category"] != category:
                 continue
+            audience_label, conditions_label = ("影响人群", "适用范围与行动") if item["kind"] == "news" else ("适合", "使用条件")
             lines += [f"### {'★ ' if item['featured'] else ''}{item['title']}", "",
-                      item["summary"], "", item["reason"], "", f"适合：{item['audience'].rstrip('。；; ')}。使用条件：{item['usage_conditions']}", ""]
+                       item["summary"], "", item["reason"], "", f"{audience_label}：{item['audience'].rstrip('。；; ')}。{conditions_label}：{item['usage_conditions']}", ""]
             if document["ranking_type"] == "weekly":
                 lines += [item["detail"], ""]
             if document["ranking_type"] == "monthly":
@@ -736,11 +790,14 @@ def _render(document: dict, *, draft: bool) -> str:
                 lines += ["重要更新：" + item["change_note"], ""]
             if item["kind"] == "reading":
                 lines += [f"作者／受访者：{item['author']}；原文日期：{item['original_date']}。", ""]
+            if item["kind"] == "news":
+                lines += [f"新闻事件日期：{day(item['event']['occurred_at'])}。", ""]
             published = item.get("published_at") or "未确认"
             if "T" in published:
                 published = day(published)
+            verification = "已核对原始新闻资料" if item["kind"] == "news" and item["verification_level"] == "documented" else levels[item["verification_level"]]
             lines += [f"[{item['title']} 官方入口]({item['url']}) · {item['period_label']}；首次发现 {day(item['first_discovered_at'])}；真实发布时间 {published}。", "",
-                      f"核验：{levels[item['verification_level']]}；核验日期 {day(item['verified_at'])}；实际采集 {day(item['collected_at'])}。", "",
+                       f"核验：{verification}；核验日期 {day(item['verified_at'])}；实际采集 {day(item['collected_at'])}。", "",
                       "资料：" + " / ".join(f"[原始资料 {index + 1}]({url})" for index, url in enumerate(item["evidence_urls"])), ""]
     if document.get("opportunities"):
         lines += ["## 开发机会观察（不计入精选条数）", ""]
