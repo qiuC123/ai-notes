@@ -1,0 +1,621 @@
+"""Explainable editorial reviews, kept separate from evidence and publication.
+
+No model calls or network requests are made here. Prepared original-source
+material is untrusted data. Scores are supplied by an identified editor/model;
+Python validates the record and computes policy effects without guessing scores.
+"""
+from __future__ import annotations
+
+import argparse
+import copy
+import hashlib
+import inspect
+import json
+from pathlib import Path
+import sqlite3
+import sys
+from typing import Any
+
+from . import digest
+
+DIMENSIONS = ("value", "novelty", "evidence", "usability", "interest")
+DB_PATH = Path("data/weekly_digest/selection.sqlite3")
+POLICY_PATH = Path("config/digest_selection.json")
+PROMPT_PATH = Path("docs/prompts/digest-selection.md")
+
+
+class SelectionError(ValueError):
+    """Malformed or conflicting review input."""
+
+
+def _json(value: Any) -> str:
+    try:
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise SelectionError("input must be finite JSON") from exc
+
+
+def _hash(value: Any) -> str:
+    return hashlib.sha256(_json(value).encode("utf-8")).hexdigest()
+
+
+def _object(value: Any, keys: tuple | set, label: str, optional: tuple = ()) -> dict:
+    if not isinstance(value, dict) or set(value) - (set(keys) | set(optional)) or set(keys) - set(value):
+        raise SelectionError(f"{label} requires exactly {', '.join(sorted(keys))}" + (f"; optional {optional}" if optional else ""))
+    return value
+
+
+def _text(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise SelectionError(f"{label} must be nonempty text")
+    return value
+
+
+def _integer(value: Any, lo: int, hi: int, label: str) -> int:
+    if type(value) is not int or not lo <= value <= hi:
+        raise SelectionError(f"{label} must be an integer in {lo}..{hi}")
+    return value
+
+
+def _strings(value: Any, label: str, *, nonempty: bool = True) -> list:
+    if not isinstance(value, list) or (nonempty and not value):
+        raise SelectionError(f"{label} must be a {'nonempty ' if nonempty else ''}list")
+    return [_text(item, label) for item in value]
+
+
+def load_policy(root: Path, policy_path: Path | None = None) -> dict:
+    policy = json.loads((policy_path or root / POLICY_PATH).read_text(encoding="utf-8"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy")
+    if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
+        raise SelectionError("unsupported policy schema/dimensions")
+    _text(policy["version"], "policy.version")
+    _text(policy["calibration_status"], "policy.calibration_status")
+    if not isinstance(policy["category_profiles"], dict) or not isinstance(policy["profiles"], dict) or not policy["profiles"]:
+        raise SelectionError("policy profiles must be nonempty objects")
+    if set(policy["category_profiles"]) != set(digest.CATEGORIES):
+        raise SelectionError("policy must cover exactly eight categories")
+    for weights in policy["profiles"].values():
+        _object(weights, DIMENSIONS, "weights")
+        if sum(_integer(value, 0, 10, "weight") for value in weights.values()) != 10:
+            raise SelectionError("profile weights must sum to 10")
+    if any(profile not in policy["profiles"] for profile in policy["category_profiles"].values()):
+        raise SelectionError("unknown category profile")
+    thresholds = _object(policy["thresholds"], ("select", "reject_below"), "thresholds")
+    if _integer(thresholds["reject_below"], 0, 100, "reject_below") > _integer(thresholds["select"], 0, 100, "select"):
+        raise SelectionError("reject threshold exceeds select threshold")
+    if not isinstance(policy["flag_caps"], dict):
+        raise SelectionError("flag_caps must be an object")
+    for caps in policy["flag_caps"].values():
+        if not isinstance(caps, dict) or not caps or set(caps) - set(DIMENSIONS):
+            raise SelectionError("unknown cap dimension")
+        for value in caps.values():
+            _integer(value, 0, 10, "cap")
+    if set(_strings(policy["defer_flags"], "defer_flags", nonempty=False)) - set(policy["flag_caps"]):
+        raise SelectionError("unknown defer flag")
+    return policy
+
+
+def _connect(root: Path) -> sqlite3.Connection:
+    path = root / DB_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(path)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys=ON")
+    connection.executescript("""
+      CREATE TABLE IF NOT EXISTS preparations (prepare_id TEXT PRIMARY KEY,payload TEXT NOT NULL,created_at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS reviews (id INTEGER PRIMARY KEY,review_hash TEXT UNIQUE NOT NULL,prepare_id TEXT NOT NULL REFERENCES preparations(prepare_id),candidate_id TEXT NOT NULL,input_hash TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS review_lookup ON reviews(prepare_id,candidate_id,id);
+      CREATE TABLE IF NOT EXISTS label_splits (canonical_url TEXT PRIMARY KEY,split TEXT NOT NULL CHECK(split IN ('dev','holdout')));
+      CREATE TABLE IF NOT EXISTS labels (id INTEGER PRIMARY KEY,prepare_id TEXT NOT NULL REFERENCES preparations(prepare_id),candidate_id TEXT NOT NULL,canonical_url TEXT NOT NULL REFERENCES label_splits(canonical_url),payload TEXT NOT NULL,created_at TEXT NOT NULL);
+    """)
+    return connection
+
+
+def _load(connection: sqlite3.Connection, prepare_id: str) -> dict:
+    row = connection.execute("SELECT payload FROM preparations WHERE prepare_id=?", (_text(prepare_id, "prepare_id"),)).fetchone()
+    if row is None:
+        raise SelectionError("unknown prepare_id; prepare the frozen material first")
+    return json.loads(row["payload"])
+
+
+def load_preparation(root: Path, prepare_id: str) -> dict:
+    """Read the exact persisted input; no fresh material or policy is substituted."""
+    connection = _connect(Path(root))
+    try:
+        return _load(connection, prepare_id)
+    finally:
+        connection.close()
+
+
+def get_prompt(root: Path, prepared: dict) -> str:
+    """Return the system prompt belonging to the preparation, not a later edit."""
+    text = prepared.get("prompt_text")
+    if text is None:  # Preparations made before prompt text persistence.
+        text = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8")
+    if hashlib.sha256(text.encode("utf-8")).hexdigest() != prepared["prompt_hash"]:
+        raise SelectionError("prepared prompt is unavailable or its hash does not match")
+    return text
+
+
+def _card(prepared: dict, candidate_id: str) -> dict:
+    found = [item for item in prepared["cards"] if item["candidate_id"] == candidate_id]
+    if not found:
+        raise SelectionError("candidate_id not present in this preparation")
+    return found[0]
+
+
+def candidate_id(record: dict) -> str:
+    identity = record.get("canonical_url") or digest.canonical_url(record["url"], record["kind"])
+    event = record.get("event")
+    # Renaming a release ID at the same canonical event URL is not a new review
+    # identity. The complete event still participates in the frozen input hash.
+    event_url = digest._event_url(event["url"]) if event else ""
+    return _hash({"canonical_url": identity, "kind": record["kind"], "event_url": event_url})[:24]
+
+
+def _eligibility(record: dict, has_context: bool) -> dict:
+    reasons = []
+    if record.get("selection_block") or record.get("selection_status") == "blocked":
+        return {"state": "blocked", "reasons": [record.get("selection_block") or "same-level or period eligibility blocked"]}
+    if record.get("evidence_status") != "verified":
+        reasons.append("original-source verification has not been recorded in the digest ledger")
+    if not has_context:
+        reasons.append("no readable original-source context was supplied for scoring")
+    if record.get("selection_status") == "needs_evidence" and not reasons:
+        reasons.append("digest candidate requires further evidence")
+    return {"state": "needs_evidence" if reasons else "available", "reasons": reasons}
+
+
+def _query(root: Path, ranking_type: str, period: str, limit: int, offset: int = 0) -> dict:
+    args = dict(ranking_type=ranking_type, period=period, limit=limit)
+    # Backward compatibility with the pre-pagination digest CLI.
+    if "offset" in inspect.signature(digest.candidates).parameters:
+        args.update(offset=offset, include_history=False)
+        return digest.candidates(root, **args)
+    if offset:
+        args["limit"] = min(1000, offset + limit)
+    result = digest.candidates(root, **args)
+    result["candidates"] = result["candidates"][offset:offset + limit]
+    return result
+
+
+def _event_records(query: dict) -> list[dict]:
+    records = []
+    for project in query["candidates"]:
+        for event in project.get("event_candidates") or [project]:
+            records.append({**event, "canonical_url": project["canonical_url"],
+                            "first_discovered_at": project.get("first_discovered_at"),
+                            "period_label": project.get("period_label")})
+    return records
+
+
+def _exact_candidates(root: Path, ranking_type: str, period: str, requested: list[str]) -> tuple[dict, list[dict]]:
+    """Find exact event identities after verification may have reordered cards."""
+    wanted = set(requested)
+    found = {}
+    scanned = 0
+    offset = 0
+    while True:
+        query = _query(root, ranking_type, period, 100, offset)
+        scanned += len(query["candidates"])
+        for record in _event_records(query):
+            cid = candidate_id(record)
+            if cid in wanted:
+                if record.get("selection_block") or record.get("selection_status") == "blocked":
+                    raise SelectionError("requested candidate event is blocked by current history: " + cid)
+                found[cid] = record
+        next_offset = query.get("next_offset")
+        if wanted.issubset(found) or next_offset is None:
+            break
+        if type(next_offset) is not int or next_offset <= offset:
+            raise SelectionError("candidate pagination made no progress")
+        offset = next_offset
+    missing = wanted - found.keys()
+    if missing:
+        raise SelectionError("requested candidate is absent, changed event or blocked; query current candidates again: " + ", ".join(sorted(missing)))
+    query = {**query, "returned_count": len(requested), "truncated": False, "next_offset": None,
+             "exact_scan_count": scanned}
+    return query, [found[cid] for cid in requested]
+
+
+def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
+            evidence_context: list | None = None, policy_path: Path | None = None, offset: int = 0,
+            candidate_ids: list[str] | None = None) -> dict:
+    """Freeze candidate input and externally retrieved source text, without scoring."""
+    root = Path(root)
+    digest.period_window(ranking_type, period)
+    _integer(limit, 1, 1000, "limit")
+    _integer(offset, 0, 1000000, "offset")
+    if candidate_ids is not None:
+        _strings(candidate_ids, "candidate_ids", nonempty=False)
+        if len(candidate_ids) != len(set(candidate_ids)):
+            raise SelectionError("candidate_ids must not contain duplicates")
+        if len(candidate_ids) > limit:
+            raise SelectionError("exact candidate set exceeds the review limit")
+        if offset:
+            raise SelectionError("candidate_ids cannot be combined with offset")
+    policy = load_policy(root, policy_path)
+    prompt = (root / PROMPT_PATH).read_text(encoding="utf-8")
+    contexts = [] if evidence_context is None else evidence_context
+    if not isinstance(contexts, list):
+        raise SelectionError("evidence_context must be a list")
+    for context in contexts:
+        _object(context, ("url", "text", "fetched_at"), "context")
+        digest._url(context["url"])
+        _text(context["text"], "context.text")
+        if digest._timestamp(context["fetched_at"], "context.fetched_at") > digest._now():
+            raise SelectionError("context fetched_at cannot be in the future")
+    if candidate_ids is None:
+        query = _query(root, ranking_type, period, limit, offset)
+        records = query["candidates"]
+    else:
+        query, records = _exact_candidates(root, ranking_type, period, candidate_ids)
+    cards = []
+    seen = set()
+    keys = ("url", "title", "category", "kind", "summary", "reason", "source_urls", "evidence_urls", "evidence_status", "verification_level", "verified_at", "published_at", "discovered_at", "change_note", "event")
+    # Core blocked cards deliberately contain no source material. They are an
+    # audit list, not extra scoring requests outside the caller's budget.
+    for record in records:
+        cid = candidate_id(record)
+        if cid in seen:
+            continue
+        seen.add(cid)
+        material = {key: record.get(key) for key in keys}
+        allowed = set(record.get("evidence_urls", []))
+        relevant = [copy.deepcopy(context) for context in contexts if context["url"] in allowed]
+        # Discovered source text may be read but does not promote verification.
+        if not relevant:
+            relevant = [copy.deepcopy(context) for context in contexts if context["url"] in record.get("source_urls", [])]
+        card = {"candidate_id": cid, "canonical_url": record["canonical_url"],
+                "profile": policy["category_profiles"][record["category"]],
+                "material": material, "evidence_context": relevant,
+                "observation": {key: record.get(key) for key in ("run_id", "collected_at", "verified_at", "first_discovered_at", "period_label")},
+                "eligibility": _eligibility(record, bool(relevant))}
+        card["input_hash"] = _hash(card)
+        cards.append(card)
+    prepared = {"schema_version": "digest-selection.prepare.v1", "ranking_type": ranking_type, "period": period,
+                "policy": policy, "policy_hash": _hash(policy), "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest(), "prompt_text": prompt,
+                "cards": cards, "blocked_candidates": query.get("blocked_candidates", []),
+                "coverage": {key: query.get(key) for key in ("total_candidates", "eligible_count", "returned_count", "blocked_count", "truncated", "next_offset", "exact_scan_count")},
+                "offset": offset, "limit": limit, "requested_candidate_ids": candidate_ids}
+    prepared["prepare_id"] = _hash(prepared)
+    prepared["prepared_at"] = digest._now().isoformat()
+    connection = _connect(root)
+    try:
+        with connection:
+            connection.execute("INSERT OR IGNORE INTO preparations VALUES (?,?,?)", (prepared["prepare_id"], _json(prepared), prepared["prepared_at"]))
+        return _load(connection, prepared["prepare_id"])
+    finally:
+        connection.close()
+
+
+def _refs(value: Any, allowed: set, label: str, *, nonempty: bool = True) -> None:
+    if set(_strings(value, label, nonempty=nonempty)) - allowed:
+        raise SelectionError(f"{label} includes a URL absent from the prepared material")
+
+
+def _calculate(policy: dict, card: dict, review: dict) -> dict:
+    scores = review["scores"]
+    raw = {key: scores[key]["score"] for key in DIMENSIONS} if scores is not None else None
+    effective = copy.deepcopy(raw)
+    caps = []
+    if effective is not None:
+        for flag in review["flags"]:
+            for dimension, ceiling in policy["flag_caps"][flag["code"]].items():
+                if effective[dimension] > ceiling:
+                    caps.append({"flag": flag["code"], "dimension": dimension, "from": effective[dimension], "to": ceiling})
+                    effective[dimension] = ceiling
+    weights = policy["profiles"][card["profile"]]
+    raw_total = sum(raw[key] * weights[key] for key in DIMENSIONS) if raw is not None else None
+    total = sum(effective[key] * weights[key] for key in DIMENSIONS) if effective is not None else None
+    flags = {flag["code"] for flag in review["flags"]}
+    if review["precheck"]["status"] == "BLOCK":
+        suggested = "reject"
+    elif review["precheck"]["status"] == "UNKNOWN" or total is None or card["eligibility"]["state"] != "available" or flags.intersection(policy["defer_flags"]):
+        suggested = "defer"
+    elif total >= policy["thresholds"]["select"]:
+        suggested = "select"
+    elif total < policy["thresholds"]["reject_below"]:
+        suggested = "reject"
+    else:
+        suggested = "defer"
+    return dict(raw_score=raw_total, effective_scores=effective, total_score=total, applied_caps=caps, suggested_decision=suggested)
+
+
+def _validate_assessment(policy: dict, card: dict, review: dict) -> dict:
+    _object(review, ("precheck", "scores", "flags", "reason"), "assessment")
+    _json(review)
+    allowed = {context["url"] for context in card["evidence_context"]}
+    precheck = _object(review["precheck"], ("status", "reasons", "evidence_refs"), "precheck")
+    if precheck["status"] not in ("PASS", "UNKNOWN", "BLOCK"):
+        raise SelectionError("precheck status must be PASS/UNKNOWN/BLOCK")
+    _strings(precheck["reasons"], "precheck.reasons")
+    _refs(precheck["evidence_refs"], allowed, "precheck.evidence_refs", nonempty=precheck["status"] != "UNKNOWN")
+    if review["scores"] is not None:
+        if not card["evidence_context"]:
+            raise SelectionError("readable original material required for scores; use UNKNOWN and null scores")
+        _object(review["scores"], DIMENSIONS, "scores")
+        for dimension in DIMENSIONS:
+            score = _object(review["scores"][dimension], ("score", "reason", "evidence_refs"), dimension)
+            _integer(score["score"], 0, 10, dimension + ".score")
+            _text(score["reason"], dimension + ".reason")
+            _refs(score["evidence_refs"], {context["url"] for context in card["evidence_context"]}, dimension + ".evidence_refs")
+    elif precheck["status"] == "PASS":
+        raise SelectionError("PASS needs scores; missing/failed material must be UNKNOWN")
+    if not isinstance(review["flags"], list):
+        raise SelectionError("flags must be a list")
+    seen_flags = set()
+    for flag in review["flags"]:
+        _object(flag, ("code", "reason", "evidence_refs"), "flag")
+        _text(flag["code"], "flag.code")
+        if flag["code"] not in policy["flag_caps"] or flag["code"] in seen_flags:
+            raise SelectionError("unknown or repeated flag")
+        seen_flags.add(flag["code"])
+        _text(flag["reason"], "flag.reason")
+        _refs(flag["evidence_refs"], allowed, "flag.evidence_refs")
+    _text(review["reason"], "reason")
+    return _calculate(policy, card, review)
+
+
+def build_review(root: Path, prepare_id: str, candidate_id: str, assessment: dict, reviewer: dict) -> dict:
+    """Bind model judgments and let Python decide, without recording them yet.
+
+    assessment contains only precheck, scores, flags and reason. Persist the raw
+    provider response separately; this helper never asks a model to do arithmetic.
+    """
+    prepared = load_preparation(root, prepare_id)
+    card = _card(prepared, candidate_id)
+    _object(reviewer, ("kind", "name", "model"), "reviewer")
+    if reviewer["kind"] not in ("human", "model"):
+        raise SelectionError("reviewer.kind must be human/model")
+    _text(reviewer["name"], "reviewer.name")
+    if reviewer["kind"] == "model":
+        _text(reviewer["model"], "reviewer.model")
+    elif reviewer["model"] is not None:
+        raise SelectionError("human reviewer.model must be null")
+    computed = _validate_assessment(prepared["policy"], card, assessment)
+    return {"schema_version": "digest-selection.review.v1", "prepare_id": prepare_id,
+            "candidate_id": candidate_id, "input_hash": card["input_hash"],
+            "reviewer": copy.deepcopy(reviewer), **copy.deepcopy(assessment),
+            "decision": computed["suggested_decision"], "override_reason": None}
+
+
+def record(root: Path, review: dict) -> dict:
+    _object(review, ("schema_version", "prepare_id", "candidate_id", "input_hash", "reviewer", "precheck", "scores", "flags", "decision", "reason", "override_reason"), "review")
+    if review["schema_version"] != "digest-selection.review.v1":
+        raise SelectionError("unsupported review schema")
+    _json(review)
+    connection = _connect(Path(root))
+    try:
+        prepared = _load(connection, review["prepare_id"])
+        card = _card(prepared, review["candidate_id"])
+        if review["input_hash"] != card["input_hash"]:
+            raise SelectionError("input_hash differs from frozen preparation")
+        policy = prepared["policy"]
+        reviewer = _object(review["reviewer"], ("kind", "name", "model"), "reviewer")
+        if reviewer["kind"] not in ("human", "model"):
+            raise SelectionError("reviewer.kind must be human/model")
+        _text(reviewer["name"], "reviewer.name")
+        if reviewer["kind"] == "model":
+            _text(reviewer["model"], "reviewer.model")
+        elif reviewer["model"] is not None:
+            raise SelectionError("human reviewer.model must be null")
+        computed = _validate_assessment(policy, card, {key: review[key] for key in ("precheck", "scores", "flags", "reason")})
+        if review["decision"] not in ("select", "defer", "reject"):
+            raise SelectionError("unknown decision")
+        if review["decision"] == "select" and card["eligibility"]["state"] != "available":
+            raise SelectionError("editorial overrides cannot bypass evidence, period or duplicate eligibility")
+        _text(review["reason"], "reason")
+        if review["override_reason"] is not None:
+            _text(review["override_reason"], "override_reason")
+            if reviewer["kind"] != "human":
+                raise SelectionError("models cannot override computed decisions")
+        if review["decision"] != computed["suggested_decision"] and not review["override_reason"]:
+            raise SelectionError("decision differs from policy; a human override reason is required")
+        result = {**copy.deepcopy(review), **computed, "canonical_url": card["canonical_url"], "profile": card["profile"],
+                  "policy_hash": prepared["policy_hash"], "prompt_hash": prepared["prompt_hash"], "policy_version": policy["version"],
+                  "recorded_at": digest._now().isoformat()}
+        review_hash = _hash(review)
+        previous = connection.execute("SELECT payload FROM reviews WHERE review_hash=?", (review_hash,)).fetchone()
+        if previous:
+            return {"status": "unchanged", **json.loads(previous["payload"])}
+        with connection:
+            connection.execute("INSERT INTO reviews(review_hash,prepare_id,candidate_id,input_hash,payload,created_at) VALUES (?,?,?,?,?,?)",
+                (review_hash, review["prepare_id"], review["candidate_id"], review["input_hash"], _json(result), result["recorded_at"]))
+        return {"status": "recorded", **result}
+    finally:
+        connection.close()
+
+
+def _reviews(connection: sqlite3.Connection, prepare_id: str) -> dict:
+    # Append-only history; the latest review within exactly this frozen input wins.
+    result = {}
+    for row in connection.execute("SELECT candidate_id,payload FROM reviews WHERE prepare_id=? ORDER BY id", (prepare_id,)):
+        result[row["candidate_id"]] = json.loads(row["payload"])
+    return result
+
+
+def rank(root: Path, prepare_id: str) -> dict:
+    connection = _connect(Path(root))
+    try:
+        prepared = _load(connection, prepare_id)
+        reviews = _reviews(connection, prepare_id)
+        # Refresh hard gates: scoring does not make a later duplicate publishable.
+        current = _query(Path(root), prepared["ranking_type"], prepared["period"], 1000)
+        current_by_id = {candidate_id(item): item for item in _event_records(current)}
+        blocked_by_project = {item["canonical_url"]: item for item in current.get("blocked_candidates", [])}
+        needed = {card["candidate_id"] for card in prepared["cards"]}
+        while current.get("next_offset") is not None and not needed.issubset(current_by_id):
+            current = _query(Path(root), prepared["ranking_type"], prepared["period"], 1000, current["next_offset"])
+            current_by_id.update({candidate_id(item): item for item in _event_records(current)})
+        result = {"prepare_id": prepare_id, "policy_version": prepared["policy"]["version"], "available": [], "needs_evidence": [], "blocked": [], "deferred": [], "rejected": [], "unreviewed": [],
+                  "publication_note": "Editorial order only. digest render/archive must recheck current evidence, freshness, period and all-level history."}
+        for card in prepared["cards"]:
+            review = reviews.get(card["candidate_id"])
+            current_record = current_by_id.get(card["candidate_id"]) or blocked_by_project.get(card["canonical_url"])
+            eligibility = _eligibility(current_record, bool(card["evidence_context"])) if current_record else {"state": "blocked", "reasons": ["prepared event is no longer present in current eligible candidates; prepare again"]}
+            row = {"candidate_id": card["candidate_id"], "canonical_url": card["canonical_url"], "title": card["material"]["title"], "event": card["material"].get("event"), "input_hash": card["input_hash"], "eligibility": eligibility, "review": review}
+            if eligibility["state"] == "blocked":
+                group = "blocked"
+            elif not review:
+                group = "unreviewed"
+            elif eligibility["state"] == "needs_evidence":
+                group = "needs_evidence"
+            elif review["decision"] == "defer":
+                group = "deferred"
+            elif review["decision"] == "reject":
+                group = "rejected"
+            else:
+                group = "available"
+            result[group].append(row)
+        for group in ("available", "needs_evidence", "blocked", "deferred", "rejected", "unreviewed"):
+            result[group].sort(key=lambda item: (-((item["review"] or {}).get("total_score") or 0), item["canonical_url"], item["candidate_id"]))
+        return result
+    finally:
+        connection.close()
+
+
+def label(root: Path, document: dict) -> dict:
+    _object(document, ("schema_version", "prepare_id", "candidate_id", "split", "label", "editor", "reason"), "label")
+    if document["schema_version"] != "digest-selection.label.v1" or document["split"] not in ("dev", "holdout") or document["label"] not in ("select", "reject", "either"):
+        raise SelectionError("invalid label schema/split/label")
+    _text(document["editor"], "human editor")
+    _text(document["reason"], "label reason")
+    connection = _connect(Path(root))
+    try:
+        prepared = _load(connection, document["prepare_id"])
+        card = _card(prepared, document["candidate_id"])
+        canonical = card["canonical_url"]
+        result = {**copy.deepcopy(document), "canonical_url": canonical, "input_hash": card["input_hash"], "labelled_at": digest._now().isoformat(), "provenance": "human_asserted"}
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            previous = connection.execute("SELECT split FROM label_splits WHERE canonical_url=?", (canonical,)).fetchone()
+            if previous and previous["split"] != document["split"]:
+                raise SelectionError("a canonical project cannot appear in both dev and holdout, including other events")
+            connection.execute("INSERT OR IGNORE INTO label_splits VALUES (?,?)", (canonical, document["split"]))
+            connection.execute("INSERT INTO labels(prepare_id,candidate_id,canonical_url,payload,created_at) VALUES (?,?,?,?,?)",
+                (document["prepare_id"], document["candidate_id"], canonical, _json(result), result["labelled_at"]))
+        return result
+    finally:
+        connection.close()
+
+
+def _metrics(rows: list, threshold: int | None = None) -> dict:
+    tp = fp = fn = tn = 0
+    false_positives, false_negatives = [], []
+    for row in rows:
+        review, gold, card = row["review"], row["label"], row["card"]
+        predicted = review["decision"] == "select" if threshold is None else (review["total_score"] is not None and review["total_score"] >= threshold and review["precheck"]["status"] == "PASS" and card["eligibility"]["state"] == "available" and not row["defer_flag"])
+        actual = gold["label"] == "select"
+        case = {"candidate_id": card["candidate_id"], "canonical_url": card["canonical_url"], "score": review["total_score"], "decision": review["decision"], "reason": review["reason"], "gold_reason": gold["reason"]}
+        if predicted and actual:
+            tp += 1
+        elif predicted:
+            fp += 1
+            false_positives.append(case)
+        elif actual:
+            fn += 1
+            false_negatives.append(case)
+        else:
+            tn += 1
+    return {"true_positive": tp, "false_positive": fp, "false_negative": fn, "true_negative": tn,
+            "precision": tp / (tp + fp) if tp + fp else None, "recall": tp / (tp + fn) if tp + fn else None,
+            "false_positives": false_positives, "false_negatives": false_negatives}
+
+
+def evaluate(root: Path, prepare_id: str, *, split: str = "dev") -> dict:
+    if split not in ("dev", "holdout"):
+        raise SelectionError("split must be dev/holdout")
+    connection = _connect(Path(root))
+    try:
+        prepared = _load(connection, prepare_id)
+        reviews = _reviews(connection, prepare_id)
+        labels = {}
+        for row in connection.execute("SELECT candidate_id,payload FROM labels WHERE prepare_id=? ORDER BY id", (prepare_id,)):
+            labels[row["candidate_id"]] = json.loads(row["payload"])
+        rows = []
+        excluded = dict(unlabelled=0, either=0, other_split=0, unreviewed=0)
+        for card in prepared["cards"]:
+            gold = labels.get(card["candidate_id"])
+            review = reviews.get(card["candidate_id"])
+            if not gold:
+                excluded["unlabelled"] += 1
+            elif gold["split"] != split:
+                excluded["other_split"] += 1
+            elif gold["label"] == "either":
+                excluded["either"] += 1
+            elif not review:
+                excluded["unreviewed"] += 1
+            else:
+                rows.append(dict(card=card, review=review, label=gold, defer_flag=bool({flag["code"] for flag in review["flags"]}.intersection(prepared["policy"]["defer_flags"]))))
+        scan = []
+        if split == "dev":
+            for threshold in range(40, 91, 5):
+                metrics = _metrics(rows, threshold)
+                scan.append({"threshold": threshold, **{key: value for key, value in metrics.items() if key not in ("false_positives", "false_negatives")}})
+        return {"prepare_id": prepare_id, "split": split, "evaluated_count": len(rows), "excluded": excluded,
+                **_metrics(rows), "threshold_scan": scan,
+                "quality_claim": "No validated quality claim without representative human gold; synthetic tests are not human labels. Holdout is not used for threshold search."}
+    finally:
+        connection.close()
+
+
+def export_labels(root: Path, prepare_id: str) -> dict:
+    connection = _connect(Path(root))
+    try:
+        prepared = _load(connection, prepare_id)
+        return {"schema_version": "digest-selection.label-queue.v1", "prepare_id": prepare_id,
+                "instruction": "A human must choose label and split and supply a reason. null values are not accepted by label. Do not auto-label with a model.",
+                "items": [{"candidate_id": card["candidate_id"], "canonical_url": card["canonical_url"], "title": card["material"]["title"], "material": card["material"], "evidence_context": card["evidence_context"], "label": None, "split": None, "reason": None} for card in prepared["cards"]]}
+    finally:
+        connection.close()
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    for command in ("prepare", "record", "rank", "label", "evaluate", "export-labels"):
+        item = sub.add_parser(command)
+        item.add_argument("--root", type=Path, default=Path("."))
+        item.add_argument("--output", type=Path)
+        if command == "prepare":
+            item.add_argument("--ranking-type", choices=digest.RANKINGS, required=True)
+            item.add_argument("--period", required=True)
+            item.add_argument("--limit", type=int, default=30)
+            item.add_argument("--offset", type=int, default=0)
+            item.add_argument("--candidate-id", action="append", dest="candidate_ids", help="Repeat to freeze an exact verified event set; cannot combine with offset")
+            item.add_argument("--context", type=Path, help="JSON array of {url,text,fetched_at} source extracts")
+            item.add_argument("--policy", type=Path)
+        elif command in ("record", "label"):
+            item.add_argument("--input", type=Path, required=True)
+        else:
+            item.add_argument("--prepare-id", required=True)
+            if command == "evaluate":
+                item.add_argument("--split", choices=("dev", "holdout"), default="dev")
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "prepare":
+            contexts = json.loads(args.context.read_text(encoding="utf-8")) if args.context else None
+            result = prepare(args.root, args.ranking_type, args.period, args.limit, evidence_context=contexts, policy_path=args.policy, offset=args.offset, candidate_ids=args.candidate_ids)
+        elif args.command in ("record", "label"):
+            result = globals()[args.command](args.root, json.loads(args.input.read_text(encoding="utf-8")))
+        elif args.command == "evaluate":
+            result = evaluate(args.root, args.prepare_id, split=args.split)
+        elif args.command == "export-labels":
+            result = export_labels(args.root, args.prepare_id)
+        else:
+            result = rank(args.root, args.prepare_id)
+        output = json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            digest._atomic_write(args.output, output)
+        else:
+            print(output, end="")
+        return 0
+    except (SelectionError, digest.DigestError, OSError, ValueError, sqlite3.Error) as exc:
+        print(json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

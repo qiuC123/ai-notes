@@ -1,0 +1,30 @@
+{
+  "schema_version": "digest-selection.policy.v1",
+  "version": "v1-uncalibrated",
+  "calibration_status": "Uncalibrated initial editorial policy; thresholds require human-labelled dev evidence.",
+  "dimensions": ["value", "novelty", "evidence", "usability", "interest"],
+  "profiles": {
+    "practical": {"value": 4, "novelty": 1, "evidence": 1, "usability": 3, "interest": 1},
+    "learning": {"value": 3, "novelty": 2, "evidence": 2, "usability": 2, "interest": 1},
+    "play": {"value": 1, "novelty": 2, "evidence": 1, "usability": 2, "interest": 4},
+    "reading": {"value": 3, "novelty": 3, "evidence": 2, "usability": 1, "interest": 1}
+  },
+  "category_profiles": {
+    "开源项目": "practical",
+    "Skills": "practical",
+    "AI 应用": "practical",
+    "Agent 框架与编排": "learning",
+    "MCP 服务与连接器": "practical",
+    "模型与运行工具": "learning",
+    "游戏": "play",
+    "博客、帖子与访谈": "reading"
+  },
+  "thresholds": {"select": 65, "reject_below": 45},
+  "flag_caps": {
+    "unsupported_promotion": {"value": 4, "evidence": 3},
+    "routine_update": {"novelty": 3},
+    "unfulfilled_announcement": {"usability": 2, "evidence": 4},
+    "unclear_usage": {"usability": 3}
+  },
+  "defer_flags": ["unsupported_promotion", "unfulfilled_announcement", "unclear_usage"]
+}
