@@ -1,0 +1,13 @@
+# Example only. Asia/Shanghai slots preserve the existing dispatch contract.
+[Unit]
+Description=Ai Notes digest Beijing schedule
+
+[Timer]
+OnCalendar=*-*-* 09,10,11,19:00:00 Asia/Shanghai
+AccuracySec=30s
+RandomizedDelaySec=0
+Persistent=false
+Unit=ai-notes-digest.service
+
+[Install]
+WantedBy=timers.target

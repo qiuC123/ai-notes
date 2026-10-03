@@ -1,0 +1,17 @@
+# Example only. Not installed or enabled by the project.
+[Unit]
+Description=Ai Notes digest single-executor tick
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ai-notes
+Group=ai-notes
+WorkingDirectory=/srv/ai-notes-code
+EnvironmentFile=-/etc/ai-notes/digest.env
+ExecStart=/srv/ai-notes-code/.venv/bin/python /srv/ai-notes-code/deploy/digest/one_tick.py --root /srv/ai-notes-state --max-jobs 3 --execute
+TimeoutStartSec=0
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
