@@ -1,6 +1,6 @@
 # TASK — 三榜筛选优化与独立运行
 
-更新时间：2026-10-03；状态：本地实现与 GLM API 连通验收完成，评分质量与云部署待验收；主控：Codex。
+更新时间：2026-10-03；状态：GLM/Jev 30 卡对比完成，待人工校准筛选标准；自动化暂停，云部署待验收；主控：Codex。
 
 ## 目标与验收
 
@@ -27,6 +27,8 @@
 - 真实试评：[6 个候选评分表](outputs/digest/selection-trial-2026-10-03.md)，4 个建议入选、1 个价值暂缓、1 个缺资料 UNKNOWN；6 条模型评审、0 条人工标签，只写沙箱，不发布新榜。
 - 2026-10-03 用户确认使用智谱官方普通 API，模型 `glm-5.3-flash`；凭据在仓库外的 `~/.config/ai-secrets/glm.env`。已实现显式私密配置文件读取、密钥变量别名、推理档位和独立检查命令；`low` 档真实 JSON 请求成功，重复执行复用回执。
 - 原 Codex heartbeat 按用户要求暂停；本轮不恢复定时任务、不执行正式榜单、不部署云端。云端切换仍待执行环境验收。
+- 用户确认对比测试：先跑既有 6 卡，再扩至 30 个真实候选；12 dev / 18 holdout 预先分配。两边共享原文和五维规则，不输入既有模型评分；GLM 与 Jev 先只输出判定选项，写作成本不计入。Jev 原生 Score 最多 10 档，本试验用 Choice 保留 0–10 整数及 UNKNOWN。实验在 `work/digest-model-compare-20261003`，不写正式评审或归档；人工标签仍为 0。
+- 对比已完成：两方各 30 张成功 API 回执。GLM 23 条通过扁平答案校验，7 条 `answer` 包装经离线无损读取，原失败保留且没有重发；恢复后 GLM 建议入选 17 / 暂缓 13，Jev 入选 5 / 暂缓 25，判定一致 14/30。Jev 的 24 张卡信息增量未知是主要分歧；其原始材料预检均 PASS。当前置信度混合模拟 30/30 仍需 GLM，无调用节省。[逐项报告](outputs/digest/model-comparison-2026-10-03.md)、[空白人工审阅表](outputs/digest/model-review-2026-10-03.md)、[方法与代码](docs/DIGEST_MODEL_BENCHMARK.md)。
 
 ## 验证
 
@@ -34,8 +36,9 @@
 - 初版优化全仓 330 项通过（75.7 秒）；来源四入口和 GitHub README 已公开网络小样本验收。
 - GLM 接入专项共 44 项通过（runtime 25、pipeline 8、备份/启动入口 11）；Windows 包装脚本仅预览通过。2026-10-03 23:07 北京时间真实请求 1 次成功，81 输入 + 261 输出 = 342 token，供应商账单金额未知；第二次复用回执，测试账本无榜单任务或通知。[连通验收记录](outputs/digest/glm-api-check-2026-10-03.json)，私密回执保留在 `work/glm-api-check-20261003`。
 - 收尾只读检查生产仍为 schema 2、47 批次、287 观察、22 期归档，22/22 正文哈希和清单与库一致；本轮未迁移或写入生产库。首次正式写入会备份后迁移 schema 3。
+- 对比工具 45 项 unittest 通过（benchmark 12、Jev 8、runtime 25），未重跑全仓；60 次实际请求，无重试。GLM 用量 188,147 输入 / 3,503 输出，Jev 247,584 / 23,552，包含格式失败项；实际账单未读取。生产库 SHA-256 在抽样及收尾相同，heartbeat 仍为 PAUSED。首次测试连接关闭问题已修复；新残留临时目录 `C:/Users/Mayn/AppData/Local/Temp/tmpb4yilkde` 的清理被自动审批策略阻止，保留。
 - 真实评分质量收益、持续无人值守、云部署及新渠道通知送达：尚未验收。现有依赖有弃用/事件循环关闭提示，不影响测试通过。
 
 ## 下一步
 
-收集用户对试评样例的真实选择，记录 dev/holdout 标签；使用已接通的 GLM API 做有限真实评分、质量及费用验收，Jev 对照尚未实施。确认云端环境并获得恢复任务指令后，再按 [部署说明](docs/DIGEST_DEPLOYMENT.md) 单执行者切换。初版实施记录见 [DIGEST_OPTIMIZATION_IMPLEMENTATION.md](docs/DIGEST_OPTIMIZATION_IMPLEMENTATION.md)。此前少量失败测试临时目录清理被自动审批拒绝，原样保留，未尝试绕过。
+先由用户填写 dev 样本判断，明确“信息增量/未知值”分流及栏目边界；新协议还应约束项目介绍不触发普通更新 flag。GLM 需验证更稳定的字段约束，Jev 可独立比较少档位/原生 Score 设计；不把本轮一致率当准确率，不在同批 holdout 上反复调规则后宣称独立验收。得到人工质量证据、确认云端环境并获得恢复任务指令后，再按 [部署说明](docs/DIGEST_DEPLOYMENT.md) 单执行者切换。初版实施记录见 [DIGEST_OPTIMIZATION_IMPLEMENTATION.md](docs/DIGEST_OPTIMIZATION_IMPLEMENTATION.md)。此前少量失败测试临时目录清理被自动审批拒绝，原样保留，未尝试绕过。
