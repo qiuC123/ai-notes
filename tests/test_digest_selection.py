@@ -71,7 +71,7 @@ class SelectionTests(unittest.TestCase):
         result = selection.record(self.root, self.review(prepared))
         self.assertEqual(80, result["total_score"])
         self.assertEqual("select", result["decision"])
-        self.assertEqual("v5-scoped-source-uncalibrated", result["policy_version"])
+        self.assertEqual("v7-reader-value-review-uncalibrated", result["policy_version"])
         self.assertEqual("unchanged", selection.record(self.root, self.review(prepared))["status"])
         ranked = selection.rank(self.root, prepared["prepare_id"])
         self.assertEqual(1, len(ranked["available"]))
@@ -106,7 +106,12 @@ class SelectionTests(unittest.TestCase):
         self.assertNotEqual(card['input_hash'], scoped_card['input_hash'])
         self.assertEqual([claim], scoped_card['source_claims'])
         projected = selection.build_scoring_input(scoped, scoped_card['candidate_id'])
-        self.assertEqual([claim], projected['card']['source_claims'])
+        model_claim = projected['card']['source_claims'][0]
+        span = model_claim['source_span']
+        context = projected['card']['evidence_context'][span['context_index']]
+        self.assertEqual(claim['quote'], context['text'][span['start']:span['end']])
+        self.assertEqual(claim['scope'], model_claim['scope'])
+        self.assertNotIn('quote', model_claim)
         claim['scope']['conditions'] = ['not in the original']
         self.assertEqual(['imports local files'], scoped_card['source_claims'][0]['scope']['conditions'])
         with self.assertRaises(selection.SelectionError):
@@ -122,6 +127,8 @@ class SelectionTests(unittest.TestCase):
         policy_path = self.root / 'config/digest_selection.json'
         policy = json.loads(policy_path.read_text(encoding='utf-8'))
         policy.pop('assessment_contract')
+        policy.pop('editorial_review_contract')
+        policy.pop('scoring_projection')
         policy['version'] = 'v4-evidence-scope-uncalibrated'
         policy_path.write_text(json.dumps(policy), encoding='utf-8')
         prepared = self.prepare()
@@ -457,7 +464,7 @@ class SelectionTests(unittest.TestCase):
         current = selection.load_policy(self.root)
         legacy = copy.deepcopy(current)
         legacy["version"] = "v1-uncalibrated"
-        for key in ("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps"):
+        for key in ("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "editorial_review_contract", "scoring_projection"):
             legacy.pop(key)
         legacy["profiles"].pop("news")
         for flag in ("reader_mismatch", "insufficient_usage_evidence"):
@@ -480,6 +487,8 @@ class SelectionTests(unittest.TestCase):
         for version in ("v2-reader-fit-uncalibrated", "v3-assessment-contract-uncalibrated"):
             legacy = copy.deepcopy(current)
             legacy["version"] = version
+            legacy.pop("editorial_review_contract")
+            legacy.pop("scoring_projection")
             legacy.pop("usage_evidence_gaps")
             if version.startswith("v2"):
                 legacy.pop("flag_basis")
@@ -515,12 +524,51 @@ class SelectionTests(unittest.TestCase):
             ("usage_evidence_gaps", {"daily": ["actionable_steps"], "weekly": ["no_local_test"], "monthly": ["low_stars"]}),
             ("usage_evidence_gaps", {"daily": ["actionable_steps"]}),
             ("usage_evidence_gaps", {"daily": ["actionable_steps", "actionable_steps"], "weekly": ["usage_record"], "monthly": ["usage_record"]}),
+            ("editorial_review_contract", "unknown-review.v1"),
+            ("editorial_review_contract", None),
+            ("scoring_projection", "unknown-projection.v1"),
+            ("scoring_projection", None),
         ]
         for key, value in malformed:
             bad = {**good, key: value}
             (self.root / "config/digest_selection.json").write_text(json.dumps(bad), encoding="utf-8")
             with self.subTest(key=key, value=value), self.assertRaises(selection.SelectionError):
                 selection.load_policy(self.root)
+
+    def test_editorial_gate_marker_does_not_change_score_input_or_score_contract(self):
+        prepared = self.prepare()
+        self.assertEqual("source-score.v1", prepared["policy"]["editorial_review_contract"])
+        self.assertEqual("scoped-source.v1", prepared["policy"]["assessment_contract"])
+        card = prepared["cards"][0]
+        legacy = copy.deepcopy(prepared)
+        legacy["policy"].pop("editorial_review_contract")
+        # The marker controls a separate pipeline gate, not model assessment
+        # fields, arithmetic or a new source of proposed scores.
+        self.assertEqual(selection.build_scoring_input(legacy, card["candidate_id"]),
+                         selection.build_scoring_input(prepared, card["candidate_id"]))
+        review = self.review(prepared)
+        assessment = {key: review[key] for key in selection.ASSESSMENT_FIELDS}
+        self.assertEqual(selection._validate_assessment(legacy["policy"], card, assessment),
+                         selection._validate_assessment(prepared["policy"], card, assessment))
+
+    def test_old_frozen_policy_does_not_gain_editorial_contract_from_current_config(self):
+        path = self.root / "config/digest_selection.json"
+        current = selection.load_policy(self.root)
+        legacy = copy.deepcopy(current)
+        legacy.pop("editorial_review_contract")
+        legacy.pop("scoring_projection")
+        legacy["version"] = "v5-scoped-source-uncalibrated"
+        path.write_text(json.dumps(legacy), encoding="utf-8")
+        prepared = self.prepare()
+        original_input = selection.build_scoring_input(prepared, prepared["cards"][0]["candidate_id"])
+        original_prompt = selection.get_prompt(self.root, prepared)
+        path.write_text(json.dumps(current), encoding="utf-8")
+        (self.root / "docs/prompts/digest-selection.md").write_text("Later changed prompt", encoding="utf-8")
+        replay = selection.load_preparation(self.root, prepared["prepare_id"])
+        self.assertNotIn("editorial_review_contract", replay["policy"])
+        self.assertNotIn("scoring_projection", replay["policy"])
+        self.assertEqual(original_input, selection.build_scoring_input(replay, replay["cards"][0]["candidate_id"]))
+        self.assertEqual(original_prompt, selection.get_prompt(self.root, replay))
 
 
 if __name__ == "__main__":

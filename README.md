@@ -173,7 +173,7 @@ PYTHONPATH=src python -m aihot daily --date 2026-09-01 --root .
 PYTHONPATH=src python -m aihot daily --date 2026-09-01 --root . --decisions <decisions.json>
 ```
 
-Python 不调用 Codex API或任何其他 Agent，也不保存模型凭据。
+上述旧 Release 管道由 Codex 提供离线决策文件，不调用模型 API。独立的日／周／月榜执行器则调用显式配置的模型 API，密钥保存在仓库外；两条管道的状态和产物分别管理。当前三榜实施与验收状态见 [TASK.md](TASK.md)，模型配置与运行方式见 [部署说明](docs/DIGEST_DEPLOYMENT.md)。
 
 ### 运行状态
 

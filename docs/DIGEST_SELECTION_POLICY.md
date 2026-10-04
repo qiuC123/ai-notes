@@ -1,6 +1,6 @@
 # 三榜筛选与评分：读者适配与新闻
 
-状态：已实现可审计评分流程；**权重和阈值尚未经过真实人工标注集校准，不声称选题质量已经提升**。当前配置版本 `v5-scoped-source-uncalibrated`（2026-10-04 评分对象、原文条件与输出格式修正）；历史冻结 v1/v2/v3/v4 输入和对比结果保持原样。主入口为 `python -m ai_notes.digest_selection`。
+状态：已实现可审计评分流程；**权重和阈值尚未经过真实人工标注集校准，不声称选题质量已经提升**。当前配置版本 `v7-reader-value-review-uncalibrated`（2026-10-04 读者价值及一次有界内容复核）；历史冻结输入和对比结果保持原样。主入口为 `python -m ai_notes.digest_selection`。
 
 本轮重点是回答“为什么选、为什么暂缓、为什么淘汰”。保留 Python＋SQLite 和三榜规则，不把 AIHOT 的新闻注意力分直接当成实用项目价值分，也不按来源名气给不同门槛。
 
@@ -127,11 +127,17 @@ Python 公共 API：`prepare(root, ranking_type, period, limit=30, evidence_cont
 
 自动 provider 只向模型索取 `{precheck,scores,flags,reason}`。先调用纯函数 `build_scoring_input(prepared,candidate_id)`，仅传原文、候选事实及类别规则，剥离资格状态、入库核验状态、历史评审、内部身份和发表门槛。完整卡片仍被冻结；`build_review` / `record` 继续用它检查发表资格，高分不能越过缺证据或重复历史。
 
+v7 新准备包可冻结 `scoring_projection=source-refs.v1`：`evidence_context` 仍逐字保留全部提供的文本，模型输入中的 `source_claims.quote` 改成 `source_span={context_index,start,end}`，避免相同引文被反复复制。索引指向该上下文列表，偏移按未转义原文的 Unicode 字符计算，0 起、end 不包含；同 URL 按已有验证合同绑定最后一份上下文，重复引文取首次精确匹配。程序验证每段可逐字还原，field/text/evidence_url/scope 保留；冻结卡片和原始 claims 不改。模型仍须阅读全文片段和条件，不能把位置号当成新证据。输出 flag 的 basis.quote 仍需真实原文，不接受位置替代。没有此标记的历史准备包保持原投影和请求指纹，未知标记拒绝。传输去重不改变权重或门槛，也不代表模型判断必然相同。
+
 收到原始响应后调用 `adapt_assessment(output,policy=prepared['policy'],card=card)`，返回 `status,raw_output,assessment,transformations,error`。唯一兼容转换是将非空 `precheck.reasons` 字符串包成单元素数组；不能猜测缺失分项、重命名维度、删掉越权字段或替模型补理由。有效响应限 65536 UTF-8 字节。pipeline 保存 `score-response:<candidate_id>` 检查点及 request_id，拒绝项保留原响应和原因，继续其他候选，不自动追加付费重试。断点恢复复用相同请求回执。
 
 v5 用于新 preparation：`assessment_contract=scoped-source.v1` 才启用新评分 stage 与 `assessment_schema(policy,card)`。schema 依据当前 kind/period/URL 限定字段、维度及 flag，不含分数答案；通过 `ModelClient.request(output_schema=...)` 加入格式提示，实际 provider 参数仍是 `json_object`。这是 schema 引导，不是原生严格约束解码，收到回执仍需严格本地校验，额外 null 字段也拒绝。schema 进入请求指纹及输入预算，旧无 schema 调用保持原身份，不删坏字段、自动重试或降级刷通过率。
 
-原文核验已单独升级为 `passages.v1`，评分仍使用 v5 的 policy、权重、门槛与 `scoped-source.v1` 合同。新 screen 固定 `passages.v1`：程序将完整原文按段落和标题切分并编号，模型只输出事实摘要及各字段对应的段落 ID，程序绑定真实 URL 和连续原文引用；不再要求模型抄写引文和八个 scope 字段。未知或重复 ID、额外字段、缺失证据继续拒绝。标题上下文随段落输入模型，完整原文和绑定后的 claims 随评分卡冻结。多个段落共同支持一个字段，不代表任意单段都独立支持整段摘要。编号有效只证明引用出处，不能证明摘要正确；限定条件与冲突仍需内容审阅。详见 [段落绑定验收](DIGEST_PASSAGE_BINDING_2026-10-04.md)。
+v6 引入 `passages.v1`，v7 新 screen 使用 `passages.reviewed.v1`，保留五维评分、权重、门槛与 `scoped-source.v1` 输出合同。程序将本次读取的原文片段按段落和标题切分并编号，模型只输出事实摘要及各字段对应的段落 ID，程序绑定真实 URL 和连续原文引用；不再要求模型抄写引文和八个 scope 字段。未知或重复 ID、额外字段、缺失证据继续拒绝。标题上下文随段落输入模型，所读原文片段和绑定后的 claims 随评分卡冻结。多个段落共同支持一个字段，不代表任意单段都独立支持整段摘要。编号有效只证明引用出处，不能证明摘要正确；限定条件与冲突仍需内容审阅。v7 要求简明介绍可用路径，不把不相关平台条件列为统一门槛，也不把片段描述为许可全文或软件实测。详见 [段落绑定验收](DIGEST_PASSAGE_BINDING_2026-10-04.md)。
+
+新策略的 `editorial_review_contract=source-score.v1` 在评分后执行一次内容复核。模型只输出 `verdict,reason,issues`，issue 必须绑定本次已知段落 ID；它只允许暂缓，不能修改事实、分数或原始回执。输入包含各事实字段、评分理由及本次读取的全部来源片段，包含未被评分引用的冲突来源。输入、schema、prompt 和响应均有恢复检查点；旧冻结策略没有该字段则不增加调用。接受仅表示这一模型未发现问题，已知样本仍有漏报，不能据此声称可无人审核刊用。
+
+原文、评分或复核的输入超过 60,000 字符时，执行器保留材料并暂缓该条，继续同一期的其他候选；不增加预算、不截掉关键来源、不循环请求。该失败在 HTTP 发出之前识别，不算成真实付费请求。网络结果不明确与供应商错误继续使用已有回执处理方式，不用这条规则自动重发。
 
 旧 screen 检查点保持原提取 prompt/stage，包含 v5 的 `claims.scope.v1`。已有 prompt、policy、raw receipt、source/score checkpoint 不被自动失效或升级；历史投影及分数不改写。新原文核验保存请求材料（含段落、Schema、完整提示词）和原始回执后再做结构检查，坏回执保存真实失败并暂缓该候选，其余候选继续；中断恢复复用该次请求和段落，不重新切分、抓取或发送。只有旧成功事实过期后开始的重新核验才建立新的材料代次。
 

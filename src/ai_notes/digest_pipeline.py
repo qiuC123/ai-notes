@@ -19,9 +19,10 @@ from . import digest, digest_runtime as runtime, digest_selection as selection, 
 from .digest_claims import validate_claims
 from .digest_output_schema import assessment_schema, source_review_schema
 from .digest_passages import build_passages, bind_review
+from . import digest_editorial as editorial
 
 BUDGETS = {'daily': (30, 12, 8), 'weekly': (80, 35, 25), 'monthly': (150, 60, 30)}
-SOURCE_REVIEW_CONTRACT = 'passages.v1'
+SOURCE_REVIEW_CONTRACT = 'passages.reviewed.v1'
 EDITORIAL_FOCUS = {
     'daily': '以对普通读者有实际影响的 AI 新闻、产品变化和少量可直接使用的工具为主；不要求每天找到不同的开源项目，不用无意义动态补数量。',
     'weekly': '集中精选成熟实用项目、具体用法及有持续影响的重要变化；对日榜条目补充使用条件、验证线索和上下文，不拼接新闻标题。',
@@ -304,6 +305,10 @@ Documentation supports described features and usage steps, not tested performanc
 For project candidates evaluate the whole practical tool, not the latest patch. Non-AI tools can have value. For updates/news explain the actual increment/impact, not accumulated project value. Do not copy promotional superiority as fact. summary is concise; detail adds useful context; retention_reason explains reusable value without inventing stability.
 Before returning: every required evidence field including category is present; every ID exists; no irrelevant fields even with null; text preserves meaningful limitations/conflicts. Valid IDs establish provenance, not truth of your interpretation.'''
 
+REVIEWED_PASSAGE_VERIFY_PROMPT = PASSAGE_VERIFY_PROMPT + '''
+The supplied text may be an excerpt. Describe only what was read; do not claim full-document/full-licence review or software testing.
+Write a concise reader introduction, not an exhaustive platform/dependency catalogue. audience names the reader/task, not technical requirements. usage_conditions gives a supported accessible path and its material limits; distinguish any other paths you mention. A reusable need is not proof of reliability or ongoing maintenance. If requirements conflict in the supplied text, retain that uncertainty explicitly instead of selecting one side. Omit unneeded claims rather than inventing or generalising them.'''
+
 
 def _news_event(record, event_date):
     original = record.get('event', {}).get('url') or record['url']
@@ -392,8 +397,8 @@ def _review_original(root, job, owner, model, record, cid, budget):
     # older jobs keep their previous prompt/stage and do not replay paid calls
     # merely because the current contract can retain more source scope.
     contract=job['checkpoints'].get('screen',{}).get('source_review_contract')
-    bound=contract=='passages.v1'
-    scoped=contract in ('claims.scope.v1','passages.v1')
+    bound=contract in ('passages.v1','passages.reviewed.v1')
+    scoped=contract in ('claims.scope.v1','passages.v1','passages.reviewed.v1')
     passages=None
     base_request_id=saved.get('request_id') if saved else None
     input_stage='original-input:'+cid
@@ -422,13 +427,17 @@ def _review_original(root, job, owner, model, record, cid, budget):
             for url in urls:
                 runtime.renew(root,job['job_id'],owner)
                 try:
-                    response=sources.fetch(root,url)
-                    text=_source_text(root,response)
-                    if urlsplit(url).hostname == 'github.com' and digest.canonical_url(url) == url.rstrip('/'):
+                    parsed=urlsplit(url)
+                    repository=(parsed.hostname in ('github.com','www.github.com') and
+                                len([piece for piece in parsed.path.split('/') if piece])==2)
+                    if repository:
                         pinned=sources.read_github(root,url)
                         raw=(Path(root)/pinned['document_path']).read_bytes()
                         if hashlib.sha256(raw).hexdigest()!=pinned['document_sha256']: raise runtime.RuntimeError('README hash mismatch')
                         response=pinned; url=pinned['original_url']; text=raw.decode('utf-8',errors='replace')[:14000]
+                    else:
+                        response=sources.fetch(root,url)
+                        text=_source_text(root,response)
                     if not text.strip(): raise runtime.RuntimeError('empty original text')
                     contexts.append({'url':url,'text':text,'fetched_at':response['fetched_at']})
                     checks.append({'url':url,'checked_at':response['checked_at'],'sha256':response['sha256']})
@@ -442,7 +451,9 @@ def _review_original(root, job, owner, model, record, cid, budget):
                          material={'candidate':compact,'originals':contexts,'source_checks':checks,'ranking_type':job['payload']['ranking_type']})
             if bound:
                 passages=build_passages(contexts)
-                request=dict(stage='verify-facts-v6-passages',system=PASSAGE_VERIFY_PROMPT+'\n'+READER_FOCUS,
+                reviewed=contract=='passages.reviewed.v1'
+                request=dict(stage='verify-facts-v7-reader-facts' if reviewed else 'verify-facts-v6-passages',
+                             system=(REVIEWED_PASSAGE_VERIFY_PROMPT if reviewed else PASSAGE_VERIFY_PROMPT)+'\n'+READER_FOCUS,
                              material={'candidate':compact,'passages':passages,'source_checks':checks,'ranking_type':job['payload']['ranking_type']},
                              output_schema=source_review_schema(record=record,passages=passages))
             if scoped:
@@ -452,7 +463,11 @@ def _review_original(root, job, owner, model, record, cid, budget):
                 request['max_output_tokens']=4096
                 _save(root,job,owner,input_stage,dict(base_original_request_id=base_request_id,
                       request=request,contexts=contexts,checks=checks,failures=failures))
-        receipt=model.request(**request,budget_key=job['job_id'],max_requests=budget)
+        try:
+            receipt=model.request(**request,budget_key=job['job_id'],max_requests=budget)
+        except runtime.InputBudgetExceeded as exc:
+            return _save(root,job,owner,stage,dict(deferred=True,
+                reason='原文输入超出预算，保留材料待处理：'+str(exc),failures=failures))
         if scoped:
             _save(root,job,owner,response_stage,dict(base_original_request_id=base_request_id,
                   receipt=receipt,contexts=contexts,checks=checks,failures=failures,
@@ -485,6 +500,48 @@ def _review_original(root, job, owner, model, record, cid, budget):
     evidence={'verified_at':verified_at,'facts':facts,'contexts':contexts,'observation':observed,'batch':batch,'failures':failures,'request_id':receipt['request_id']}
     _save(root,job,owner,stage,evidence)
     return evidence
+
+
+def _review_editorial(root, job, owner, model, card, entry, assessment, score_receipt, budget):
+    """One independent consistency review, retaining every raw judgment.
+
+    This does not amend facts/scores or assert human accuracy. A rejected review
+    stays deferred; only new frozen source/score inputs create a new generation.
+    """
+    cid=card['candidate_id']
+    stage='editorial:'+cid
+    signature=runtime._hash({'card':card['input_hash'],'source':entry['request_id'],
+                             'score':score_receipt['request_id']})
+    saved=job['checkpoints'].get(stage)
+    if saved and saved['signature']==signature:
+        return saved
+    input_stage='editorial-input:'+cid
+    response_stage='editorial-response:'+cid
+    frozen=job['checkpoints'].get(input_stage)
+    if not frozen or frozen['signature']!=signature:
+        material=editorial.build_review_input(record=card['material'],facts=entry['facts'],
+            assessment=assessment,contexts=entry['contexts'],ranking_type=card['ranking_type'])
+        request=dict(stage='editorial-v7-source-score',system=editorial.REVIEW_PROMPT,
+                     material=material,output_schema=editorial.review_schema(material['passages']),
+                     max_output_tokens=4096)
+        frozen=_save(root,job,owner,input_stage,dict(signature=signature,request=request))
+    response=job['checkpoints'].get(response_stage)
+    if response and response['signature']==signature:
+        receipt=response['receipt']
+    else:
+        runtime.renew(root,job['job_id'],owner)
+        try:
+            receipt=model.request(**frozen['request'],budget_key=job['job_id'],max_requests=budget)
+        except runtime.InputBudgetExceeded as exc:
+            return _save(root,job,owner,stage,dict(signature=signature,
+                verdict='defer',reason='内容复核输入超出预算，保留材料待处理：'+str(exc),issues=[],input_exceeded=True))
+        _save(root,job,owner,response_stage,dict(signature=signature,receipt=receipt))
+    try:
+        result=editorial.validate_review(receipt['output'],frozen['request']['material']['passages'])
+    except (ValueError, TypeError, KeyError) as exc:
+        return _save(root,job,owner,stage,dict(signature=signature,request_id=receipt['request_id'],
+            verdict='defer',reason='内容复核响应无效：'+str(exc),issues=[],invalid_response=True))
+    return _save(root,job,owner,stage,dict(signature=signature,request_id=receipt['request_id'],**result))
 
 
 def _issue_notice(root, kind, period, issue, failures, outcome):
@@ -554,14 +611,25 @@ def generate(root, job, owner):
         runtime.renew(root,job['job_id'],owner)
         request_options = ({'output_schema':assessment_schema(policy=preparation['policy'],card=card)}
                            if scoped_scoring else {})
-        receipt=model.request(stage=score_stage, system=selection.get_prompt(root,preparation),
-            material=selection.build_scoring_input(preparation,cid),
-            budget_key=job['job_id'],max_requests=budget,**request_options)
+        try:
+            receipt=model.request(stage=score_stage, system=selection.get_prompt(root,preparation),
+                material=selection.build_scoring_input(preparation,cid),
+                budget_key=job['job_id'],max_requests=budget,**request_options)
+        except runtime.InputBudgetExceeded as exc:
+            message='评分输入超出预算，保留材料待处理：'+str(exc)
+            _save(root,job,owner,'score-response:'+cid,dict(status='input_exceeded',error=message,input_hash=card['input_hash']))
+            failures.append(cid+':'+message)
+            continue
         adapted=selection.adapt_assessment(receipt['output'],policy=preparation['policy'],card=card)
         _save(root,job,owner,'score-response:'+cid,dict(request_id=receipt['request_id'],**adapted))
         if adapted['status']!='accepted':
             failures.append(cid+':评分响应无效：'+adapted['error'])
             continue
+        if preparation['policy'].get('editorial_review_contract')==editorial.REVIEW_CONTRACT:
+            checked=_review_editorial(root,job,owner,model,card,materials[cid],adapted['assessment'],receipt,budget)
+            if checked['verdict']!='accept':
+                failures.append(cid+':内容复核暂缓：'+checked['reason'])
+                continue
         review=selection.build_review(root,preparation['prepare_id'],cid,adapted['assessment'],{'kind':'model','name':'digest-worker','model':model.model})
         decision=selection.record(root,review)
         if decision['decision']=='select': selected.append((decision['total_score'],cid,materials[cid]))

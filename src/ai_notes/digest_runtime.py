@@ -39,6 +39,10 @@ class RequestUncertain(RuntimeError):
     pass
 
 
+class InputBudgetExceeded(RuntimeError):
+    """Local input preflight failed before recording or sending a request."""
+
+
 def _model_env(path):
     """Read a single, explicit dotenv file without shell evaluation/interpolation."""
     try:
@@ -306,7 +310,7 @@ class ModelClient:
                             'All explanations must use the existing reason/reasons fields. '
                             'This contract describes output shape, not source facts or scores.\n' + schema_text)
         if len(wire_system) + len(_json(material)) > 60000:
-            raise RuntimeError('model input exceeds 60000 character budget')
+            raise InputBudgetExceeded('model input exceeds 60000 character budget')
         fingerprint = {'endpoint': self.base_url, 'model': self.model, 'stage': stage, 'system': system,
                        'material': material, 'max_tokens': max_output_tokens, 'format': 'json-object.v1'}
         if output_schema is not None:
@@ -509,4 +513,7 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    # The pipeline imports this module by its package name. Run the CLI through
+    # that same instance so its exceptions retain identity across the boundary.
+    from .digest_runtime import main as canonical_main
+    sys.exit(canonical_main())

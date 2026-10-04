@@ -3,7 +3,9 @@ from __future__ import annotations
 from contextlib import redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -391,6 +393,32 @@ class RuntimeTests(unittest.TestCase):
             with self.assertRaisesRegex(runtime.RuntimeError, 'budget'):
                 model.request(stage='score',system='rules',material={'x':2},budget_key='run',max_requests=1)
 
+    def test_input_budget_including_schema_fails_before_request_or_http(self):
+        calls = []
+        def response(request):
+            calls.append(request)
+            return httpx.Response(200, json={'choices': [{'message': {'content': '{"ok":true}'}}]})
+        schema = {'type': 'object', 'description': 'shape guidance ' * 200}
+        material = {'text': 'x' * 58000}
+        system = 'r' * 1000
+        self.assertLess(len(system) + len(runtime._json(material)), 60000)
+        with httpx.Client(transport=httpx.MockTransport(response)) as client:
+            model = runtime.ModelClient(self.root, base_url='https://model.example/v1',
+                                        model='test', api_key='test-only', client=client)
+            with self.assertRaises(runtime.InputBudgetExceeded) as error:
+                model.request(stage='score', system=system, material=material, budget_key='one',
+                              max_requests=1, output_schema=schema)
+            self.assertIsInstance(error.exception, runtime.RuntimeError)
+            self.assertEqual('model input exceeds 60000 character budget', str(error.exception))
+            self.assertEqual([], calls)
+            self.assertFalse((self.root / runtime.DB_PATH).exists())
+            # The preflight failure must not consume the only allowed request.
+            accepted = model.request(stage='score', system='rules', material={'text': 'small'},
+                                     budget_key='one', max_requests=1, output_schema=schema)
+        self.assertEqual({'ok': True}, accepted['output'])
+        self.assertEqual(1, len(calls))
+        self.assertEqual(1, len(runtime.status(self.root)['requests']))
+
     def test_completed_checkpoint_prevents_repeating_handler(self):
         runtime.enqueue(self.root, {'action':'collect','period':'2026-10-03'})
         job=runtime.claim(self.root,'old',now=1,lease_seconds=1)
@@ -441,6 +469,71 @@ class RuntimeTests(unittest.TestCase):
         result=runtime.work_once(self.root,job_id=current['job_id'],handlers={'collect':lambda *_:{'status':'ok'}})
         self.assertEqual(current['job_id'],result['job_id'])
         self.assertEqual(old['job_id'],runtime.claim(self.root,'manual-resume')['job_id'])
+
+
+class RuntimeCliTests(unittest.TestCase):
+    """Exercise the real -m entrypoint after pipeline imports canonical runtime."""
+
+    def run_worker(self, scenario):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        bootstrap = root / 'bootstrap'
+        bootstrap.mkdir()
+        (bootstrap / 'sitecustomize.py').write_text('''
+import os
+from ai_notes import digest_pipeline
+
+def no_network(*args, **kwargs):
+    raise AssertionError('network must not be used in CLI regression')
+digest_pipeline.runtime.httpx.Client = no_network
+
+def fail(root, job, owner):
+    runtime = digest_pipeline.runtime
+    if os.environ['DIGEST_TEST_SCENARIO'] == 'input_limit':
+        model = runtime.ModelClient(root, base_url='https://model.example/v1',
+                                    model='test', api_key='test-only')
+        model.request(stage='test', system='rules', material={'text': 'x' * 60001}, budget_key='test')
+    elif os.environ['DIGEST_TEST_SCENARIO'] == 'configuration':
+        runtime.ModelClient(root, env_file=root / 'absent-model.env')
+    else:
+        raise LookupError('DO_NOT_ECHO_SECRET https://provider.example/?key=DO_NOT_ECHO_SECRET')
+digest_pipeline.generate = fail
+''', encoding='utf-8')
+        job = runtime.enqueue(root, {'action': 'generate', 'ranking_type': 'daily', 'period': '2026-10-03'})
+        env = {key: value for key, value in os.environ.items() if not key.startswith('DIGEST_MODEL_')}
+        env['PYTHONPATH'] = os.pathsep.join((str(bootstrap), str(Path(__file__).resolve().parents[1] / 'src')))
+        env['DIGEST_TEST_SCENARIO'] = scenario
+        result = subprocess.run([sys.executable, '-B', '-X', 'utf8', '-m', 'ai_notes.digest_runtime',
+                                 'work', '--root', str(root), '--id', job['job_id']],
+                                cwd=root, env=env, capture_output=True, text=True, encoding='utf-8', timeout=20)
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertNotIn('DO_NOT_ECHO_SECRET', result.stdout + result.stderr)
+        output = json.loads(result.stdout)
+        state = runtime.status(root)
+        self.assertEqual(job['job_id'], output['job_id'])
+        self.assertEqual(1, state['jobs'][0]['attempts'])
+        self.assertEqual([], state['requests'])
+        self.assertEqual(output['status'], state['jobs'][0]['status'])
+        self.assertEqual(output['error'], state['jobs'][0]['error'])
+        self.assertEqual([output['error']], state['pending_notices'][0]['payload']['failures'])
+        self.assertEqual(output['status'], state['pending_notices'][0]['payload']['outcome'])
+        return output
+
+    def test_cli_preserves_imported_runtime_safe_input_limit_error(self):
+        output = self.run_worker('input_limit')
+        self.assertEqual('failed', output['status'])
+        self.assertEqual('model input exceeds 60000 character budget', output['error'])
+
+    def test_cli_classifies_imported_configuration_as_waiting_input(self):
+        output = self.run_worker('configuration')
+        self.assertEqual('waiting_input', output['status'])
+        self.assertEqual('cannot read model env file as UTF-8', output['error'])
+
+    def test_cli_redacts_unknown_exception_text(self):
+        output = self.run_worker('unknown')
+        self.assertEqual('failed', output['status'])
+        self.assertEqual('LookupError', output['error'])
 
 
 if __name__ == '__main__':

@@ -33,6 +33,9 @@ class PipelineTests(unittest.TestCase):
         self.malformed_scores=False
         self.malformed_scope=False
         self.malformed_passage=False
+        self.editorial_defer=False
+        self.malformed_editorial=False
+        self.editorial_inputs=[]
         self.defer=False
         self.text='Organizes local files. Install with Python. MIT License.'
         self.client=httpx.Client(transport=httpx.MockTransport(self.respond))
@@ -107,6 +110,12 @@ class PipelineTests(unittest.TestCase):
                     output['facts']={k:v for k,v in facts.items() if k not in ('claims','evidence_urls')}
                     output['evidence']=refs
                     if self.malformed_passage: output['evidence']['usage_conditions']=['invented-passage']
+        elif material.get('evidence_scope') == 'supplied_text_only_not_full_document_or_software_test':
+            self.editorial_inputs.append(material)
+            output=dict(verdict='accept',reason='No material source or scoring contradiction.',issues=[])
+            if self.editorial_defer:
+                output=dict(verdict='defer',reason='Unsupported platform claim.',issues=[dict(field='facts.usage_conditions',code='condition_scope',passage_ids=[material['passages'][0]['id']],reason='The claimed platform is not in the supplied text.')])
+            if self.malformed_editorial: output['repaired_score']=100
         else:
             self.score_inputs.append(material)
             url=material['card']['evidence_context'][0]['url']
@@ -126,15 +135,15 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual('completed',result['status'],result)
         self.assertEqual('archived',result['result']['status'])
         self.assertEqual(6,result['result']['item_count'])
-        self.assertEqual(13,len(self.calls))
+        self.assertEqual(19,len(self.calls))
         self.assertEqual(1,len(runtime.notices(self.root)))
         self.assertEqual('idle',runtime.work_once(self.root)['status'])
-        self.assertEqual(13,len(self.calls))
+        self.assertEqual(19,len(self.calls))
         with runtime._db(self.root,write=False) as con:
             prepared=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
             stages={row[0] for row in con.execute('SELECT stage FROM requests')}
-        self.assertEqual({'screen-v4-evidence-scope', 'verify-facts-v6-passages',
-                          'value-score-v5-scoped-source'}, stages)
+        self.assertEqual({'screen-v4-evidence-scope', 'verify-facts-v7-reader-facts',
+                          'value-score-v5-scoped-source','editorial-v7-source-score'}, stages)
         self.assertEqual(6,len(prepared['issue']['items']))
         self.assertTrue(all(x['verification_level']=='documented' for x in prepared['issue']['items']))
 
@@ -146,6 +155,56 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(6,result['result']['item_count'])
         self.assertIsNone(pipeline._existing(self.root,'monthly',previous_month))
         self.assertEqual(14,runtime.notices(self.root)[0]['payload']['shortfall'])
+
+    def test_oversized_item_at_each_model_stage_keeps_other_candidates(self):
+        stages=('verify-facts-v7-reader-facts','value-score-v5-scoped-source','editorial-v7-source-score')
+        original_request=self.real_model.request
+        for index,target_stage in enumerate(stages):
+            with self.subTest(stage=target_stage):
+                blocked=False
+                def reject_one(model,**kwargs):
+                    nonlocal blocked
+                    if kwargs['stage']==target_stage and not blocked:
+                        blocked=True
+                        raise runtime.InputBudgetExceeded('model input exceeds 60000 character budget')
+                    return original_request(model,**kwargs)
+                period=(self.now.date()-timedelta(days=3+index)).isoformat()
+                # Independent periods may not reuse the previous subtest's
+                # archives; mock archive export, retaining the real pipeline.
+                with patch.object(self.real_model,'request',reject_one), patch.object(digest,'archive',return_value={'isolated':True}):
+                    job,result=self.run_job(period=period)
+                self.assertEqual('completed',result['status'],result)
+                self.assertEqual(5,result['result']['item_count'])
+                self.assertEqual(1,len(result['result']['failures']))
+                self.assertIn('60000',result['result']['failures'][0])
+                with runtime._db(self.root,write=False) as con:
+                    cp=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+                prefix={'verify-facts-v7-reader-facts':'original-input:',
+                        'value-score-v5-scoped-source':'preparation',
+                        'editorial-v7-source-score':'editorial-input:'}[target_stage]
+                self.assertTrue(any(k.startswith(prefix) for k in cp))
+                before=len(self.calls)
+                self.assertEqual('idle',runtime.work_once(self.root,job_id=job['job_id'])['status'])
+                self.assertEqual(before,len(self.calls))
+
+    def test_mixed_case_github_repository_uses_pinned_readme(self):
+        runtime.enqueue(self.root,{'action':'generate','ranking_type':'daily','period':self.period})
+        job=runtime.claim(self.root,'owner')
+        job['checkpoints']['screen']={'source_review_contract':pipeline.SOURCE_REVIEW_CONTRACT}
+        record=dict(url='https://github.com/Example/UsefulTool',title='UsefulTool',kind='project',
+                    category='开源项目',summary='Local files',reason='Local workflow',source_urls=[],evidence_urls=[],change_note='')
+        raw=self.text.encode(); sha=hashlib.sha256(raw).hexdigest()
+        (self.root/'readme.md').write_bytes(raw)
+        pinned=dict(document_path='readme.md',document_sha256=sha,sha256=sha,
+                    original_url='https://github.com/example/usefultool/blob/'+'a'*40+'/README.md',
+                    fetched_at=self.now.isoformat(),checked_at=self.now.isoformat())
+        model=self.real_model(self.root,base_url='https://provider.example/v1',model='fixture',api_key='fixture-only',client=self.client)
+        with patch.object(pipeline.sources,'read_github',return_value=pinned) as reader:
+            result=pipeline._review_original(self.root,job,'owner',model,record,'mixed-case',37)
+        reader.assert_called_once_with(self.root,record['url'])
+        self.assertEqual([],self.fetch_calls)
+        self.assertEqual(pinned['original_url'],result['contexts'][0]['url'])
+        self.assertEqual(self.text,result['contexts'][0]['text'])
 
     def test_archive_commit_before_notice_is_recovered_without_model_calls(self):
         real_archive=digest.archive
@@ -472,8 +531,11 @@ class PipelineTests(unittest.TestCase):
             self.assertNotIn('evidence_status',value['card']['material'])
             claim=next(claim for claim in value['card']['source_claims'] if claim['field']=='usage_conditions')
             self.assertNotIn('scope',claim)
-            self.assertEqual(self.text,claim['quote'])
-            self.assertIn('Install with Python.',claim['quote'])
+            self.assertNotIn('quote',claim)
+            span=claim['source_span']
+            text=value['card']['evidence_context'][span['context_index']]['text'][span['start']:span['end']]
+            self.assertEqual(self.text,text)
+            self.assertIn('Install with Python.',text)
         with runtime._db(self.root,write=False) as con:
             checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
         responses=[v for k,v in checkpoints.items() if k.startswith('score-response:')]
@@ -494,6 +556,102 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(all(v['status']=='rejected' and v['raw_output']['decision']=='select' for v in responses))
         self.assertEqual(6,len([k for k in checkpoints if k.startswith('original:')]))
 
+    def test_content_defer_preserves_score_but_prevents_ranking_and_archive(self):
+        self.editorial_defer=True
+        job,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual('draft',result['result']['status'])
+        self.assertEqual(0,result['result']['item_count'])
+        self.assertEqual(19,len(self.calls))
+        with runtime._db(self.root,write=False) as con:
+            checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        decisions=[v for k,v in checkpoints.items() if k.startswith('editorial:')]
+        self.assertEqual(6,len(decisions))
+        self.assertTrue(all(v['verdict']=='defer' and v['issues'] for v in decisions))
+        self.assertEqual(6,len([k for k in checkpoints if k.startswith('score-response:')]))
+        ranked=pipeline.selection.rank(self.root,checkpoints['preparation']['prepare_id'])
+        self.assertTrue(all(x.get('review') is None for x in ranked['available']))
+        self.assertIsNone(pipeline._existing(self.root,'daily',self.period))
+
+    def test_invalid_editorial_response_is_not_repaired_or_retried(self):
+        self.malformed_editorial=True
+        job,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual(0,result['result']['item_count'])
+        self.assertEqual(19,len(self.calls))
+        with runtime._db(self.root,write=False) as con:
+            checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        raw=[v for k,v in checkpoints.items() if k.startswith('editorial-response:')]
+        self.assertEqual(6,len(raw))
+        self.assertTrue(all(v['receipt']['output']['repaired_score']==100 for v in raw))
+        self.assertTrue(all(v['invalid_response'] for k,v in checkpoints.items() if k.startswith('editorial:')))
+
+    def test_editorial_response_checkpoint_resume_reuses_paid_review(self):
+        original=runtime.checkpoint
+        interrupted=False
+        saved=None
+        def crash(root,job_id,owner,stage,value):
+            nonlocal interrupted,saved
+            original(root,job_id,owner,stage,value)
+            if stage.startswith('editorial-response:') and not interrupted:
+                interrupted=True
+                saved=copy.deepcopy(value)
+                raise OSError('stopped after paid editorial review')
+        with patch.object(runtime,'checkpoint',side_effect=crash):
+            job,result=self.run_job()
+        self.assertEqual('failed',result['status'])
+        self.assertEqual(9,len(self.calls))
+        runtime.retry(self.root,job['job_id'])
+        result=runtime.work_once(self.root)
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual(19,len(self.calls))
+        with runtime._db(self.root,write=False) as con:
+            checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        self.assertIn(saved,[v for k,v in checkpoints.items() if k.startswith('editorial-response:')])
+
+    def test_editorial_http_success_before_checkpoint_uses_frozen_request(self):
+        job,record,model=self.scoped_review_fixture()
+        entry=pipeline._review_original(self.root,job,'owner',model,record,'source-fixture',37)
+        assessment=dict(precheck=dict(status='PASS',reasons=['Useful'],evidence_refs=[record['url']]),
+            scores={k:dict(score=8,reason='Useful',evidence_refs=[record['url']])
+                    for k in pipeline.selection.DIMENSIONS},flags=[],reason='Useful')
+        card=dict(candidate_id='fixture',input_hash='fixed-card',material=record,
+                  evidence_context=entry['contexts'],ranking_type='daily')
+        entry=copy.deepcopy(entry)
+        entry['contexts'].append(dict(url='https://project.example/conflicting-help',
+            text='A separate supplied page contradicts the recommended platform.'))
+        score=dict(request_id='fixed-score')
+        original=runtime.checkpoint
+        def crash(root,job_id,owner,stage,value):
+            if stage=='editorial-response:fixture': raise OSError('after HTTP before response checkpoint')
+            original(root,job_id,owner,stage,value)
+        with patch.object(runtime,'checkpoint',side_effect=crash),self.assertRaises(OSError):
+            pipeline._review_editorial(self.root,job,'owner',model,card,entry,assessment,score,37)
+        with runtime._db(self.root,write=False) as con:
+            job['checkpoints']=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        frozen=copy.deepcopy(job['checkpoints']['editorial-input:fixture'])
+        with patch.object(pipeline.editorial,'build_review_input',side_effect=AssertionError('must not rebuild')):
+            with patch.object(pipeline.editorial,'REVIEW_PROMPT','Changed prompt must not replace frozen request'):
+                result=pipeline._review_editorial(self.root,job,'owner',model,card,entry,assessment,score,37)
+        self.assertEqual('accept',result['verdict'])
+        self.assertEqual(2,len(self.calls))  # one original request, one editorial request
+        self.assertEqual(frozen,job['checkpoints']['editorial-input:fixture'])
+        self.assertIn('https://project.example/conflicting-help',
+            [p['evidence_url'] for p in frozen['request']['material']['passages']])
+
+    @patch.object(pipeline,'SOURCE_REVIEW_CONTRACT','passages.v1')
+    def test_v6_frozen_policy_does_not_silently_enable_content_review(self):
+        path=self.root/'config/digest_selection.json'
+        policy=json.loads(path.read_text(encoding='utf-8'))
+        policy.pop('editorial_review_contract')
+        policy.pop('scoring_projection',None)
+        policy['version']='v5-scoped-source-uncalibrated'
+        path.write_text(json.dumps(policy),encoding='utf-8')
+        _,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual(13,len(self.calls))
+        self.assertEqual([],self.editorial_inputs)
+
     def test_score_checkpoint_crash_reuses_receipt_instead_of_resending(self):
         original=runtime.checkpoint
         interrupted=False
@@ -510,7 +668,7 @@ class PipelineTests(unittest.TestCase):
         runtime.retry(self.root,job['job_id'])
         result=runtime.work_once(self.root)
         self.assertEqual('completed',result['status'],result)
-        self.assertEqual(13,len(self.calls))  # only the remaining 5 scores
+        self.assertEqual(19,len(self.calls))  # five remaining scores and six independent reviews
         with runtime._db(self.root,write=False) as con:
             checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
         responses=[v for k,v in checkpoints.items() if k.startswith('score-response:')]
@@ -526,6 +684,8 @@ class PipelineTests(unittest.TestCase):
         legacy['version']='v3-assessment-contract-uncalibrated'
         legacy.pop('usage_evidence_gaps')
         legacy.pop('assessment_contract',None)
+        legacy.pop('editorial_review_contract',None)
+        legacy.pop('scoring_projection',None)
         legacy['flag_basis']={k:legacy['flag_basis'][k] for k in ('routine_update','unsupported_promotion')}
         policy_path.write_text(json.dumps(legacy),encoding='utf-8')
         legacy_prompt='Frozen v3 scoring prompt. Return the four assessment fields.'
