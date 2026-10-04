@@ -20,7 +20,18 @@ from . import digest
 
 DIMENSIONS = ("value", "novelty", "evidence", "usability", "interest")
 ASSESSMENT_FIELDS = ("precheck", "scores", "flags", "reason")
-FLAG_BASIS_KINDS = {"routine_update": "limited_increment", "unsupported_promotion": "unsupported_effect_claim"}
+FLAG_BASIS_KINDS = {
+    "routine_update": "limited_increment", "unsupported_promotion": "unsupported_effect_claim",
+    "unfulfilled_announcement": "availability_limit", "unclear_usage": "usage_path_gap",
+    "reader_mismatch": "reader_requirement", "insufficient_usage_evidence": "usage_evidence_gap",
+}
+# These types describe a missing support for the claimed recommendation. Neither
+# lack of our own installation nor popularity is a type of missing evidence.
+USAGE_EVIDENCE_GAPS = {
+    "daily": {"actionable_steps"},
+    "weekly": {"actionable_steps", "usage_record", "long_term_support"},
+    "monthly": {"actionable_steps", "usage_record", "long_term_support"},
+}
 MAX_ASSESSMENT_BYTES = 65536
 DB_PATH = Path("data/weekly_digest/selection.sqlite3")
 POLICY_PATH = Path("config/digest_selection.json")
@@ -68,7 +79,7 @@ def _strings(value: Any, label: str, *, nonempty: bool = True) -> list:
 
 def load_policy(root: Path, policy_path: Path | None = None) -> dict:
     policy = json.loads((policy_path or root / POLICY_PATH).read_text(encoding="utf-8"))
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps"))
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -112,6 +123,14 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
         raise SelectionError("flag_basis must map supported flags")
     if any(basis != FLAG_BASIS_KINDS[code] for code, basis in flag_basis.items()):
         raise SelectionError("unknown flag basis kind")
+    if "usage_evidence_gaps" in policy:
+        gaps = _object(policy["usage_evidence_gaps"], tuple(USAGE_EVIDENCE_GAPS), "usage_evidence_gaps")
+        if set(flag_basis) != set(policy["flag_caps"]) or "insufficient_usage_evidence" not in flag_basis:
+            raise SelectionError("usage_evidence_gaps requires source basis for every cap flag")
+        for ranking_type, allowed in gaps.items():
+            checked = _strings(allowed, "usage_evidence_gaps." + ranking_type)
+            if len(checked) != len(set(checked)) or set(checked) - USAGE_EVIDENCE_GAPS[ranking_type]:
+                raise SelectionError("unsupported evidence gap for ranking type: " + ranking_type)
     return policy
 
 
@@ -178,7 +197,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     if event:
         material["event"] = {key: copy.deepcopy(event[key]) for key in
                              ("url", "occurred_at", "occurred_on", "date_precision", "timezone", "type") if key in event}
-    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis")
+    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps")
     return {
         "card": {"ranking_type": card.get("ranking_type", prepared["ranking_type"]), "profile": card["profile"],
                  "material": material,
@@ -389,15 +408,20 @@ def _validate_assessment(policy: dict, card: dict, review: dict) -> dict:
         raise SelectionError("flags must be a list")
     seen_flags = set()
     for flag in review["flags"]:
-        _object(flag, ("code", "reason", "evidence_refs"), "flag", optional=("basis",))
+        _object(flag, ("code", "reason", "evidence_refs"), "flag", optional=("basis", "gap"))
         _text(flag["code"], "flag.code")
         if flag["code"] not in policy["flag_caps"] or flag["code"] in seen_flags:
             raise SelectionError("unknown or repeated flag")
         basis_kind = policy.get("flag_basis", {}).get(flag["code"])
-        _object(flag, ("code", "reason", "evidence_refs") + (("basis",) if basis_kind else ()), "flag")
+        gap_policy = policy.get("usage_evidence_gaps") if flag["code"] == "insufficient_usage_evidence" else None
+        _object(flag, ("code", "reason", "evidence_refs") + (("basis",) if basis_kind else ()) + (("gap",) if gap_policy is not None else ()), "flag")
         allowed_kinds = policy.get("flag_kinds", {}).get(flag["code"])
         if allowed_kinds is not None and card["material"]["kind"] not in allowed_kinds:
             raise SelectionError("flag does not apply to candidate kind: " + flag["code"])
+        if gap_policy is not None:
+            gap = _text(flag["gap"], "flag.gap")
+            if gap not in gap_policy.get(card.get("ranking_type"), []):
+                raise SelectionError("flag evidence gap does not apply to ranking type: " + gap)
         seen_flags.add(flag["code"])
         _text(flag["reason"], "flag.reason")
         _refs(flag["evidence_refs"], allowed, "flag.evidence_refs")
@@ -412,6 +436,9 @@ def _validate_assessment(policy: dict, card: dict, review: dict) -> dict:
             if not any(context["url"] == basis["evidence_url"] and basis["quote"] in context["text"]
                        for context in card["evidence_context"]):
                 raise SelectionError("flag basis quote not found in supplied original")
+            # Quote presence proves provenance, not that the quote entails the
+            # claim. Semantic consistency remains an explicit editorial check;
+            # never delete a flag or rewrite its scores as an automatic repair.
     _text(review["reason"], "reason")
     return _calculate(policy, card, review)
 

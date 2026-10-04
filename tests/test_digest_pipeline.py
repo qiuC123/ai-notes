@@ -109,6 +109,9 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(13,len(self.calls))
         with runtime._db(self.root,write=False) as con:
             prepared=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+            stages={row[0] for row in con.execute('SELECT stage FROM requests')}
+        self.assertEqual({'screen-v4-evidence-scope', 'verify-facts-v4-source-scope',
+                          'value-score-v4-evidence-scope'}, stages)
         self.assertEqual(6,len(prepared['issue']['items']))
         self.assertTrue(all(x['verification_level']=='documented' for x in prepared['issue']['items']))
 
@@ -289,6 +292,66 @@ class PipelineTests(unittest.TestCase):
         responses=[v for k,v in checkpoints.items() if k.startswith('score-response:')]
         self.assertEqual(6,len(responses))
         self.assertTrue(all(v['raw_output']==v['assessment'] for v in responses))
+
+    def test_upgrade_resumes_frozen_v3_score_cache_including_bad_receipt(self):
+        policy_path=self.root/'config/digest_selection.json'
+        prompt_path=self.root/'docs/prompts/digest-selection.md'
+        current_policy=policy_path.read_text(encoding='utf-8')
+        current_prompt=prompt_path.read_text(encoding='utf-8')
+        legacy=json.loads(current_policy)
+        legacy['version']='v3-assessment-contract-uncalibrated'
+        legacy.pop('usage_evidence_gaps')
+        legacy['flag_basis']={k:legacy['flag_basis'][k] for k in ('routine_update','unsupported_promotion')}
+        policy_path.write_text(json.dumps(legacy),encoding='utf-8')
+        legacy_prompt='Frozen v3 scoring prompt. Return the four assessment fields.'
+        prompt_path.write_text(legacy_prompt,encoding='utf-8')
+        original=runtime.checkpoint
+        interrupted=False
+        saved_bad=None
+        def crash(root,job_id,owner,stage,value):
+            nonlocal interrupted, saved_bad
+            original(root,job_id,owner,stage,value)
+            if stage.startswith('score-response:') and not interrupted:
+                interrupted=True
+                saved_bad=copy.deepcopy(value)
+                raise OSError('interrupted after frozen v3 score receipt')
+        self.malformed_scores=True
+        with patch.object(runtime,'checkpoint',side_effect=crash):
+            job,result=self.run_job()
+        self.assertEqual('failed',result['status'])
+        self.assertEqual(8,len(self.calls))  # screen + 6 originals + first score
+        self.assertEqual('rejected',saved_bad['status'])
+        self.assertEqual('select',saved_bad['raw_output']['decision'])
+        with runtime._db(self.root,write=False) as con:
+            prior=con.execute('SELECT stage,output FROM requests WHERE request_id=?',
+                              (saved_bad['request_id'],)).fetchone()
+            self.assertEqual('value-score-v3-news-contract',prior['stage'])
+            raw_receipt=prior['output']
+
+        # Upgrade the current policy and prompt. The unfinished job must keep
+        # its frozen prompt/policy and reuse its actual request cache entry.
+        policy_path.write_text(current_policy,encoding='utf-8')
+        prompt_path.write_text(current_prompt,encoding='utf-8')
+        self.malformed_scores=False
+        runtime.retry(self.root,job['job_id'])
+        result=runtime.work_once(self.root)
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual(5,result['result']['item_count'])
+        self.assertEqual(13,len(self.calls))  # only five unattempted scores call the model
+        with runtime._db(self.root,write=False) as con:
+            checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',
+                                               (job['job_id'],)).fetchone()[0])
+            scores=con.execute("SELECT stage,output FROM requests WHERE stage LIKE 'value-score-%'").fetchall()
+            unchanged=con.execute('SELECT output FROM requests WHERE request_id=?',
+                                  (saved_bad['request_id'],)).fetchone()[0]
+        self.assertEqual(raw_receipt,unchanged)
+        self.assertEqual(6,len(scores))
+        self.assertEqual({'value-score-v3-news-contract'},{row['stage'] for row in scores})
+        responses=[v for k,v in checkpoints.items() if k.startswith('score-response:')]
+        self.assertIn(saved_bad,responses)
+        prepared=pipeline.selection.load_preparation(self.root,checkpoints['preparation']['prepare_id'])
+        self.assertEqual(legacy,prepared['policy'])
+        self.assertEqual(legacy_prompt,pipeline.selection.get_prompt(self.root,prepared))
 
     def test_date_only_news_is_retained_but_does_not_invent_daily_time(self):
         self.add_news()

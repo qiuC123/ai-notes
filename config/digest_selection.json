@@ -1,7 +1,7 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v3-assessment-contract-uncalibrated",
-  "calibration_status": "Uncalibrated reader-fit policy with explicit assessment and source-backed flag contracts. Weights and thresholds unchanged; frozen v1/v2 inputs retain their original rules.",
+  "version": "v4-evidence-scope-uncalibrated",
+  "calibration_status": "Uncalibrated reader-fit policy with source-backed cap reasons and ranking-specific evidence gaps. Weights and thresholds unchanged; frozen v1/v2/v3 inputs retain their original rules. Source quotation checks do not establish semantic entailment.",
   "dimensions": ["value", "novelty", "evidence", "usability", "interest"],
   "profiles": {
     "practical": {"value": 4, "novelty": 1, "evidence": 1, "usability": 3, "interest": 1},
@@ -38,7 +38,16 @@
   },
   "flag_basis": {
     "routine_update": "limited_increment",
-    "unsupported_promotion": "unsupported_effect_claim"
+    "unsupported_promotion": "unsupported_effect_claim",
+    "unfulfilled_announcement": "availability_limit",
+    "unclear_usage": "usage_path_gap",
+    "reader_mismatch": "reader_requirement",
+    "insufficient_usage_evidence": "usage_evidence_gap"
+  },
+  "usage_evidence_gaps": {
+    "daily": ["actionable_steps"],
+    "weekly": ["actionable_steps", "usage_record", "long_term_support"],
+    "monthly": ["actionable_steps", "usage_record", "long_term_support"]
   },
   "defer_flags": ["unsupported_promotion", "unfulfilled_announcement", "unclear_usage", "reader_mismatch", "insufficient_usage_evidence"]
 }

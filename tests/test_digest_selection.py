@@ -39,8 +39,22 @@ class SelectionTests(unittest.TestCase):
         records = records or [sample()]
         digest.ingest(self.root, dict(schema_version="digest-batch.v2", run_id="fixture",
             collected_at="2026-10-01T19:01:00+08:00", sources=[dict(name="fixture", url=records[0]["url"], status="ok", detail="Synthetic test")], candidates=records))
-        contexts = [dict(url=r["url"], text="The documented workflow imports local files and exports a searchable index.", fetched_at="2026-10-02T09:00:00+08:00") for r in records] if context else []
+        contexts = [dict(url=r["url"], text="The documented workflow imports local files and exports a searchable index. "
+            "The release is planned for next month. The setup instructions have not been published. "
+            "The utility is for kernel developers only.", fetched_at="2026-10-02T09:00:00+08:00") for r in records] if context else []
         return selection.prepare(self.root, "daily", "2026-10-01", evidence_context=contexts)
+
+    def cap_flag(self, code):
+        kind, quote, claim = {
+            "unfulfilled_announcement": ("availability_limit", "The release is planned for next month.", "The release is currently available to use."),
+            "reader_mismatch": ("reader_requirement", "The utility is for kernel developers only.", "The utility fits non-developer readers."),
+            "insufficient_usage_evidence": ("usage_evidence_gap", "The setup instructions have not been published.", "The supplied setup instructions let readers reproduce the workflow."),
+        }[code]
+        flag = dict(code=code, reason="The source identifies a concrete limitation to this recommendation.", evidence_refs=[sample()["url"]],
+                    basis=dict(kind=kind, claim=claim, quote=quote, evidence_url=sample()["url"]))
+        if code == "insufficient_usage_evidence":
+            flag["gap"] = "actionable_steps"
+        return flag
 
     def review(self, prepared, card=0, score=8):
         item = prepared["cards"][card]
@@ -57,7 +71,7 @@ class SelectionTests(unittest.TestCase):
         result = selection.record(self.root, self.review(prepared))
         self.assertEqual(80, result["total_score"])
         self.assertEqual("select", result["decision"])
-        self.assertEqual("v3-assessment-contract-uncalibrated", result["policy_version"])
+        self.assertEqual("v4-evidence-scope-uncalibrated", result["policy_version"])
         self.assertEqual("unchanged", selection.record(self.root, self.review(prepared))["status"])
         ranked = selection.rank(self.root, prepared["prepare_id"])
         self.assertEqual(1, len(ranked["available"]))
@@ -99,7 +113,7 @@ class SelectionTests(unittest.TestCase):
     def test_score_caps_are_computed_not_left_to_prompt(self):
         prepared = self.prepare()
         review = self.review(prepared, score=10)
-        review["flags"] = [dict(code="unfulfilled_announcement", reason="Only a planned release is described.", evidence_refs=[sample()["url"]])]
+        review["flags"] = [self.cap_flag("unfulfilled_announcement")]
         review["decision"] = "defer"
         result = selection.record(self.root, review)
         self.assertEqual(2, result["effective_scores"]["usability"])
@@ -282,7 +296,7 @@ class SelectionTests(unittest.TestCase):
     def test_build_review_computes_capped_decision_without_model_arithmetic(self):
         prepared = self.prepare()
         raw = self.review(prepared, score=10)
-        raw["flags"] = [dict(code="unfulfilled_announcement", reason="Planned but not released.", evidence_refs=[sample()["url"]])]
+        raw["flags"] = [self.cap_flag("unfulfilled_announcement")]
         assessment = {key: raw[key] for key in ("precheck", "scores", "flags", "reason")}
         review = selection.build_review(self.root, prepared["prepare_id"], raw["candidate_id"], assessment, dict(kind="model", name="provider", model="actual-model"))
         self.assertEqual("defer", review["decision"])
@@ -319,7 +333,7 @@ class SelectionTests(unittest.TestCase):
                              ("insufficient_usage_evidence", {"evidence": 4, "usability": 4})):
             with self.subTest(flag=code):
                 raw = self.review(prepared, score=10)
-                raw["flags"] = [dict(code=code, reason="Only an unsupported author claim, with no reader-usable workflow.", evidence_refs=[sample()["url"]])]
+                raw["flags"] = [self.cap_flag(code)]
                 assessment = {key: raw[key] for key in ("precheck", "scores", "flags", "reason")}
                 bound = selection.build_review(self.root, prepared["prepare_id"], raw["candidate_id"], assessment, raw["reviewer"])
                 result = selection.record(self.root, bound)
@@ -385,7 +399,7 @@ class SelectionTests(unittest.TestCase):
         current = selection.load_policy(self.root)
         legacy = copy.deepcopy(current)
         legacy["version"] = "v1-uncalibrated"
-        for key in ("kind_profiles", "flag_kinds", "flag_basis"):
+        for key in ("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps"):
             legacy.pop(key)
         legacy["profiles"].pop("news")
         for flag in ("reader_mismatch", "insufficient_usage_evidence"):
@@ -402,6 +416,31 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(93, result["total_score"])
         self.assertEqual(prepared["policy_hash"], result["policy_hash"])
 
+    def test_frozen_v2_v3_usage_flags_keep_old_caps_after_current_policy_upgrade(self):
+        current = selection.load_policy(self.root)
+        path = self.root / "config/digest_selection.json"
+        for version in ("v2-reader-fit-uncalibrated", "v3-assessment-contract-uncalibrated"):
+            legacy = copy.deepcopy(current)
+            legacy["version"] = version
+            legacy.pop("usage_evidence_gaps")
+            if version.startswith("v2"):
+                legacy.pop("flag_basis")
+            else:
+                legacy["flag_basis"] = {key: legacy["flag_basis"][key] for key in ("routine_update", "unsupported_promotion")}
+            path.write_text(json.dumps(legacy), encoding="utf-8")
+            prepared = self.prepare()
+            path.write_text(json.dumps(current), encoding="utf-8")
+            raw = self.review(prepared, score=8)
+            raw.update(decision="defer", flags=[dict(code="insufficient_usage_evidence",
+                reason="Original frozen judgment without a source-basis requirement.", evidence_refs=[sample()["url"]])])
+            with self.subTest(version=version):
+                result = selection.record(self.root, raw)
+                self.assertEqual(version, result["policy_version"])
+                self.assertEqual(80, result["raw_score"])
+                self.assertEqual(64, result["total_score"])
+                self.assertEqual(prepared["policy_hash"], result["policy_hash"])
+                self.assertEqual(legacy, selection.load_preparation(self.root, prepared["prepare_id"])["policy"])
+
     def test_policy_extensions_reject_unknown_profiles_flags_and_kinds(self):
         good = selection.load_policy(self.root)
         malformed = [
@@ -414,6 +453,10 @@ class SelectionTests(unittest.TestCase):
             ("flag_kinds", {"routine_update": ["update", "update"]}),
             ("flag_basis", {"unknown": "limited_increment"}),
             ("flag_basis", {"routine_update": "unsupported_effect_claim"}),
+            ("usage_evidence_gaps", {"daily": ["usage_record"], "weekly": ["usage_record"], "monthly": ["usage_record"]}),
+            ("usage_evidence_gaps", {"daily": ["actionable_steps"], "weekly": ["no_local_test"], "monthly": ["low_stars"]}),
+            ("usage_evidence_gaps", {"daily": ["actionable_steps"]}),
+            ("usage_evidence_gaps", {"daily": ["actionable_steps", "actionable_steps"], "weekly": ["usage_record"], "monthly": ["usage_record"]}),
         ]
         for key, value in malformed:
             bad = {**good, key: value}
