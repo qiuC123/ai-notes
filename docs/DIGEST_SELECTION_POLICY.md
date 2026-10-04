@@ -131,7 +131,9 @@ Python 公共 API：`prepare(root, ranking_type, period, limit=30, evidence_cont
 
 v5 用于新 preparation：`assessment_contract=scoped-source.v1` 才启用新评分 stage 与 `assessment_schema(policy,card)`。schema 依据当前 kind/period/URL 限定字段、维度及 flag，不含分数答案；通过 `ModelClient.request(output_schema=...)` 加入格式提示，实际 provider 参数仍是 `json_object`。这是 schema 引导，不是原生严格约束解码，收到回执仍需严格本地校验，额外 null 字段也拒绝。schema 进入请求指纹及输入预算，旧无 schema 调用保持原身份，不删坏字段、自动重试或降级刷通过率。
 
-旧 screen 检查点保持原提取 prompt/stage；新 screen 才标记 `claims.scope.v1`。已有 prompt、policy、raw receipt、source/score checkpoint 不被自动失效或升级；历史投影及分数不改写。新原文核验保存请求材料和原始回执后再做结构检查，坏条件保存真实失败并暂缓该候选，其余候选继续；中断恢复复用该次请求，只有旧成功事实过期后开始的重新核验才建立新的材料代次。
+原文核验已单独升级为 `passages.v1`，评分仍使用 v5 的 policy、权重、门槛与 `scoped-source.v1` 合同。新 screen 固定 `passages.v1`：程序将完整原文按段落和标题切分并编号，模型只输出事实摘要及各字段对应的段落 ID，程序绑定真实 URL 和连续原文引用；不再要求模型抄写引文和八个 scope 字段。未知或重复 ID、额外字段、缺失证据继续拒绝。标题上下文随段落输入模型，完整原文和绑定后的 claims 随评分卡冻结。多个段落共同支持一个字段，不代表任意单段都独立支持整段摘要。编号有效只证明引用出处，不能证明摘要正确；限定条件与冲突仍需内容审阅。详见 [段落绑定验收](DIGEST_PASSAGE_BINDING_2026-10-04.md)。
+
+旧 screen 检查点保持原提取 prompt/stage，包含 v5 的 `claims.scope.v1`。已有 prompt、policy、raw receipt、source/score checkpoint 不被自动失效或升级；历史投影及分数不改写。新原文核验保存请求材料（含段落、Schema、完整提示词）和原始回执后再做结构检查，坏回执保存真实失败并暂缓该候选，其余候选继续；中断恢复复用该次请求和段落，不重新切分、抓取或发送。只有旧成功事实过期后开始的重新核验才建立新的材料代次。
 
 通过适配后调用 `build_review(root, prepare_id, candidate_id, assessment, reviewer)`，按冻结权重与 caps 生成 decision，绑定 input_hash 和真实调用模型身份，再由 `record` 落库。模型不负责求和、不回填身份、不覆盖决策。上述完整 review 是程序/人工入库契约，评分提示词不再同时要求模型返回它。
 

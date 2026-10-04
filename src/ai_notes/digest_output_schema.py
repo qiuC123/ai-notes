@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import copy
 
+from .digest import CATEGORIES, KINDS
+
 
 def _object(properties):
     return {"type": "object", "properties": properties,
@@ -59,4 +61,52 @@ def assessment_schema(*, policy: dict, card: dict) -> dict:
         {"if": {"properties": {"precheck": {"properties": {"status": {"enum": ["PASS", "BLOCK"]}}}}},
          "then": {"properties": {"precheck": {"properties": {"evidence_refs": refs()}}}}},
     ]
+    return schema
+
+
+def source_review_schema(*, record: dict, passages: list[dict]) -> dict:
+    """Guide a source review that cites program-owned passage IDs only.
+
+    The caller binds IDs to original URLs, quotes and headings. This schema
+    neither asks the model to reproduce those fields nor proves that a cited
+    passage entails its summary. Existing fact/date/license checks still apply.
+    """
+    kind = record['kind']
+    if kind not in KINDS:
+        raise ValueError('unsupported source review candidate kind')
+    ids = [passage['id'] for passage in passages]
+    if any(not isinstance(value, str) or not value.strip() for value in ids):
+        raise ValueError('source passage IDs must be nonempty strings')
+    ids = sorted(set(ids))
+    text = {'$ref': '#/$defs/nonempty_text'}
+    fact_fields = ('title', 'category', 'summary', 'reason', 'audience',
+                   'usage_conditions', 'detail', 'retention_reason', 'open_source_status')
+    facts = {name: dict(text) for name in fact_fields}
+    facts['category'] = {'type': 'string', 'enum': list(CATEGORIES)}
+    facts['open_source_status'] = {'enum': ['confirmed', 'closed', 'unknown']}
+    evidence_fields = ['category', 'summary', 'usage_conditions', 'license']
+    if kind == 'reading':
+        facts.update(author=dict(text), original_date={'type': 'string', 'pattern': r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'})
+        evidence_fields.extend(('author', 'original_date'))
+    elif kind == 'news':
+        facts['event_date'] = dict(text)
+        evidence_fields.append('event_date')
+    elif kind == 'update':
+        evidence_fields.append('change_note')
+    evidence = {name: {'type': 'array', 'items': {'$ref': '#/$defs/passage_id'}, 'uniqueItems': True,
+                       'minItems': 0 if name == 'license' else 1} for name in evidence_fields}
+    schema = _object({'qualified': {'type': 'boolean'}, 'reason': dict(text),
+                      'facts': {'anyOf': [{'$ref': '#/$defs/facts'}, {'type': 'null'}]},
+                      'evidence': {'anyOf': [{'$ref': '#/$defs/evidence'}, {'type': 'null'}]}})
+    schema['$schema'] = 'https://json-schema.org/draft/2020-12/schema'
+    schema['$defs'] = {
+        'nonempty_text': {'type': 'string', 'minLength': 1, 'pattern': r'\S'},
+        'passage_id': {'type': 'string', 'enum': ids} if ids else False,
+        'facts': _object(facts), 'evidence': _object(evidence),
+    }
+    schema['allOf'] = [{
+        'if': {'properties': {'qualified': {'const': True}}},
+        'then': {'properties': {'facts': {'$ref': '#/$defs/facts'}, 'evidence': {'$ref': '#/$defs/evidence'}}},
+        'else': {'properties': {'facts': {'type': 'null'}, 'evidence': {'type': 'null'}}},
+    }]
     return schema

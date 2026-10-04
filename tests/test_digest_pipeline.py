@@ -32,6 +32,7 @@ class PipelineTests(unittest.TestCase):
         self.score_inputs=[]
         self.malformed_scores=False
         self.malformed_scope=False
+        self.malformed_passage=False
         self.defer=False
         self.text='Organizes local files. Install with Python. MIT License.'
         self.client=httpx.Client(transport=httpx.MockTransport(self.respond))
@@ -71,10 +72,12 @@ class PipelineTests(unittest.TestCase):
             ids=[c['candidate_id'] for c in material['cards']]
             output={'selected_ids':ids[:material['deep_limit']], 'decisions':[{'candidate_id':cid,'reason':'Useful local workflow'} for cid in ids]}
         elif 'supported practical facts' in system:
+            bound='passages.v1' in system
             if self.defer:
                 output={'qualified':False,'reason':'Required usage evidence missing','facts':None}
+                if bound: output['evidence']=None
             else:
-                url=material['originals'][0]['url']
+                url=material['passages'][0]['evidence_url'] if bound else material['originals'][0]['url']
                 facts=dict(title=material['candidate']['title'],category='开源项目',summary='Organizes local files.',reason='减少重复整理工作。',
                     audience='处理本地文件的读者',usage_conditions='Install with Python.',detail='可用于重复整理目录；先确认当前依赖。',
                     retention_reason='本地文件管理是持续需求。',evidence_urls=[url],open_source_status='confirmed',
@@ -95,6 +98,15 @@ class PipelineTests(unittest.TestCase):
                             if self.malformed_scope:
                                 claim['scope']['platform']='invented platform'
                 output={'qualified':True,'reason':'Original documents support it','facts':facts}
+                if bound:
+                    refs={field:[] for field in ('category','summary','usage_conditions','license')}
+                    for claim in facts['claims']:
+                        # Synthetic responder chooses IDs, never manufactures a quote.
+                        passage=next((p for p in material['passages'] if claim['quote'] in p['quote']),material['passages'][0])
+                        refs.setdefault(claim['field'],[]).append(passage['id'])
+                    output['facts']={k:v for k,v in facts.items() if k not in ('claims','evidence_urls')}
+                    output['evidence']=refs
+                    if self.malformed_passage: output['evidence']['usage_conditions']=['invented-passage']
         else:
             self.score_inputs.append(material)
             url=material['card']['evidence_context'][0]['url']
@@ -121,7 +133,7 @@ class PipelineTests(unittest.TestCase):
         with runtime._db(self.root,write=False) as con:
             prepared=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
             stages={row[0] for row in con.execute('SELECT stage FROM requests')}
-        self.assertEqual({'screen-v4-evidence-scope', 'verify-facts-v5-scoped-claims',
+        self.assertEqual({'screen-v4-evidence-scope', 'verify-facts-v6-passages',
                           'value-score-v5-scoped-source'}, stages)
         self.assertEqual(6,len(prepared['issue']['items']))
         self.assertTrue(all(x['verification_level']=='documented' for x in prepared['issue']['items']))
@@ -220,6 +232,7 @@ class PipelineTests(unittest.TestCase):
         pipeline._review_original(self.root,job,'owner',model,record,'legacy-source',37)
         self.assertEqual(1,len(self.calls))
 
+    @patch.object(pipeline,'SOURCE_REVIEW_CONTRACT','claims.scope.v1')
     def test_invalid_new_scope_retains_raw_receipt_and_defers_without_retries(self):
         self.malformed_scope=True
         job,result=self.run_job()
@@ -240,6 +253,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual('idle',runtime.work_once(self.root)['status'])
         self.assertEqual(7,len(self.calls))
 
+    @patch.object(pipeline,'SOURCE_REVIEW_CONTRACT','claims.scope.v1')
     def test_original_response_checkpoint_crash_reuses_bad_scope_without_fetching(self):
         self.malformed_scope=True
         original=runtime.checkpoint
@@ -278,6 +292,54 @@ class PipelineTests(unittest.TestCase):
         record=digest.candidates(self.root,ranking_type='daily',period=self.period)['candidates'][0]
         model=self.real_model(self.root,base_url='https://provider.example/v1',model='fixture',api_key='fixture-only',client=self.client)
         return job,record,model
+
+    def test_passage_reference_failure_retains_raw_and_never_scores(self):
+        self.malformed_passage=True
+        job,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual(0,result['result']['item_count'])
+        self.assertEqual(7,len(self.calls))
+        self.assertEqual([],self.score_inputs)
+        with runtime._db(self.root,write=False) as con:
+            checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        receipts=[v for k,v in checkpoints.items() if k.startswith('original-response:')]
+        self.assertEqual(6,len(receipts))
+        self.assertTrue(all(v['receipt']['output']['evidence']['usage_conditions']==['invented-passage'] for v in receipts))
+        self.assertTrue(all(v['passages'] for v in receipts))
+        self.assertTrue(all('claims' not in v['receipt']['output']['facts'] for v in receipts))
+
+    def test_passage_response_resume_binds_frozen_segments_without_rebuilding(self):
+        job,record,model=self.scoped_review_fixture()
+        pipeline._save(self.root,job,'owner','screen',{'source_review_contract':'passages.v1'})
+        original=runtime.checkpoint
+        def crash(root,job_id,owner,stage,value):
+            original(root,job_id,owner,stage,value)
+            if stage=='original-response:passage-crash': raise OSError('interrupted after raw bound review')
+        with patch.object(runtime,'checkpoint',side_effect=crash),self.assertRaises(OSError):
+            pipeline._review_original(self.root,job,'owner',model,record,'passage-crash',37)
+        with runtime._db(self.root,write=False) as con:
+            job['checkpoints']=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        raw=copy.deepcopy(job['checkpoints']['original-response:passage-crash'])
+        with patch.object(pipeline,'build_passages',side_effect=AssertionError('must use frozen passages')):
+            result=pipeline._review_original(self.root,job,'owner',model,record,'passage-crash',37)
+        self.assertEqual(raw['receipt']['request_id'],result['request_id'])
+        self.assertEqual(raw,job['checkpoints']['original-response:passage-crash'])
+        self.assertEqual(1,len(self.calls))
+        self.assertEqual(1,len(self.fetch_calls))
+        self.assertTrue(all(c['quote']==self.text for c in result['facts']['claims']))
+        frozen=job['checkpoints']['original-input:passage-crash']['request']
+        self.assertNotIn('originals',frozen['material'])
+        self.assertIn('output_schema',frozen)
+
+    def test_existing_v5_source_contract_keeps_prompt_and_shape(self):
+        job,record,model=self.scoped_review_fixture()
+        result=pipeline._review_original(self.root,job,'owner',model,record,'v5',37)
+        self.assertEqual(pipeline.VERIFY_PROMPT+'\n'+pipeline.READER_FOCUS,self.calls[-1])
+        request=job['checkpoints']['original-input:v5']['request']
+        self.assertEqual('verify-facts-v5-scoped-claims',request['stage'])
+        self.assertNotIn('output_schema',request)
+        self.assertIn('originals',request['material'])
+        self.assertTrue(any('scope' in c for c in result['facts']['claims']))
 
     def test_expired_original_resumes_new_response_instead_of_repeating_refresh(self):
         job,record,model=self.scoped_review_fixture()
@@ -409,8 +471,9 @@ class PipelineTests(unittest.TestCase):
             self.assertNotIn('verification_level',value['card']['material'])
             self.assertNotIn('evidence_status',value['card']['material'])
             claim=next(claim for claim in value['card']['source_claims'] if claim['field']=='usage_conditions')
-            self.assertEqual('Python',claim['scope']['installation_path'])
-            self.assertEqual('Install with Python.',claim['quote'])
+            self.assertNotIn('scope',claim)
+            self.assertEqual(self.text,claim['quote'])
+            self.assertIn('Install with Python.',claim['quote'])
         with runtime._db(self.root,write=False) as con:
             checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
         responses=[v for k,v in checkpoints.items() if k.startswith('score-response:')]
@@ -583,7 +646,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual('completed',result['status'],result)
         self.assertEqual(6,result['result']['item_count'])
         self.assertEqual(1,len(result['result']['failures']))
-        self.assertIn('claim quote not found',result['result']['failures'][0])
+        self.assertIn('news event date lacks original evidence',result['result']['failures'][0])
         con=digest._connect(self.root)
         try:
             records=[json.loads(row[0]) for row in con.execute('SELECT payload FROM observations')]

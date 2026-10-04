@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 import unittest
 
@@ -105,6 +106,150 @@ class ScoringOutputSchemaTests(unittest.TestCase):
         adapted = selection.adapt_assessment(value, policy=self.policy, card=self.card)
         self.assertEqual('rejected', adapted['status'])
         self.assertIn('quote not found', adapted['error'])
+
+
+class SourceReviewSchemaTests(unittest.TestCase):
+    def setUp(self):
+        self.passages = [
+            {'id': 'passage-01', 'evidence_url': 'https://example.com/manual',
+             'quote': 'Import a local file and save the result.', 'heading_path': ['Usage']},
+            {'id': 'passage-02', 'evidence_url': 'https://example.com/license',
+             'quote': 'MIT License.', 'heading_path': ['License']},
+        ]
+
+    def schema(self, kind='project', passages=None):
+        schema = output_schema.source_review_schema(record={'kind': kind},
+            passages=self.passages if passages is None else passages)
+        Draft202012Validator.check_schema(schema)
+        return schema
+
+    def valid(self, value, kind='project', passages=None):
+        return Draft202012Validator(self.schema(kind, passages)).is_valid(value)
+
+    def sample(self, kind='project'):
+        facts = dict(title='Local organizer', category='开源项目', summary='Organizes local files.',
+                     reason='A documented task.', audience='People organizing files.',
+                     usage_conditions='Import a local file.', detail='Save the result to disk.',
+                     retention_reason='File organization is reusable.', open_source_status='confirmed')
+        evidence = {name: ['passage-01'] for name in ('category', 'summary', 'usage_conditions')}
+        evidence['license'] = ['passage-02']
+        if kind == 'reading':
+            facts.update(category='博客、帖子与访谈', author='An author', original_date='2026-10-04')
+            evidence.update(author=['passage-01'], original_date=['passage-01'])
+        elif kind == 'news':
+            facts.update(category='AI 应用', event_date='2026-10-04')
+            evidence['event_date'] = ['passage-01']
+        elif kind == 'update':
+            evidence['change_note'] = ['passage-01']
+        return dict(qualified=True, reason='Original passages support the facts.', facts=facts, evidence=evidence)
+
+    def test_valid_samples_for_all_kinds_preserve_program_owned_passages(self):
+        original = copy.deepcopy(self.passages)
+        for kind in ('project', 'update', 'reading', 'news'):
+            with self.subTest(kind=kind):
+                self.assertTrue(self.valid(self.sample(kind), kind))
+        self.assertEqual(original, self.passages)
+
+    def test_ids_are_defined_once_and_referenced_without_urls_quotes_or_scope(self):
+        schema = self.schema('reading')
+        self.assertEqual(['passage-01', 'passage-02'], schema['$defs']['passage_id']['enum'])
+        for name, definition in schema['$defs']['evidence']['properties'].items():
+            self.assertEqual({'$ref': '#/$defs/passage_id'}, definition['items'], name)
+        wire = json.dumps(schema)
+        self.assertEqual(1, wire.count('passage-01'))
+        self.assertNotIn('https://example.com', wire)
+        self.assertEqual({'qualified', 'reason', 'facts', 'evidence'}, set(schema['properties']))
+        self.assertFalse(schema['additionalProperties'])
+        self.assertFalse(schema['$defs']['facts']['additionalProperties'])
+        self.assertFalse(schema['$defs']['evidence']['additionalProperties'])
+
+    def test_extra_null_fields_rejected_at_every_output_object(self):
+        for path in ('root', 'facts', 'evidence'):
+            value = self.sample()
+            target = value if path == 'root' else value[path]
+            target['extra'] = None
+            with self.subTest(path=path):
+                self.assertFalse(self.valid(value))
+        for key in ('quote', 'evidence_url', 'scope'):
+            value = self.sample()
+            value['facts'][key] = None
+            self.assertFalse(self.valid(value))
+
+    def test_unknown_passage_ids_or_model_generated_quotes_are_rejected(self):
+        for ref in ('invented-id', 'https://example.com/manual', {'id': 'passage-01'}, None):
+            value = self.sample()
+            value['evidence']['summary'] = [ref]
+            with self.subTest(ref=ref):
+                self.assertFalse(self.valid(value))
+
+    def test_required_fields_depend_on_candidate_kind(self):
+        required = {'project': ('category',), 'reading': ('category', 'author', 'original_date'),
+                    'news': ('category', 'event_date'), 'update': ('category', 'change_note')}
+        for kind, fields in required.items():
+            for field in fields:
+                for part in ('facts', 'evidence'):
+                    value = self.sample(kind)
+                    if field not in value[part]:
+                        continue
+                    del value[part][field]
+                    with self.subTest(kind=kind, field=field, part=part):
+                        self.assertFalse(self.valid(value, kind))
+        update = self.sample('update')
+        update['facts']['change_note'] = 'Do not duplicate evidence fields in facts.'
+        self.assertFalse(self.valid(update, 'update'))
+
+    def test_unqualified_requires_null_facts_and_evidence_even_with_no_passages(self):
+        value = dict(qualified=False, reason='No supplied source supports this item.', facts=None, evidence=None)
+        self.assertTrue(self.valid(value, passages=[]))
+        for part in ('facts', 'evidence'):
+            for invalid in ({}, [], self.sample()[part]):
+                changed = copy.deepcopy(value)
+                changed[part] = invalid
+                with self.subTest(part=part, invalid=invalid):
+                    self.assertFalse(self.valid(changed))
+        value['qualified'] = True
+        self.assertFalse(self.valid(value))
+        self.assertFalse(self.valid(self.sample(), passages=[]))
+
+    def test_license_evidence_can_be_empty_but_other_evidence_cannot(self):
+        value = self.sample()
+        value['evidence']['license'] = []
+        self.assertTrue(self.valid(value))  # Existing fact/license validation decides whether it is sufficient.
+        for field in ('category', 'summary', 'usage_conditions'):
+            changed = self.sample()
+            changed['evidence'][field] = []
+            with self.subTest(field=field):
+                self.assertFalse(self.valid(changed))
+
+    def test_repeated_passage_ids_are_rejected_in_every_evidence_array(self):
+        for kind in ('project', 'update', 'reading', 'news'):
+            for field in self.sample(kind)['evidence']:
+                value = self.sample(kind)
+                value['evidence'][field] = ['passage-01', 'passage-01']
+                with self.subTest(kind=kind, field=field):
+                    self.assertFalse(self.valid(value, kind))
+
+    def test_nonempty_strings_category_license_enum_and_date_shape(self):
+        for field, invalid in (('summary', ''), ('audience', '  '), ('title', None),
+                               ('category', 'Unknown category'), ('open_source_status', 'probably')):
+            value = self.sample()
+            value['facts'][field] = invalid
+            with self.subTest(field=field):
+                self.assertFalse(self.valid(value))
+        value = self.sample()
+        value['reason'] = '  '
+        self.assertFalse(self.valid(value))
+        value['reason'] = 'A reason.'
+        value['qualified'] = 1
+        self.assertFalse(self.valid(value))
+        reading = self.sample('reading')
+        for invalid in ('2026-1-04', '2026-10-04T12:00:00Z', ''):
+            reading['facts']['original_date'] = invalid
+            self.assertFalse(self.valid(reading, 'reading'))
+        news = self.sample('news')
+        self.assertTrue(self.valid(news, 'news'))
+        news['facts']['event_date'] = '2026-10-04T12:00:00+08:00'
+        self.assertTrue(self.valid(news, 'news'))  # It preserves source precision, not a generated default time.
 
 
 if __name__ == '__main__':
