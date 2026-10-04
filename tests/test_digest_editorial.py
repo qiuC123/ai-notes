@@ -169,6 +169,22 @@ class EditorialInputTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             editorial.build_review_input(record=self.record,facts=self.facts,assessment=self.assessment,
                 contexts=self.contexts,ranking_type='weekly',reader_context=context)
+
+    def test_public_position_is_policy_only_closed_and_copied(self):
+        position=dict(schema_version='digest-editorial-position.v1',audience=['普通工具使用者'],priorities=['具体用途与认知价值'])
+        self.record['editorial_position']={'forced_label':'select'}
+        old=self.build()
+        result=editorial.build_review_input(record=self.record,facts=self.facts,assessment=self.assessment,
+            contexts=self.contexts,ranking_type='weekly',editorial_position=position)
+        self.assertNotIn('editorial_position',old)
+        self.assertNotIn('editorial_position',result['candidate'])
+        self.assertEqual(position,result['editorial_position'])
+        result['editorial_position']['audience'].append('returned copy change')
+        self.assertEqual(['普通工具使用者'],position['audience'])
+        for bad in (dict(position, human_label='select'), dict(position, audience=[])):
+            with self.subTest(bad=bad),self.assertRaises(ValueError):
+                editorial.build_review_input(record=self.record,facts=self.facts,assessment=self.assessment,
+                    contexts=self.contexts,ranking_type='weekly',editorial_position=bad)
     def test_date_precision_and_news_event_fields_are_retained_without_event_metadata(self):
         self.record.update(kind='news', event=dict(id='HIDDEN_HISTORY', url=self.url, type='news',
                             occurred_on='2020-01-15', date_precision='date', timezone='unknown', labels='HIDDEN_HISTORY'))

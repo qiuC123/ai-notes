@@ -142,8 +142,8 @@ class PipelineTests(unittest.TestCase):
         with runtime._db(self.root,write=False) as con:
             prepared=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
             stages={row[0] for row in con.execute('SELECT stage FROM requests')}
-        self.assertEqual({'screen-v8-reader-context', 'verify-facts-v7-reader-facts',
-                          'value-score-v5-scoped-source','editorial-v8-reader-context'}, stages)
+        self.assertEqual({'screen-v9-editorial-first', 'verify-facts-v7-reader-facts',
+                          'value-score-v5-scoped-source','editorial-v9-editorial-first'}, stages)
         self.assertEqual(6,len(prepared['issue']['items']))
         self.assertTrue(all(x['verification_level']=='documented' for x in prepared['issue']['items']))
 
@@ -157,7 +157,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(14,runtime.notices(self.root)[0]['payload']['shortfall'])
 
     def test_oversized_item_at_each_model_stage_keeps_other_candidates(self):
-        stages=('verify-facts-v7-reader-facts','value-score-v5-scoped-source','editorial-v8-reader-context')
+        stages=('verify-facts-v7-reader-facts','value-score-v5-scoped-source','editorial-v9-editorial-first')
         original_request=self.real_model.request
         for index,target_stage in enumerate(stages):
             with self.subTest(stage=target_stage):
@@ -181,7 +181,7 @@ class PipelineTests(unittest.TestCase):
                     cp=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
                 prefix={'verify-facts-v7-reader-facts':'original-input:',
                         'value-score-v5-scoped-source':'preparation',
-                        'editorial-v8-reader-context':'editorial-input:'}[target_stage]
+                        'editorial-v9-editorial-first':'editorial-input:'}[target_stage]
                 self.assertTrue(any(k.startswith(prefix) for k in cp))
                 before=len(self.calls)
                 self.assertEqual('idle',runtime.work_once(self.root,job_id=job['job_id'])['status'])
@@ -280,6 +280,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(1,len(self.calls))
         policy=json.loads((self.root/'config/digest_selection.json').read_text(encoding='utf-8'))
         policy['reader_context']['exploration_interests']=['later interest must not enter recovered job']
+        policy['editorial_position']['priorities']=['later public position must not enter recovered job']
         (self.root/'config/digest_selection.json').write_text(json.dumps(policy),encoding='utf-8')
         (self.root/pipeline.selection.PROMPT_PATH).write_text('Later prompt must not enter recovered job.',encoding='utf-8')
         # Reload actual persisted input, not the in-memory state of the caller.
@@ -292,20 +293,40 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(frozen['prompt_snapshot'],result['prompt_snapshot'])
         self.assertEqual(1,len(self.calls))
 
-    def test_legacy_screen_without_preparation_does_not_inherit_reader_context(self):
+    def test_legacy_screen_without_frozen_rules_stops_before_any_network(self):
         runtime.enqueue(self.root,{'action':'generate','ranking_type':'daily','period':self.period})
         job=runtime.claim(self.root,'owner')
         cards=digest.candidates(self.root,ranking_type='daily',period=self.period)['candidates']
         records={pipeline.selection.candidate_id(card):card for card in cards}
         pipeline._save(self.root,job,'owner','screen',dict(records=records,selected_ids=list(records),
             decisions=[],offset=0,source_review_contract=pipeline.SOURCE_REVIEW_CONTRACT))
-        result=pipeline.generate(self.root,job,'owner')
-        self.assertEqual('archived',result['status'])
-        prepared=pipeline.selection.load_preparation(self.root,job['checkpoints']['preparation']['prepare_id'])
-        self.assertNotIn('reader_context',prepared['policy'])
-        self.assertTrue(self.score_inputs)
-        self.assertTrue(all('reader_context' not in x['policy'] for x in self.score_inputs))
-        self.assertTrue(all('reader_context' not in x for x in self.editorial_inputs))
+        original=copy.deepcopy(job['checkpoints'])
+        with patch.object(pipeline.sources,'collect') as collect, patch.object(pipeline.sources,'fetch') as fetch:
+            with self.assertRaisesRegex(runtime.RuntimeError,'legacy screen has no frozen policy/prompt'):
+                pipeline.generate(self.root,job,'owner')
+        collect.assert_not_called()
+        fetch.assert_not_called()
+        self.assertEqual([],self.calls)
+        self.assertEqual(original,job['checkpoints'])
+        self.assertNotIn('preparation',job['checkpoints'])
+
+    def test_legacy_screen_uses_authoritative_preparation_not_current_rules(self):
+        runtime.enqueue(self.root,{'action':'generate','ranking_type':'daily','period':self.period})
+        job=runtime.claim(self.root,'owner')
+        legacy=pipeline.selection.load_policy(self.root)
+        legacy.pop('reader_context')
+        legacy.pop('editorial_position')
+        legacy['version']='v7-reader-value-review-uncalibrated'
+        prepared=pipeline.selection.prepare(self.root,'daily',self.period,policy_snapshot=legacy,
+                                            prompt_snapshot='Authoritative frozen legacy prompt.')
+        pipeline._save(self.root,job,'owner','preparation',dict(prepare_id=prepared['prepare_id']))
+        pipeline._save(self.root,job,'owner','screen',dict(records={},selected_ids=[],decisions=[],offset=0))
+        original=copy.deepcopy(job['checkpoints']['screen'])
+        result=pipeline._screen(self.root,job,'owner',None,'daily',self.period,30,12)
+        self.assertEqual(legacy,result['policy_snapshot'])
+        self.assertEqual('Authoritative frozen legacy prompt.',result['prompt_snapshot'])
+        self.assertEqual(original,job['checkpoints']['screen'])
+        self.assertEqual([],self.calls)
 
     def test_unfrozen_legacy_screen_receipt_stops_without_new_http(self):
         runtime.enqueue(self.root,{'action':'generate','ranking_type':'daily','period':self.period})
@@ -668,6 +689,13 @@ class PipelineTests(unittest.TestCase):
         self.assertIn(saved,[v for k,v in checkpoints.items() if k.startswith('editorial-response:')])
 
     def test_editorial_http_success_before_checkpoint_uses_frozen_request(self):
+        self.editorial_http_success_resume()
+
+    def test_editorial_position_review_resume_uses_frozen_request(self):
+        policy=pipeline.selection.load_policy(self.root)
+        self.editorial_http_success_resume(reader_context=policy['reader_context'], editorial_position=policy['editorial_position'])
+
+    def editorial_http_success_resume(self, **options):
         job,record,model=self.scoped_review_fixture()
         entry=pipeline._review_original(self.root,job,'owner',model,record,'source-fixture',37)
         assessment=dict(precheck=dict(status='PASS',reasons=['Useful'],evidence_refs=[record['url']]),
@@ -684,18 +712,22 @@ class PipelineTests(unittest.TestCase):
             if stage=='editorial-response:fixture': raise OSError('after HTTP before response checkpoint')
             original(root,job_id,owner,stage,value)
         with patch.object(runtime,'checkpoint',side_effect=crash),self.assertRaises(OSError):
-            pipeline._review_editorial(self.root,job,'owner',model,card,entry,assessment,score,37)
+            pipeline._review_editorial(self.root,job,'owner',model,card,entry,assessment,score,37,**options)
         with runtime._db(self.root,write=False) as con:
             job['checkpoints']=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
         frozen=copy.deepcopy(job['checkpoints']['editorial-input:fixture'])
         with patch.object(pipeline.editorial,'build_review_input',side_effect=AssertionError('must not rebuild')):
             with patch.object(pipeline.editorial,'REVIEW_PROMPT','Changed prompt must not replace frozen request'):
-                result=pipeline._review_editorial(self.root,job,'owner',model,card,entry,assessment,score,37)
+                with patch.object(pipeline.editorial,'EDITORIAL_POSITION_REVIEW_PROMPT','Changed public prompt must not replace frozen request'):
+                    result=pipeline._review_editorial(self.root,job,'owner',model,card,entry,assessment,score,37,**options)
         self.assertEqual('accept',result['verdict'])
         self.assertEqual(2,len(self.calls))  # one original request, one editorial request
         self.assertEqual(frozen,job['checkpoints']['editorial-input:fixture'])
         self.assertIn('https://project.example/conflicting-help',
             [p['evidence_url'] for p in frozen['request']['material']['passages']])
+        if options:
+            self.assertEqual(options['editorial_position'], frozen['request']['material']['editorial_position'])
+            self.assertEqual('editorial-v9-editorial-first', frozen['request']['stage'])
 
     @patch.object(pipeline,'SOURCE_REVIEW_CONTRACT','passages.v1')
     def test_v6_frozen_policy_does_not_silently_enable_content_review(self):
@@ -854,6 +886,17 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(pipeline._date_quote_support('2026-09-29T14:00:00+0000','2026-09-29T14:00:00+0000'))
         self.assertFalse(pipeline._date_quote_support('2026-09-29','2026-09-29',
                                                      'publication metadata: 2026-09-29T14:00:00Z'))
+
+    def test_explicit_publication_metadata_accepts_only_unambiguous_numeric_day(self):
+        source='<meta name="publication-date" content="12-16-2025">'
+        self.assertTrue(pipeline._date_quote_support('2025-12-16',source))
+        self.assertTrue(pipeline._date_quote_support('2025-12-16',"<meta content='12-16-2025' name='publication-date'>"))
+        self.assertFalse(pipeline._date_quote_support('2025-12-16T00:00:00Z',source))
+        self.assertFalse(pipeline._date_quote_support('2025-12-16',source,'2025-12-16T14:00:00Z'))
+        for other in ('12-16-2025','<meta name="dateModified" content="12-16-2025">',
+                      '<meta name="publication-date" content="03-04-2025">',
+                      '<meta name="publication-date" content="24-16-2025">'):
+            self.assertFalse(pipeline._date_quote_support('2025-12-16',other))
 
     def test_modified_date_alone_cannot_verify_news_event(self):
         self.add_news()

@@ -71,7 +71,7 @@ class SelectionTests(unittest.TestCase):
         result = selection.record(self.root, self.review(prepared))
         self.assertEqual(80, result["total_score"])
         self.assertEqual("select", result["decision"])
-        self.assertEqual("v8.1-confirmed-hardware-uncalibrated", result["policy_version"])
+        self.assertEqual("v9-editorial-first-uncalibrated", result["policy_version"])
         self.assertEqual("unchanged", selection.record(self.root, self.review(prepared))["status"])
         ranked = selection.rank(self.root, prepared["prepare_id"])
         self.assertEqual(1, len(ranked["available"]))
@@ -130,6 +130,7 @@ class SelectionTests(unittest.TestCase):
         policy.pop('editorial_review_contract')
         policy.pop('scoring_projection')
         policy.pop('reader_context')
+        policy.pop('editorial_position')
         policy['version'] = 'v4-evidence-scope-uncalibrated'
         policy_path.write_text(json.dumps(policy), encoding='utf-8')
         prepared = self.prepare()
@@ -465,7 +466,7 @@ class SelectionTests(unittest.TestCase):
         current = selection.load_policy(self.root)
         legacy = copy.deepcopy(current)
         legacy["version"] = "v1-uncalibrated"
-        for key in ("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "editorial_review_contract", "scoring_projection", "reader_context"):
+        for key in ("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position"):
             legacy.pop(key)
         legacy["profiles"].pop("news")
         for flag in ("reader_mismatch", "insufficient_usage_evidence"):
@@ -491,6 +492,7 @@ class SelectionTests(unittest.TestCase):
             legacy.pop("editorial_review_contract")
             legacy.pop("scoring_projection")
             legacy.pop("reader_context")
+            legacy.pop("editorial_position")
             legacy.pop("usage_evidence_gaps")
             if version.startswith("v2"):
                 legacy.pop("flag_basis")
@@ -560,6 +562,7 @@ class SelectionTests(unittest.TestCase):
         legacy.pop("editorial_review_contract")
         legacy.pop("scoring_projection")
         legacy.pop("reader_context")
+        legacy.pop("editorial_position")
         legacy["version"] = "v5-scoped-source-uncalibrated"
         path.write_text(json.dumps(legacy), encoding="utf-8")
         prepared = self.prepare()
@@ -571,6 +574,7 @@ class SelectionTests(unittest.TestCase):
         self.assertNotIn("editorial_review_contract", replay["policy"])
         self.assertNotIn("scoring_projection", replay["policy"])
         self.assertNotIn("reader_context", replay["policy"])
+        self.assertNotIn("editorial_position", replay["policy"])
         self.assertEqual(original_input, selection.build_scoring_input(replay, replay["cards"][0]["candidate_id"]))
         self.assertEqual(original_prompt, selection.get_prompt(self.root, replay))
 
@@ -604,6 +608,82 @@ class SelectionTests(unittest.TestCase):
         self.assertNotEqual(prepared["prepare_id"], fresh["prepare_id"])
         self.assertNotEqual(selection._hash(selection.build_scoring_input(replay, card["candidate_id"])),
                             selection._hash(selection.build_scoring_input(fresh, card["candidate_id"])))
+
+    def test_editorial_position_is_frozen_and_cannot_be_supplied_by_candidate(self):
+        prepared = self.prepare()
+        card = prepared["cards"][0]
+        position = copy.deepcopy(prepared["policy"]["editorial_position"])
+        old_prompt = selection.get_prompt(self.root, prepared)
+        card["editorial_position"] = {"labels": {"fixture": "select"}}
+        card["material"]["editorial_position"] = card["editorial_position"]
+        card["human_label"] = "B"
+        projected = selection.build_scoring_input(prepared, card["candidate_id"])
+        self.assertEqual(position, projected["policy"]["editorial_position"])
+        self.assertNotIn("editorial_position", projected["card"])
+        self.assertNotIn("editorial_position", projected["card"]["material"])
+        self.assertNotIn("human_label", projected["card"])
+        projected["policy"]["editorial_position"]["priorities"].append("Copy-only change")
+        self.assertEqual(position, prepared["policy"]["editorial_position"])
+
+        updated = selection.load_policy(self.root)
+        updated["editorial_position"]["audience"].append("Another synthetic public audience")
+        (self.root / selection.POLICY_PATH).write_text(json.dumps(updated), encoding="utf-8")
+        (self.root / selection.PROMPT_PATH).write_text("Later frozen editorial prompt", encoding="utf-8")
+        fresh = self.prepare()
+        replay = selection.load_preparation(self.root, prepared["prepare_id"])
+        self.assertEqual(position, replay["policy"]["editorial_position"])
+        self.assertEqual(old_prompt, selection.get_prompt(self.root, replay))
+        self.assertEqual(card["input_hash"], fresh["cards"][0]["input_hash"])
+        self.assertNotEqual(prepared["policy_hash"], fresh["policy_hash"])
+        self.assertNotEqual(prepared["prepare_id"], fresh["prepare_id"])
+        self.assertNotEqual(selection._hash(selection.build_scoring_input(replay, card["candidate_id"])),
+                            selection._hash(selection.build_scoring_input(fresh, card["candidate_id"])))
+
+    def test_editorial_position_rejects_unknown_labels_and_invalid_contracts(self):
+        policy = selection.load_policy(self.root)
+        position = policy["editorial_position"]
+        invalid = [None, {**position, "schema_version": "digest-editorial-position.v2"},
+                   {**position, "audience": []}, {**position, "priorities": []},
+                   {**position, "audience": "not an array"}, {**position, "audience": [""]},
+                   {**position, "priorities": [None]}, {**position, "labels": {"fixture": "select"}},
+                   {key:value for key,value in position.items() if key != "priorities"}]
+        for value in invalid:
+            bad = {**policy, "editorial_position": value}
+            with self.subTest(position=value):
+                with self.assertRaises(selection.SelectionError):
+                    selection.validate_policy(bad)
+                with self.assertRaises(selection.SelectionError):
+                    selection.build_scoring_input({"policy":bad, "cards":[], "ranking_type":"weekly"}, "fixture")
+
+    def test_editorial_position_does_not_rewrite_scores_caps_or_decision(self):
+        prepared = self.prepare()
+        policy = copy.deepcopy(prepared["policy"])
+        policy.pop("editorial_position")
+        raw = self.review(prepared)
+        assessment = {key:raw[key] for key in selection.ASSESSMENT_FIELDS}
+        assessment["flags"] = [self.cap_flag("reader_mismatch")]
+        self.assertEqual(selection._validate_assessment(policy, prepared["cards"][0], assessment),
+                         selection._validate_assessment(prepared["policy"], prepared["cards"][0], assessment))
+
+    def test_v8_snapshot_retains_original_prompt_projection_and_preparation_identity(self):
+        policy = selection.load_policy(self.root)
+        policy.pop("editorial_position")
+        policy["version"] = "v8-reader-context-uncalibrated"
+        prompt = "Frozen v8 scoring instructions without a public editorial position."
+        (self.root / selection.POLICY_PATH).write_text(json.dumps(policy), encoding="utf-8")
+        (self.root / selection.PROMPT_PATH).write_text(prompt, encoding="utf-8")
+        prepared = self.prepare()
+        card = prepared["cards"][0]
+        expected = selection.build_scoring_input(prepared, card["candidate_id"])
+        (self.root / selection.POLICY_PATH).write_bytes(self.policy.read_bytes())
+        (self.root / selection.PROMPT_PATH).write_bytes(self.prompt.read_bytes())
+        frozen = selection.prepare(self.root, "daily", "2026-10-01", evidence_context=card["evidence_context"],
+                                   policy_snapshot=policy, prompt_snapshot=prompt)
+        self.assertEqual(prepared["prepare_id"], frozen["prepare_id"])
+        self.assertNotIn("editorial_position", frozen["policy"])
+        self.assertEqual(prompt, selection.get_prompt(self.root, frozen))
+        self.assertEqual(expected, selection.build_scoring_input(frozen, card["candidate_id"]))
+        self.assertEqual(selection._hash(expected), selection._hash(selection.build_scoring_input(frozen, card["candidate_id"])))
 
     def test_reader_context_rejects_unknown_or_answer_bearing_contract_fields(self):
         good = selection.load_policy(self.root)
@@ -657,6 +737,7 @@ class SelectionTests(unittest.TestCase):
         current = selection.load_policy(self.root)
         legacy = copy.deepcopy(current)
         legacy.pop("reader_context")
+        legacy.pop("editorial_position")
         legacy["version"] = "v7-reader-value-review-uncalibrated"
         (self.root / "config/digest_selection.json").write_text(json.dumps(legacy), encoding="utf-8")
         baseline = self.prepare()

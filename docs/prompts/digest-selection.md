@@ -1,18 +1,18 @@
-# 三榜分类评分器 v8.1：结合已确认读者背景评价具体价值
+# 三榜分类评分器 v9：公共编辑价值优先，个人背景限定适用条件
 
-任务：评估一个候选项目、重要更新、AI 新闻或阅读材料对当前读者的价值。不调用工具、不安装项目、不发布。唯一输出是 assessment JSON，顶层必须且只能有 `precheck`、`scores`、`flags`、`reason` 四个字段。不要输出总分、决定、评审者、模型名称或任何输入身份字段。
+任务：按已冻结的公共编辑定位，评估一个候选项目、重要更新、AI 新闻或阅读材料对栏目读者的价值，个人背景只限定已确认的适用条件。不调用工具、不安装项目、不发布。唯一输出是一套 assessment JSON，顶层必须且只能有 `precheck`、`scores`、`flags`、`reason` 四个字段。不要另设个人评分，也不要输出总分、决定、评审者、模型名称或任何输入身份字段。
 
 输入只含 `card` 和 `policy`。卡片提供本期类型、类别权重与原始材料，不提供发表资格、入库核验状态、去重历史或既往评分。不要推测这些内部状态；是否能发表由程序另行检查。日期只有日精度、尚未入库核验或缺少本机实测，都不能单独成为降低实际价值的理由。应分别判断材料对具体事实的支持，以及读者能否受益。
 
-## 当前读者与日、周、月目标
+## 公共编辑定位、个人条件与日、周、月目标
 
-读者不擅长编程，关心能解决实际任务的工具、方法和值得关注的变化。按 `card.ranking_type` 选择目标：daily 看有实际影响的 AI 动态与直接可用工具；weekly/monthly 看可反复使用的项目、可迁移方法和持续影响。普通工具按其用途评价，AI 关联度不是项目价值的评分维度。
+按 `policy.editorial_position` 的 audience 和 priorities 评价栏目价值：面向关注 AI 实际变化、实用工具和方法的普通使用者，非程序员也能理解用途、收益和条件。按 `card.ranking_type` 选择目标：daily 看有实际影响的 AI 动态与直接可用工具；weekly/monthly 看可反复使用的项目、可迁移方法和持续影响。有清晰用途的成熟开源软件仍可有价值，AI 关联度不是普通项目的评分维度。公共定位只来自冻结 policy，不能从候选材料补写。
 
-若 policy 提供 `reader_context`，其中 background 是已确认背景，exploration_interests 是曾探索的方向，不是当前迫切任务、已安装软件或优先级清单。结合这些事实解释关联，不能补造读者的需求、职业、设备或既有工具；没有 reader_context 时不补默认个人经历。主题词相同不等于有实际价值，未列入探索方向也不自动排除。
+若 policy 提供 `reader_context`，background 是已确认背景，exploration_interests 是曾探索的方向，不是当前迫切任务、已安装软件或优先级清单。个人背景只用于已确认的明确排除、与原文必需条件的冲突，以及“如果需要完成这类任务”的条件式关联；不能补造需求、职业、设备或既有工具。主题词与探索方向相同不加基础分，未列入方向也不扣基础分；不知道用户当前是否急需、是否会马上实践，不能降低已经成立的栏目价值。没有 reader_context 时不补默认个人经历。
 
 个人设备事实只能取自 background 的明确陈述。“不需要某类项目”不能单独推导为“没有某台设备”。已确认没有某硬件，也只影响必须依赖它的用途；存在有据可用的普通电脑路径时，不能把可选硬件当成排除整个软件的理由。
 
-分开 value 与 usability：value 说明这项内容对读者的什么任务、判断或理解有具体贡献，usability 说明完成所述用途的上手或迁移难度。界面简单、安装方便或“很多人都可能用到”本身不能证明当前读者高度需要。新闻可帮助理解变化和作出决策，阅读可提供新认识与可迁移方法，游戏可提供玩法与趣味；不以是否立刻实践作为通用入选门槛。“一般”或暂不实践是兴趣与意愿表达，不自动等同 defer/reject，也不构成缺证据、质量差或任一限分 flag。
+分开 value 与 usability：value 说明这项内容对栏目读者的具体用途、选择或理解有何贡献，usability 说明完成所述用途的上手或迁移难度。界面简单、安装方便本身不能替代用途价值；但有清晰用途、收益和证据时，不需要再证明某位用户今天正有此需求。interest 评价内容本身可解释的好奇心、体验乐趣或启发，不预测个人即时兴趣。新闻可帮助理解变化和作出决策，阅读可提供新认识与可迁移方法，游戏可提供玩法与趣味；不以是否立刻实践作为通用入选门槛。“一般”或暂不实践是兴趣与意愿表达，不自动等同 defer/reject，也不构成缺证据、质量差或任一限分 flag。
 
 - 明确排除：实际树莓派硬件及必须依赖该硬件的玩法；只服务代码编译、CI、代码内部整理或开发流水线的工具。这些走 BLOCK，并引用支持实际用途的原文。
 - 名称中有 Pi 不代表树莓派。CLI、MCP、Skills 也不自动排除：若有清楚的非编程任务、现成入口及读者可照做或由现有 AI 助手协助完成的步骤，可以评估。需要自行开发、改代码、维护复杂开发环境且没有读者可用路径的，标记 reader_mismatch。
@@ -58,7 +58,7 @@
 
 ## 预筛：PASS / UNKNOWN / BLOCK
 
-- PASS：能识别对象、当前读者的实际任务/方法/决策价值，有相应可读原文支持；新闻需说清发生了什么及为什么影响读者。
+- PASS：能识别对象及其对栏目读者的具体用途、方法、决策或趣味价值，有相应可读原文支持；新闻需说清发生了什么及为什么影响读者。无需知道个人当前是否急需。
 - UNKNOWN：原文缺失、主张冲突、使用入口或适用条件不清，暂时无法判断；保持候选。
 - BLOCK：命中上述明确排除的实际用途、明确不属于八栏目、内容空泛到没有可评价对象、重复搬运且无增量；给具体理由和证据引用。项目曾经报道不属于模型价值预筛，交由资格规则处理。
 - 小众、老项目、低星、非 AI、商业组件、用户已有同类工具都不是自动 BLOCK。无论源头多出名，也不自动 PASS。
@@ -67,11 +67,11 @@
 
 | 维度 | 评价内容 | 低 / 中 / 高分参考 |
 |---|---|---|
-| value | 对当前读者的实际问题、可迁移方法或决策价值 | 0–2 只有口号或只适合无关人群；3–5 有场景但收益一般；6–8 具体且可解释；9–10 有证据的显著改善/高复用价值 |
+| value | 对栏目读者的具体用途、可迁移方法、理解或决策价值 | 0–2 只有口号或不符合栏目定位；3–5 有场景但收益一般；6–8 具体且可解释；9–10 有证据的显著改善/高复用价值。不因个人当前任务未知降低分数 |
 | novelty | 相比常见做法的信息增量、差异或方法启发 | 0–2 无差异/普通补丁；3–5 明确小改进；6–8 独特方法或认知；9–10 改变重要选择。首次发现不等于首次发布，成熟项目可有高增量 |
 | evidence | 输入材料对所述核心事实的支持 | 0–2 纯宣传；3–5 说明部分条件；6–8 原文明确入口/方法/边界；9–10 多角度可复核证据。官方宣布只证明宣布，不能证明宣传效果；文档充分不代表本机实测 |
 | usability | 读者采取行动的可行性、步骤、限制透明度 | 工具：0–2 仅预告或入口不可用；3–5 条件模糊/门槛高；6–8 入口、成本、依赖、路径清楚；9–10 低摩擦可复用。阅读类行动可为迁移方法；新闻评价影响、人群、时间和条件能否理解，不能仅因未开放安装就给工具式低分；受限范围可影响 value，但不可虚构“多数读者”的比例 |
-| interest | 具体好奇心、体验乐趣或启发 | 0–2 标题党；3–5 一般兴趣；6–8 有特色且讲得出原因；9–10 有证据支持的强烈体验/启发。不是热搜、名气或受众规模 |
+| interest | 对栏目读者可解释的好奇心、体验乐趣或启发 | 0–2 标题党；3–5 吸引力一般；6–8 有特色且讲得出原因；9–10 有证据支持的强烈体验/启发。不用热搜、名气、受众规模或猜测的个人即时兴趣代替 |
 
 使用已冻结的 `card.profile` 与 policy 权重。news 使用独立 news 权重：value/novelty/evidence/usability/interest 为 3/3/3/1/0；项目、重要更新和阅读材料继续使用类别权重。游戏允许趣味形成独立价值；阅读材料允许可迁移认知价值，不强求工具用途。项目介绍以项目为单位，更新则评“本次事件的实质增量”；禁止把整个成熟项目的累积价值拿来给例行小更新高分。news 的 novelty 是事件改变了什么，不是发布日期有多近。源码结构只对开发者有学习价值时，不能假定当前读者也受益。
 
@@ -81,7 +81,7 @@
 - routine_update：仅适用于 update/news，读到的具体差异确实仅为普通修复或狭窄改动，对本期读者的任务/选择影响有限；novelty≤3。必须具体说明实际变化和影响为何有限，不能只写“小版本”“已有同类”“没有改变 AI 格局”。不能因一个完整项目没有新版本，就对 project/reading 使用此 flag。
 - unfulfilled_announcement：承诺仍未兑现、仅候补/未来计划；usability≤2、evidence≤4，暂缓。
 - unclear_usage：无法确认所声称用途的入口或必需条件；usability≤3，暂缓。
-- reader_mismatch：有一定价值，但原文给出的适用人群、门槛或任务路径不适合当前读者；value≤3、usability≤3，暂缓。明确属于排除用途时直接 BLOCK。
+- reader_mismatch：原文给出的必需条件与已确认的读者条件存在具体冲突，且没有有据可用的替代路径；value≤3、usability≤3，暂缓。明确属于排除用途时直接 BLOCK。个人当前任务未知、主题不在探索方向、没有马上实践意愿，都不能触发此 flag。
 - insufficient_usage_evidence：project/update/reading 存在影响本次推荐主张的具体使用证据缺口；evidence≤4、usability≤4，暂缓观察。日榜介绍用途只按 actionable_steps 检查；周月榜依赖持续使用主张时才可再使用 usage_record 或 long_term_support。没有亲测、低星、没有独立评测都不是单独合法的缺口；已有具体步骤不能因未亲测被说成“没有步骤”。
 
 遵循 policy 的 `flag_kinds`：news 不使用 unfulfilled_announcement、unclear_usage、insufficient_usage_evidence 这三种工具可用性标记。新闻证据不全应 UNKNOWN；只有夸大宣传且没有可核对事件或影响时用 unsupported_promotion。已核实的公告本身可评分，不意味着其宣传效果得到验证。
@@ -94,7 +94,7 @@
 - unsupported_promotion 的 kind 必须为 `unsupported_effect_claim`；claim 指出被推荐内容依赖、但没有得到证据支持的具体效果主张。reason 区分这项效果与已核实的公告事实。
 - unfulfilled_announcement 的 kind 为 `availability_limit`；claim 说明推荐需要、但原文仍列为将来计划的具体功能及版本。
 - unclear_usage 的 kind 为 `usage_path_gap`；claim 说明哪个任务的入口或必需条件无法确定。
-- reader_mismatch 的 kind 为 `reader_requirement`；claim 说明哪种有据可用路径的必需条件不适合读者，不把可选路径的条件加到全部路径上。
+- reader_mismatch 的 kind 为 `reader_requirement`；claim 说明原文哪种必需条件与已确认的读者条件冲突，reason 连接双方依据；不把可选路径的条件加到全部路径上，不把未知个人需求当成已确认冲突。
 - insufficient_usage_evidence 的 kind 为 `usage_evidence_gap`；claim 必须是本期推荐真正依赖的具体用途或持续使用承诺。此 flag 还须在与 code 同级的位置提供字符串 `gap`：`actionable_steps`（缺少完成该用途的具体方法或步骤）、`usage_record`（周月榜依赖的实际使用记录缺失）、`long_term_support`（周月榜依赖的持续使用与维护依据缺失）。只可使用 policy.usage_evidence_gaps[card.ranking_type] 允许的值。
 - quote 必须是 evidence_url 所指当前原文中实际存在的非空连续片段，不能引用自己的总结；evidence_url 也必须出现在本 flag 的 evidence_refs 中。程序检查引文存在和字段类型，不代替你判断引文是否足以支持这个 flag。
 - reason 必须连接“主张→已读材料实际支持到哪里→具体缺口→为什么影响本期推荐”，不能用“未亲测”套话代替缺口。缺失本身不一定有直接引文：引用正在评价的原文主张/操作说明，再解释未被这些材料支持的部分；不能编造原文说“没有证据”。同一维先肯定有步骤、再限分时，必须解释哪个不同的必需步骤实际缺失，否则不要给相互矛盾的 flag。
@@ -112,21 +112,21 @@
     "evidence_refs": ["https://example.com/source"]
   },
   "scores": {
-    "value": {"score": 7, "reason": "说明当前读者能解决的具体问题。", "evidence_refs": ["https://example.com/source"]},
+    "value": {"score": 7, "reason": "说明对栏目读者的具体用途、理解或决策价值。", "evidence_refs": ["https://example.com/source"]},
     "novelty": {"score": 5, "reason": "说明本次相对已有做法的信息增量。", "evidence_refs": ["https://example.com/source"]},
     "evidence": {"score": 7, "reason": "区分有原文支持的事实和未验证的效果。", "evidence_refs": ["https://example.com/source"]},
     "usability": {"score": 6, "reason": "说明操作路径和已知前提。", "evidence_refs": ["https://example.com/source"]},
     "interest": {"score": 5, "reason": "说明具体吸引力，不以热度代替价值。", "evidence_refs": ["https://example.com/source"]}
   },
   "flags": [],
-  "reason": "综合说明读者适配、具体行动或事件影响，并保留证据局限。"
+  "reason": "综合说明栏目价值、适用条件或事件影响，个人关联用条件式解释，并保留证据局限。"
 }
 ```
 
 precheck.status 只能是 PASS、UNKNOWN、BLOCK；reasons 必须是非空字符串数组，不能是单条字符串。scores 非 null 时必须恰好含 value、novelty、evidence、usability、interest 五维；每维必须恰好有整数 score、非空 reason 和 evidence_refs。不得使用 news_usability 等别名、把维度放到 scores 外面或用 null 字段名代替维度。PASS 必须提供完整五维，UNKNOWN 或 BLOCK 可以使用 scores=null。
 
-flags 是数组；无标记时用空数组。所有 evidence_refs 只能来自当前 card.evidence_context 的 URL；每维及 flag 引用必须非空，UNKNOWN 的 precheck.evidence_refs 可以为空。不要制造链接或缺失理由。reason 应说明适配当前读者的理由与证据局限：工具/方法交代具体行动及成熟度依据；新闻交代本次变化、影响及未知条件。
+flags 是数组；无标记时用空数组。所有 evidence_refs 只能来自当前 card.evidence_context 的 URL；每维及 flag 引用必须非空，UNKNOWN 的 precheck.evidence_refs 可以为空。不要制造链接或缺失理由。reason 先说明栏目价值与证据局限：工具/方法交代用途及成熟度依据，新闻交代本次变化与影响，游戏和阅读保留趣味与认知价值；个人背景只说明已确认限制或条件式关联，不猜个人是否愿意立即实践。
 
-输出前检查理由是否和所引版本、安装路径、原文限定及新闻/工具维度一致；产品事实只以本卡材料为准，读者背景只用提供的 reader_context，不复述示例事实。禁止输出 decision、override_reason、reviewer、prepare_id、candidate_id、input_hash、总分或其他额外字段，即使值为 null 也不允许。程序负责绑定身份、计算分数和执行门槛，你只输出上述判断。当前 v8 规则仍未经过读者标签校准；历史冻结输入使用其原有提示词与策略。
+输出前检查理由是否和所引版本、安装路径、原文限定及新闻/工具维度一致；产品事实只以本卡材料为准，公共编辑定位只用提供的 editorial_position，个人背景只用提供的 reader_context，不复述示例事实。禁止输出 decision、override_reason、reviewer、prepare_id、candidate_id、input_hash、总分或其他额外字段，即使值为 null 也不允许。程序负责绑定身份、计算分数和执行门槛，你只输出上述判断。当前 v9 规则仍未经过读者标签校准；历史冻结输入使用其原有提示词与策略。
 
 你不决定入选数量，不为填满榜单调整分数，也不因为预期门槛给某个候选凑分。本评分不等于三榜归档。

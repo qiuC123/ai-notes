@@ -1,9 +1,22 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v8.1-confirmed-hardware-uncalibrated",
+  "version": "v9-editorial-first-uncalibrated",
   "assessment_contract": "scoped-source.v1",
   "editorial_review_contract": "source-score.v1",
   "scoring_projection": "source-refs.v1",
+  "editorial_position": {
+    "schema_version": "digest-editorial-position.v1",
+    "audience": [
+      "关注 AI 实际变化、实用工具和方法的普通使用者。",
+      "非程序员也能理解用途、收益与使用条件。"
+    ],
+    "priorities": [
+      "按栏目读者的具体用途、选择、理解和趣味价值精选，不以个人当前急需或马上实践为通用门槛。",
+      "有清晰用途的成熟开源软件仍有价值，非 AI 项目不因缺少 AI 关联扣分。",
+      "新闻可提供认知和决策价值，阅读可提供理解与可迁移方法，游戏保留体验与趣味价值。",
+      "个人背景只用于已确认的明确排除、必需条件冲突及条件式关联，不因未知个人当前任务降低公共价值判断。"
+    ]
+  },
   "reader_context": {
     "schema_version": "digest-reader-context.v1",
     "background": [
@@ -18,7 +31,7 @@
       "信息收集、筛选，以及日榜、周榜、月榜汇总。"
     ]
   },
-  "calibration_status": "Uncalibrated reader-context policy. Confirmed background and exploratory interests are frozen input, not urgent tasks or sample labels. Weights, caps and thresholds unchanged; frozen older inputs retain their rules. Context and schema validity do not prove semantic correctness or calibrated selection quality.",
+  "calibration_status": "Uncalibrated editorial-first policy. Public column value is assessed before confirmed personal constraints and conditional relevance; unknown current needs do not lower baseline value. Weights, caps and thresholds unchanged; frozen older inputs retain their rules. Shape validity does not prove semantic correctness or calibrated selection quality.",
   "dimensions": ["value", "novelty", "evidence", "usability", "interest"],
   "profiles": {
     "practical": {"value": 4, "novelty": 1, "evidence": 1, "usability": 3, "interest": 1},

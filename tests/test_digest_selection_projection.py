@@ -99,6 +99,7 @@ class SourceReferenceProjectionTests(unittest.TestCase):
         legacy = copy.deepcopy(self.prepared)
         legacy["policy"].pop("scoring_projection")
         legacy["policy"].pop("reader_context")
+        legacy["policy"].pop("editorial_position")
         # Frozen legacy projection contract, including the exact policy whitelist.
         policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles",
                          "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract")
@@ -121,6 +122,35 @@ class SourceReferenceProjectionTests(unittest.TestCase):
                 self.assertEqual(expected, result)
                 self.assertEqual(selection._json(expected), selection._json(result))
                 self.assertEqual(selection._hash(expected), selection._hash(result))
+
+    def test_absent_editorial_position_keeps_v8_projection_and_serialized_hash(self):
+        legacy = copy.deepcopy(self.prepared)
+        legacy["policy"].pop("editorial_position")
+        legacy["policy"]["version"] = "v8-reader-context-uncalibrated"
+        # Preserve the v8 whitelist explicitly: the new contract cannot silently
+        # enter a frozen v8 card through current configuration or candidate data.
+        policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles",
+                         "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract",
+                         "scoring_projection", "reader_context")
+        claims = copy.deepcopy(self.claims)
+        for claim in claims:
+            quote = claim.pop("quote")
+            index = next(i for i,c in enumerate(self.contexts) if c["url"] == claim["evidence_url"])
+            start = self.contexts[index]["text"].index(quote)
+            claim["source_span"] = {"context_index":index, "start":start, "end":start + len(quote)}
+        expected = {
+            "card": {"ranking_type":"weekly", "profile":"practical",
+                     "material":{k:v for k,v in self.card["material"].items() if k not in ("reason", "event")},
+                     "evidence_context":[{"url":c["url"], "text":c["text"]} for c in self.contexts],
+                     "evaluation_target":{"kind":"project", "unit":"whole_project"}, "source_claims":claims},
+            "policy":{k:legacy["policy"][k] for k in policy_fields if k in legacy["policy"]},
+        }
+        legacy["cards"][0]["editorial_position"] = {"labels":["B"]}
+        legacy["cards"][0]["material"]["editorial_position"] = legacy["cards"][0]["editorial_position"]
+        actual = self.projected(legacy)
+        self.assertEqual(expected, actual)
+        self.assertEqual(selection._json(expected), selection._json(actual))
+        self.assertEqual(selection._hash(expected), selection._hash(actual))
 
     def test_missing_quotes_or_unknown_contract_fail_without_fallback(self):
         for marker in (None, "source-refs.v2", {}):

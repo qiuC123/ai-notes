@@ -35,6 +35,11 @@ Equipment ownership must come from an explicit statement in reader_context.backg
 For every installation or use channel actually named in the facts or assessment, compare its stated cost with the supplied passages. Omitting a documented paid condition while describing that channel as part of a free product introduction is a material usage-condition error. A free alternative with the same features does not make another named route free. Do not demand a catalogue of unrelated paid alternatives when only a supported free route is described, and do not invent missing prices.
 Preserve the object of an operation: deploying a user workflow to an existing runtime is not installing or deploying that runtime. Compare the actual source wording before accepting claims such as one-click setup or deployment.'''
 
+EDITORIAL_POSITION_REVIEW_PROMPT = READER_CONTEXT_REVIEW_PROMPT + '''
+When editorial_position is present, it defines the publication audience and selection priorities. In the preceding instructions, concrete reader value means value to that audience first, not a proven urgent task of an individual. Explanations must identify a useful task, meaningful choice, understanding, transferable method or play value supported by the supplied material. Being easy to install alone does not prove that value.
+Use reader_context only for explicitly confirmed exclusions or mandatory-condition conflicts and conditional personal explanations. Do not require a known current individual need, an exploration-topic match or immediate practice to recognise public value. Exploration interests do not add or subtract base value or interest scores. News may change understanding or choices without installation; reading and games may offer learning or play without immediate action. A reader_mismatch flag must connect a source-supported mandatory condition with an explicitly confirmed constraint; unknown personal interest is not such a conflict.
+Review semantic consistency and source support, not whether you agree with the numerical score or predict human taste. Do not manufacture a defect merely because an item is outside the listed personal interests.'''
+
 
 def _object(properties):
     return {'type': 'object', 'properties': properties, 'required': list(properties),
@@ -82,7 +87,7 @@ def _project(value, fields):
     return {field: copy.deepcopy(value[field]) for field in fields if field in value}
 
 
-def build_review_input(*, record, facts, assessment, contexts, ranking_type, reader_context=None):
+def build_review_input(*, record, facts, assessment, contexts, ranking_type, reader_context=None, editorial_position=None):
     """Project current prose and score reasoning, never ledger history/labels.
 
     Source text occurs once as passages rather than also duplicating long legacy
@@ -121,4 +126,8 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type, rea
         from .digest_selection import _check_reader_context
         _check_reader_context({'reader_context': reader_context})
         result['reader_context'] = copy.deepcopy(reader_context)
+    if editorial_position is not None:
+        from .digest_selection import _check_editorial_position
+        _check_editorial_position({'editorial_position': editorial_position})
+        result['editorial_position'] = copy.deepcopy(editorial_position)
     return result

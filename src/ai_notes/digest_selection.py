@@ -24,6 +24,7 @@ ASSESSMENT_FIELDS = ("precheck", "scores", "flags", "reason")
 SCOPED_CONTRACT = "scoped-source.v1"
 SOURCE_REFS_PROJECTION = "source-refs.v1"
 READER_CONTEXT_CONTRACT = "digest-reader-context.v1"
+EDITORIAL_POSITION_CONTRACT = "digest-editorial-position.v1"
 FLAG_BASIS_KINDS = {
     "routine_update": "limited_increment", "unsupported_promotion": "unsupported_effect_claim",
     "unfulfilled_announcement": "availability_limit", "unclear_usage": "usage_path_gap",
@@ -89,13 +90,14 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
 def validate_policy(policy: dict) -> dict:
     """Validate an in-memory policy and return an independent, unmodified copy."""
     policy = copy.deepcopy(policy)
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position"))
     if "assessment_contract" in policy and policy["assessment_contract"] != SCOPED_CONTRACT:
         raise SelectionError("unsupported assessment contract")
     if "editorial_review_contract" in policy and policy["editorial_review_contract"] != "source-score.v1":
         raise SelectionError("unsupported editorial review contract")
     _check_scoring_projection(policy)
     _check_reader_context(policy)
+    _check_editorial_position(policy)
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -230,6 +232,17 @@ def _check_reader_context(policy: dict) -> None:
         _strings(context[key], "reader_context." + key, nonempty=False)
 
 
+def _check_editorial_position(policy: dict) -> None:
+    """Validate explicit public editorial priorities without upgrading old policies."""
+    if "editorial_position" not in policy:
+        return
+    position = _object(policy["editorial_position"], ("schema_version", "audience", "priorities"), "editorial_position")
+    if position["schema_version"] != EDITORIAL_POSITION_CONTRACT:
+        raise SelectionError("unsupported editorial position contract")
+    for key in ("audience", "priorities"):
+        _strings(position[key], "editorial_position." + key)
+
+
 def _source_claim_refs(claims: list, contexts: list) -> list:
     """Replace repeated quotations with reversible positions, leaving originals intact.
 
@@ -262,6 +275,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     """
     _check_scoring_projection(prepared["policy"])
     _check_reader_context(prepared["policy"])
+    _check_editorial_position(prepared["policy"])
     card = _card(prepared, candidate_id)
     fields = ("url", "title", "category", "kind", "summary", "source_urls", "evidence_urls", "published_at", "change_note")
     material = {key: copy.deepcopy(card["material"][key]) for key in fields if key in card["material"]}
@@ -269,7 +283,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     if event:
         material["event"] = {key: copy.deepcopy(event[key]) for key in
                              ("url", "occurred_at", "occurred_on", "date_precision", "timezone", "type") if key in event}
-    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context")
+    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position")
     result = {
         "card": {"ranking_type": card.get("ranking_type", prepared["ranking_type"]), "profile": card["profile"],
                  "material": material,
