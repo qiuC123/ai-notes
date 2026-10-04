@@ -1,6 +1,6 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v8-reader-context-uncalibrated",
+  "version": "v8.1-confirmed-hardware-uncalibrated",
   "assessment_contract": "scoped-source.v1",
   "editorial_review_contract": "source-score.v1",
   "scoring_projection": "source-refs.v1",
@@ -9,7 +9,8 @@
     "background": [
       "用户自述不太会代码，需要用通俗语言理解用途。",
       "偏好实用开源项目，也关注 AI 动态与开发机会。",
-      "重视清楚的使用条件与可操作路径。"
+      "重视清楚的使用条件与可操作路径。",
+      "用户在 2026-10-05 明确确认没有树莓派硬件，也不需要树莓派专用项目；支持普通电脑的工具不因此排除。"
     ],
     "exploration_interests": [
       "视频录屏、语音转文字与字幕提取。",
