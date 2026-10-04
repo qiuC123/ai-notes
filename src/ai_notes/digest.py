@@ -202,16 +202,56 @@ def _now() -> datetime:
 
 
 def _event(value: Any, kind: str, observed: datetime) -> dict:
-    _object(value, ("id", "url", "occurred_at", "type"), "event")
+    _object(value, ("id", "url", "type"), "event")
     _text(value["id"], "event.id")
     _url(value["url"], "event.url")
-    occurred = _timestamp(value["occurred_at"], "event.occurred_at")
-    if occurred > observed:
+    if ("occurred_at" in value) == ("occurred_on" in value):
+        raise DigestError("event requires exactly one of occurred_at or occurred_on")
+    if "occurred_on" in value:
+        if kind != "news" or value.get("date_precision") != "date" or value.get("timezone") != "unknown":
+            raise DigestError("date-only events require news, date_precision=date, and timezone=unknown")
+    elif "date_precision" in value or "timezone" in value:
+        raise DigestError("timestamp events cannot also declare date-only precision or timezone")
+    earliest, _ = _event_bounds(value)
+    if earliest > observed:
         raise DigestError("event cannot occur after its observation")
     allowed = ("news",) if kind == "news" else ("update",) if kind == "update" else ("release", "update")
     if value["type"] not in allowed:
         raise DigestError("event.type must match its kind: news requires news; update requires update; other kinds require release or update")
     return value
+
+
+def _event_bounds(event: dict) -> tuple[datetime, datetime]:
+    """Conservative closed UTC interval, never an invented event timestamp.
+
+    An unknown source timezone spans civil UTC-12 through UTC+14. A source
+    calendar date can therefore touch three Beijing dates. These bounds are
+    only for containment/order checks and are never persisted as occurred_at.
+    """
+    if "occurred_at" in event:
+        moment = _timestamp(event["occurred_at"], "event.occurred_at").astimezone(timezone.utc)
+        return moment, moment
+    day = _date(event.get("occurred_on"), "event.occurred_on")
+    try:
+        midnight = datetime.combine(day, datetime.min.time(), timezone.utc)
+        return midnight - timedelta(hours=14), midnight + timedelta(days=1, hours=12) - timedelta(microseconds=1)
+    except OverflowError as exc:
+        raise DigestError("event date is outside the supported uncertainty range") from exc
+
+
+def _event_time_key(event: dict) -> tuple[str, ...]:
+    """Serializable precision-aware identity; use bounds, not this key, to sort."""
+    if "occurred_at" in event:
+        return ("timestamp", _timestamp(event["occurred_at"], "event.occurred_at").astimezone(timezone.utc).isoformat())
+    return ("date", _date(event.get("occurred_on"), "event.occurred_on").isoformat(),
+            event.get("date_precision"), event.get("timezone"))
+
+
+def _event_in_period(event: dict, start: date, end: date) -> bool:
+    earliest, latest = _event_bounds(event)
+    period_start = datetime.combine(start, datetime.min.time(), BEIJING)
+    period_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), BEIJING)
+    return period_start <= earliest and latest < period_end
 
 
 def _event_url(value: str) -> str:
@@ -425,15 +465,15 @@ def _eligible(record: dict, first_discovered: str, start: date, end: date) -> bo
         return record["evidence_status"] == "discovered"
     # News belongs to the event's actual natural period, not a later discovery
     # or re-verification date. Undated discoveries can still reach source review.
-    if record["kind"] == "news" and event and not start <= _timestamp(event["occurred_at"], "event.occurred_at").astimezone(BEIJING).date() <= end:
+    if record["kind"] == "news" and event and not _event_in_period(event, start, end):
         return False
-    if event and _timestamp(event["occurred_at"], "event.occurred_at").astimezone(BEIJING).date() > end:
+    if event and _event_bounds(event)[0].astimezone(BEIJING).date() > end:
         return False
     if _timestamp(first_discovered, "discovered_at").astimezone(BEIJING).date() <= end:
         return True
     # Q12 late backfill requires a real event in the original period and an
     # original event URL among the evidence, with actual collection unchanged.
-    return bool(event and start <= _timestamp(event["occurred_at"], "event.occurred_at").astimezone(BEIJING).date() <= end
+    return bool(event and _event_in_period(event, start, end)
                 and _event_url(event["url"]) in {_event_url(url) for url in record["evidence_urls"]})
 
 
@@ -483,8 +523,9 @@ def _dedup_error(item: dict, prior: list[dict], reported_event_urls: set[str] | 
         if earlier and (earlier["id"] == event["id"] or _event_url(earlier["url"]) == _event_url(event["url"])):
             return "same event already reported in same-level history (wording and event IDs cannot bypass its URL)"
         # A project introduction already covers what was verified at that time.
-        boundary = earlier.get("occurred_at") if earlier else previous.get("verified_at")
-        if boundary and _timestamp(event["occurred_at"], "event.occurred_at") <= _timestamp(boundary, "previous event/verification"):
+        boundary = _event_bounds(earlier)[1] if earlier else (
+            _timestamp(previous["verified_at"], "previous verification") if previous.get("verified_at") else None)
+        if boundary and _event_bounds(event)[0] <= boundary:
             return "important update must be newer than all previously reported events or baseline verifications"
         if not earlier:
             old_evidence = {_event_url(url) for url in previous.get("evidence_urls", [])}
@@ -526,7 +567,7 @@ def _candidate_events(records: list[dict], prior: list[dict], *, deduplicate: bo
     # This chooses a representative event, not a project's editorial score.
     events.sort(key=lambda record: (
         {"available": 2, "needs_evidence": 1, "blocked": 0}[record["selection_status"]],
-        _timestamp(record.get("event", {}).get("occurred_at") or record["discovered_at"], "event time"),
+        _event_bounds(record["event"])[0] if record.get("event") else _timestamp(record["discovered_at"], "event time"),
         _timestamp(record["last_verified_at"] or record["collected_at"], "observation time")), reverse=True)
     return events
 
@@ -730,7 +771,7 @@ def _prepare(connection: sqlite3.Connection | None, issue: dict, *, final: bool 
             matching = [record for record in matching if record.get("event") and
                         record["event"]["id"] == item["event"]["id"] and
                         _event_url(record["event"]["url"]) == _event_url(item["event"]["url"]) and
-                        _timestamp(record["event"]["occurred_at"], "event.occurred_at") == _timestamp(item["event"]["occurred_at"], "event.occurred_at")]
+                        _event_time_key(record["event"]) == _event_time_key(item["event"])]
         else:
             matching = [record for record in matching if not record.get("event")]
         selected_evidence = {_event_url(url) for url in item["evidence_urls"]}
@@ -739,7 +780,7 @@ def _prepare(connection: sqlite3.Connection | None, issue: dict, *, final: bool 
             raise DigestError("item has no verified observation matching kind/event/time/level/evidence: " + identity)
         matching = [record for record in matching if _eligible(record, first, start, end)]
         if not matching:
-            raise DigestError("candidate belongs to a later period; Q12 forbids backdating a new discovery: " + identity)
+            raise DigestError("candidate does not belong wholly to this period; Q12 forbids backdating or uncertain date boundaries: " + identity)
         prior = _selection_history(connection, identity, issue["ranking_type"])
         problem = _dedup_error(item, prior, reported_event_urls)
         if problem:
@@ -791,7 +832,9 @@ def _render(document: dict, *, draft: bool) -> str:
             if item["kind"] == "reading":
                 lines += [f"作者／受访者：{item['author']}；原文日期：{item['original_date']}。", ""]
             if item["kind"] == "news":
-                lines += [f"新闻事件日期：{day(item['event']['occurred_at'])}。", ""]
+                event_date = (item["event"]["occurred_on"] + "（原文仅日期，时区未知；未确认具体时刻）"
+                              if "occurred_on" in item["event"] else day(item["event"]["occurred_at"]))
+                lines += [f"新闻事件日期：{event_date}。", ""]
             published = item.get("published_at") or "未确认"
             if "T" in published:
                 published = day(published)

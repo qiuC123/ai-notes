@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from html.parser import HTMLParser
 import json
 from pathlib import Path
+import re
 import sqlite3
 from urllib.parse import urlsplit
 
@@ -33,17 +34,51 @@ class _Text(HTMLParser):
         super().__init__()
         self.parts = []
         self.hidden = 0
+        self.ld_parts = None
+        self.modified_time_depth = 0
     def handle_starttag(self, tag, attrs):
-        if tag in ('script', 'style'): self.hidden += 1
-        if self.hidden: return
         attributes = dict(attrs)
+        if self.modified_time_depth:
+            if tag == 'time': self.modified_time_depth += 1
+            return
+        if tag == 'time' and any(value.rsplit('/', 1)[-1].lower() == 'datemodified'
+                                 for value in attributes.get('itemprop', '').split()):
+            self.modified_time_depth = 1
+            return
+        if tag in ('script', 'style'):
+            if tag == 'script' and dict(attrs).get('type', '').lower() == 'application/ld+json':
+                self.ld_parts = []
+            self.hidden += 1
+        if self.hidden: return
         if tag == 'time' and attributes.get('datetime'):
             self.parts.append('time datetime: ' + attributes['datetime'])
-        if tag == 'meta' and (attributes.get('property') or attributes.get('name')) in ('article:published_time', 'datePublished') and attributes.get('content'):
+        if tag == 'meta' and (attributes.get('property') or attributes.get('name')) in ('article:published_time', 'datePublished', 'published_time') and attributes.get('content'):
             self.parts.append('publication metadata: ' + attributes['content'])
     def handle_endtag(self, tag):
+        if self.modified_time_depth:
+            if tag == 'time': self.modified_time_depth -= 1
+            return
+        if tag == 'script' and self.ld_parts is not None:
+            try:
+                nodes = json.loads(''.join(self.ld_parts))
+                pending = nodes if isinstance(nodes, list) else [nodes]
+                while pending:
+                    node = pending.pop()
+                    if not isinstance(node, dict): continue
+                    if isinstance(node.get('@graph'), list): pending.extend(node['@graph'])
+                    types = node.get('@type', [])
+                    if isinstance(types, str): types = [types]
+                    if isinstance(types, list) and any(t in ('Article', 'NewsArticle', 'BlogPosting', 'TechArticle') for t in types):
+                        date = node.get('datePublished')
+                        if isinstance(date, str): self.parts.append('article datePublished: ' + date)
+            except (ValueError, TypeError, RecursionError):
+                pass  # Invalid structured metadata is not invented publication evidence.
+            self.ld_parts = None
         if tag in ('script', 'style'): self.hidden = max(0, self.hidden-1)
     def handle_data(self, data):
+        if self.modified_time_depth: return
+        if self.ld_parts is not None and sum(map(len, self.ld_parts)) < 200000:
+            self.ld_parts.append(data[:200000])
         if not self.hidden: self.parts.append(data)
 
 
@@ -106,7 +141,7 @@ def _bounded_triage(cards):
         for key in ('title','summary','reason','change_note'):
             value[key]=str(card.get(key) or '')
         if card.get('event'):
-            value['event_date']=card['event']['occurred_at']
+            value['event_date']=card['event'].get('occurred_at') or card['event']['occurred_on']
         compact.append(value)
     ceiling=500
     while len(runtime._json({'cards':compact}))>50000:
@@ -171,11 +206,44 @@ Provide claims for summary and usage_conditions. evidence_urls may only cite sup
 For project/update in open-source project/Skills/framework/MCP/model columns, open_source_status must be 'confirmed' and claims must also contain field='license' citing readable license terms; lacking license evidence means qualified=false, not an invented license. This licence gate does not apply to news about a model, product or industry event.
 For AI applications and games closed source is allowed but explicitly state known terms/unknowns in usage_conditions; open_source_status can be 'closed' or 'unknown'.
 For reading also include author and original_date (YYYY-MM-DD), with claims for each supported by original text. Unknown original date/author means qualified=false. Reading kind must use 博客、帖子与访谈; news about industry events may also use this category, other kinds cannot.
-For news additionally supply event_date (source-supported ISO timestamp with timezone), and a claim with field='event_date', text exactly equal to event_date and evidence_url equal to candidate.event.url or candidate.url. Do not substitute discovery/feed refresh date for event date. If the event date cannot be established from the supplied original, qualified=false. Describe what actually changed, who is affected, known availability and useful action/decision; do not require an installation, repository, licence or independent usage study to report a supported news fact. Never describe a mere announcement as a usable product. Keep open_source_status='unknown' unless actually supported.
+For news additionally supply event_date: use the original's ISO timestamp with timezone when explicitly present; if the original only states a calendar date, use YYYY-MM-DD (timezone remains unknown). Never invent midnight or infer a timezone. Provide a claim with field='event_date', text exactly equal to event_date, evidence_url equal to candidate.event.url or candidate.url, and quote containing that original publication/event date. Publication metadata and article datePublished are valid; dateModified, discovery and feed refresh dates are not substitutes. If no original date can be established, qualified=false. Describe what actually changed, who is affected, known availability and useful action/decision; do not require an installation, repository, licence or independent usage study to report a supported news fact. Separate a verified announcement or rollout from unverified claims about performance or benefits; only unsupported material claims make a promotional item unqualified. Never describe a future plan as already usable. Keep open_source_status='unknown' unless actually supported.
 For updates include a change_note claim from the actual event URL, substantiating the specific increment rather than the project's overall value.
 Do not invent releases, event dates or updates. Do not call documentation claims locally tested. Mention unknown platform, costs or dependencies honestly rather than infer them.
 detail is a short weekly explanation adding context, not a duplicate of summary. retention_reason re-evaluates enduring monthly value. For news these explain significance, not untested tool quality.
 No markdown fences or extra keys. Do not report yourself performing installation, benchmarks, local tests or using the product.'''
+
+
+def _news_event(record, event_date):
+    original = record.get('event', {}).get('url') or record['url']
+    event = {'id': record.get('event', {}).get('id') or digest._event_url(original),
+             'url': original, 'type': 'news'}
+    if re.fullmatch(r'\d{4}-\d{2}-\d{2}', event_date):
+        event.update(occurred_on=event_date, date_precision='date', timezone='unknown')
+    else:
+        event['occurred_at'] = event_date
+    return digest._event(event, 'news', digest._now())
+
+
+_SOURCE_TIMESTAMPS = re.compile(r'\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)(?![\d:])')
+
+
+def _date_quote_support(event_date, quote, original=None):
+    """Check precision from the quoted date, never promote a day to midnight."""
+    stamps = _SOURCE_TIMESTAMPS.findall(quote)
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', event_date):
+        expected = digest._timestamp(event_date, 'event_date')
+        return any(digest._timestamp(value.upper(), 'quoted date') == expected for value in stamps)
+    if stamps or (original and any(value[:10] == event_date for value in _SOURCE_TIMESTAMPS.findall(original))):
+        return False  # Do not erase a known time and timezone.
+    dates = re.findall(r'\b\d{4}-\d{2}-\d{2}\b', quote)
+    months = {name.lower(): i for i, name in enumerate(
+        ('January','February','March','April','May','June','July','August','September','October','November','December'), 1)}
+    pattern = r'\b(' + '|'.join(months) + r')\s+(\d{1,2}),?\s+(\d{4})\b'
+    for month, day, year in re.findall(pattern, quote, re.IGNORECASE):
+        dates.append(f'{int(year):04}-{months[month.lower()]:02}-{int(day):02}')
+    for year, month, day in re.findall(r'(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日', quote):
+        dates.append(f'{int(year):04}-{int(month):02}-{int(day):02}')
+    return event_date in dates
 
 
 def _facts(output, contexts, record):
@@ -215,12 +283,12 @@ def _facts(output, contexts, record):
         digest._date(facts['original_date'],'original_date')
         if not {'author','original_date'} <= fields: raise runtime.RuntimeError('reading author/date lack original evidence')
     if record['kind']=='news':
-        occurred = digest._timestamp(facts['event_date'], 'event_date')
-        if occurred > digest._now(): raise runtime.RuntimeError('news event cannot be in the future')
+        event = _news_event(record, facts['event_date'])
         original = record.get('event', {}).get('url') or record['url']
-        if not any(c['field']=='event_date' and c['text']==facts['event_date'] and c['evidence_url']==original for c in claims):
+        if not any(c['field']=='event_date' and c['text']==facts['event_date'] and c['evidence_url']==original
+                   and _date_quote_support(facts['event_date'], c['quote'], originals[original]) for c in claims):
             raise runtime.RuntimeError('news event date lacks original evidence')
-        if record.get('event') and occurred != digest._timestamp(record['event']['occurred_at'], 'occurred_at'):
+        if record.get('event') and digest._event_time_key(event) != digest._event_time_key(record['event']):
             raise runtime.RuntimeError('news event date conflicts with recorded original event')
     return facts
 
@@ -250,7 +318,7 @@ def _review_original(root, job, owner, model, record, cid, budget):
     if not contexts:
         return _save(root,job,owner,stage,{'deferred':True,'reason':'原文读取失败','failures':failures})
     compact={key:record.get(key) for key in ('url','title','category','kind','summary','reason','event','change_note')}
-    receipt=model.request(stage='verify-facts-v2-reader-fit',system=VERIFY_PROMPT+'\n'+READER_FOCUS,
+    receipt=model.request(stage='verify-facts-v3-news-precision',system=VERIFY_PROMPT+'\n'+READER_FOCUS,
         material={'candidate':compact,'originals':contexts,'source_checks':checks,'ranking_type':job['payload']['ranking_type']},budget_key=job['job_id'],max_requests=budget)
     facts=_facts(receipt['output'],contexts,record)
     if facts is None:
@@ -264,9 +332,7 @@ def _review_original(root, job, owner, model, record, cid, budget):
                     discovered_at=record.get('first_discovered_at') or record.get('discovered_at'))
     if record.get('event'): observed['event']=copy.deepcopy(record['event'])
     if record['kind']=='news':
-        original = record.get('event', {}).get('url') or record['url']
-        observed['event']={'id': record.get('event', {}).get('id') or digest._event_url(original),
-                           'url': original, 'occurred_at': facts['event_date'], 'type':'news'}
+        observed['event']=_news_event(record, facts['event_date'])
     if record['kind']=='update':
         observed['change_note']=next(c['text'] for c in facts['claims'] if c['field']=='change_note' and c['evidence_url']==record['event']['url'])
     run_id='review-'+receipt['request_id'][:32]
@@ -314,7 +380,7 @@ def generate(root, job, owner):
         observed = result['observation']
         if observed['kind']=='news' and not digest._eligible(observed, observed['discovered_at'], start, end):
             # Keep the real observation, but an older story is not today's news.
-            exclusions.append({'candidate_id':cid, 'reason':'核实新闻事件不属于本期'})
+            exclusions.append({'candidate_id':cid, 'reason':'新闻日期无法完整归属本期（期外事件或日期精度不足）'})
             continue
         block = _history_block(root, observed, kind)
         if block:
@@ -335,11 +401,15 @@ def generate(root, job, owner):
         cid=card['candidate_id']
         if cid not in materials: continue
         runtime.renew(root,job['job_id'],owner)
-        response=model.request(stage='value-score-v1', system=selection.get_prompt(root,preparation)+'\n本调用只返回 assessment：{precheck,scores,flags,reason}。decision 和绑定字段由 Python 回填，禁止自行计算 decision。',
-            material={'prepare_id':preparation['prepare_id'],'card':card,'policy':preparation['policy'],
-                      'reviewer':{'kind':'model','name':'digest-worker','model':model.model}},
-            budget_key=job['job_id'],max_requests=budget)['output']
-        review=selection.build_review(root,preparation['prepare_id'],cid,response,{'kind':'model','name':'digest-worker','model':model.model})
+        receipt=model.request(stage='value-score-v3-news-contract', system=selection.get_prompt(root,preparation),
+            material=selection.build_scoring_input(preparation,cid),
+            budget_key=job['job_id'],max_requests=budget)
+        adapted=selection.adapt_assessment(receipt['output'],policy=preparation['policy'],card=card)
+        _save(root,job,owner,'score-response:'+cid,dict(request_id=receipt['request_id'],**adapted))
+        if adapted['status']!='accepted':
+            failures.append(cid+':评分响应无效：'+adapted['error'])
+            continue
+        review=selection.build_review(root,preparation['prepare_id'],cid,adapted['assessment'],{'kind':'model','name':'digest-worker','model':model.model})
         decision=selection.record(root,review)
         if decision['decision']=='select': selected.append((decision['total_score'],cid,materials[cid]))
     selected.sort(key=lambda value:(-value[0],value[1]))

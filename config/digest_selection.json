@@ -1,7 +1,7 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v2-reader-fit-uncalibrated",
-  "calibration_status": "Uncalibrated reader-fit policy; thresholds require human-labelled dev evidence. Frozen v1 experiments retain their original policy.",
+  "version": "v3-assessment-contract-uncalibrated",
+  "calibration_status": "Uncalibrated reader-fit policy with explicit assessment and source-backed flag contracts. Weights and thresholds unchanged; frozen v1/v2 inputs retain their original rules.",
   "dimensions": ["value", "novelty", "evidence", "usability", "interest"],
   "profiles": {
     "practical": {"value": 4, "novelty": 1, "evidence": 1, "usability": 3, "interest": 1},
@@ -35,6 +35,10 @@
     "unfulfilled_announcement": ["project", "update", "reading"],
     "unclear_usage": ["project", "update", "reading"],
     "insufficient_usage_evidence": ["project", "update", "reading"]
+  },
+  "flag_basis": {
+    "routine_update": "limited_increment",
+    "unsupported_promotion": "unsupported_effect_claim"
   },
   "defer_flags": ["unsupported_promotion", "unfulfilled_announcement", "unclear_usage", "reader_mismatch", "insufficient_usage_evidence"]
 }

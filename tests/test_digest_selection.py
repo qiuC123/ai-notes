@@ -57,7 +57,7 @@ class SelectionTests(unittest.TestCase):
         result = selection.record(self.root, self.review(prepared))
         self.assertEqual(80, result["total_score"])
         self.assertEqual("select", result["decision"])
-        self.assertEqual("v2-reader-fit-uncalibrated", result["policy_version"])
+        self.assertEqual("v3-assessment-contract-uncalibrated", result["policy_version"])
         self.assertEqual("unchanged", selection.record(self.root, self.review(prepared))["status"])
         ranked = selection.rank(self.root, prepared["prepare_id"])
         self.assertEqual(1, len(ranked["available"]))
@@ -71,6 +71,20 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual("defer", result["suggested_decision"])
         self.assertEqual(1, len(selection.rank(self.root, prepared["prepare_id"])["needs_evidence"]))
         self.assertFalse((self.root / "outputs/digest/daily/2026-10-01.md").exists())
+
+    def test_clean_model_input_cannot_bypass_full_frozen_eligibility(self):
+        prepared = self.prepare([sample(evidence_status="discovered", verified_at=None, evidence_urls=[])])
+        card = prepared["cards"][0]
+        projected = selection.build_scoring_input(prepared, card["candidate_id"])
+        self.assertNotIn("eligibility", projected["card"])
+        self.assertNotIn("evidence_status", projected["card"]["material"])
+        raw = self.review(prepared, score=10)
+        assessment = {key: raw[key] for key in selection.ASSESSMENT_FIELDS}
+        adapted = selection.adapt_assessment(assessment, policy=prepared["policy"], card=card)
+        self.assertEqual("accepted", adapted["status"])
+        review = selection.build_review(self.root, prepared["prepare_id"], card["candidate_id"], adapted["assessment"], raw["reviewer"])
+        self.assertEqual("defer", review["decision"])
+        self.assertEqual("needs_evidence", card["eligibility"]["state"])
 
     def test_missing_original_material_defers_without_inventing_scores(self):
         prepared = self.prepare(context=False)
@@ -354,6 +368,8 @@ class SelectionTests(unittest.TestCase):
         raw = self.review(prepared)
         assessment = {key: raw[key] for key in ("precheck", "scores", "flags", "reason")}
         assessment["flags"] = [dict(code="routine_update", reason="No new release does not diminish the whole project.", evidence_refs=[sample()["url"]])]
+        assessment["flags"][0]["basis"] = dict(kind="limited_increment", claim="Synthetic narrow update",
+            quote="The documented workflow imports local files and exports a searchable index.", evidence_url=sample()["url"])
         for kind in ("project", "reading"):
             card = copy.deepcopy(prepared["cards"][0])
             card["material"]["kind"] = kind
@@ -369,7 +385,7 @@ class SelectionTests(unittest.TestCase):
         current = selection.load_policy(self.root)
         legacy = copy.deepcopy(current)
         legacy["version"] = "v1-uncalibrated"
-        for key in ("kind_profiles", "flag_kinds"):
+        for key in ("kind_profiles", "flag_kinds", "flag_basis"):
             legacy.pop(key)
         legacy["profiles"].pop("news")
         for flag in ("reader_mismatch", "insufficient_usage_evidence"):
@@ -396,6 +412,8 @@ class SelectionTests(unittest.TestCase):
             ("flag_kinds", {"routine_update": []}),
             ("flag_kinds", {"routine_update": ["unknown"]}),
             ("flag_kinds", {"routine_update": ["update", "update"]}),
+            ("flag_basis", {"unknown": "limited_increment"}),
+            ("flag_basis", {"routine_update": "unsupported_effect_claim"}),
         ]
         for key, value in malformed:
             bad = {**good, key: value}

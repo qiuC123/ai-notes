@@ -19,6 +19,9 @@ from typing import Any
 from . import digest
 
 DIMENSIONS = ("value", "novelty", "evidence", "usability", "interest")
+ASSESSMENT_FIELDS = ("precheck", "scores", "flags", "reason")
+FLAG_BASIS_KINDS = {"routine_update": "limited_increment", "unsupported_promotion": "unsupported_effect_claim"}
+MAX_ASSESSMENT_BYTES = 65536
 DB_PATH = Path("data/weekly_digest/selection.sqlite3")
 POLICY_PATH = Path("config/digest_selection.json")
 PROMPT_PATH = Path("docs/prompts/digest-selection.md")
@@ -65,7 +68,7 @@ def _strings(value: Any, label: str, *, nonempty: bool = True) -> list:
 
 def load_policy(root: Path, policy_path: Path | None = None) -> dict:
     policy = json.loads((policy_path or root / POLICY_PATH).read_text(encoding="utf-8"))
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis"))
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -104,6 +107,11 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
         checked = _strings(kinds, "flag_kinds")
         if len(checked) != len(set(checked)) or set(checked) - set(digest.KINDS):
             raise SelectionError("flag_kinds must contain distinct known candidate kinds")
+    flag_basis = policy.get("flag_basis", {})
+    if not isinstance(flag_basis, dict) or set(flag_basis) - (set(FLAG_BASIS_KINDS) & set(policy["flag_caps"])):
+        raise SelectionError("flag_basis must map supported flags")
+    if any(basis != FLAG_BASIS_KINDS[code] for code, basis in flag_basis.items()):
+        raise SelectionError("unknown flag basis kind")
     return policy
 
 
@@ -154,6 +162,29 @@ def _card(prepared: dict, candidate_id: str) -> dict:
     if not found:
         raise SelectionError("candidate_id not present in this preparation")
     return found[0]
+
+
+def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
+    """Build model-visible material without ledger eligibility or prior decisions.
+
+    The full preparation remains unchanged and is still used by build_review.
+    Whitelists also prevent newly added ledger metadata from leaking by default.
+    This is a pure projection: no database, filesystem or network operations.
+    """
+    card = _card(prepared, candidate_id)
+    fields = ("url", "title", "category", "kind", "summary", "source_urls", "evidence_urls", "published_at", "change_note")
+    material = {key: copy.deepcopy(card["material"][key]) for key in fields if key in card["material"]}
+    event = card["material"].get("event")
+    if event:
+        material["event"] = {key: copy.deepcopy(event[key]) for key in
+                             ("url", "occurred_at", "occurred_on", "date_precision", "timezone", "type") if key in event}
+    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis")
+    return {
+        "card": {"ranking_type": card.get("ranking_type", prepared["ranking_type"]), "profile": card["profile"],
+                 "material": material,
+                 "evidence_context": [{"url": item["url"], "text": item["text"]} for item in card["evidence_context"]]},
+        "policy": {key: copy.deepcopy(prepared["policy"][key]) for key in policy_fields if key in prepared["policy"]},
+    }
 
 
 def candidate_id(record: dict) -> str:
@@ -335,7 +366,7 @@ def _calculate(policy: dict, card: dict, review: dict) -> dict:
 
 
 def _validate_assessment(policy: dict, card: dict, review: dict) -> dict:
-    _object(review, ("precheck", "scores", "flags", "reason"), "assessment")
+    _object(review, ASSESSMENT_FIELDS, "assessment")
     _json(review)
     allowed = {context["url"] for context in card["evidence_context"]}
     precheck = _object(review["precheck"], ("status", "reasons", "evidence_refs"), "precheck")
@@ -358,18 +389,58 @@ def _validate_assessment(policy: dict, card: dict, review: dict) -> dict:
         raise SelectionError("flags must be a list")
     seen_flags = set()
     for flag in review["flags"]:
-        _object(flag, ("code", "reason", "evidence_refs"), "flag")
+        _object(flag, ("code", "reason", "evidence_refs"), "flag", optional=("basis",))
         _text(flag["code"], "flag.code")
         if flag["code"] not in policy["flag_caps"] or flag["code"] in seen_flags:
             raise SelectionError("unknown or repeated flag")
+        basis_kind = policy.get("flag_basis", {}).get(flag["code"])
+        _object(flag, ("code", "reason", "evidence_refs") + (("basis",) if basis_kind else ()), "flag")
         allowed_kinds = policy.get("flag_kinds", {}).get(flag["code"])
         if allowed_kinds is not None and card["material"]["kind"] not in allowed_kinds:
             raise SelectionError("flag does not apply to candidate kind: " + flag["code"])
         seen_flags.add(flag["code"])
         _text(flag["reason"], "flag.reason")
         _refs(flag["evidence_refs"], allowed, "flag.evidence_refs")
+        if basis_kind:
+            basis = _object(flag["basis"], ("kind", "claim", "quote", "evidence_url"), "flag.basis")
+            if basis["kind"] != basis_kind:
+                raise SelectionError("flag basis kind does not match its policy")
+            for key in ("claim", "quote", "evidence_url"):
+                _text(basis[key], "flag.basis." + key)
+            if basis["evidence_url"] not in flag["evidence_refs"]:
+                raise SelectionError("flag basis must cite a flag evidence reference")
+            if not any(context["url"] == basis["evidence_url"] and basis["quote"] in context["text"]
+                       for context in card["evidence_context"]):
+                raise SelectionError("flag basis quote not found in supplied original")
     _text(review["reason"], "reason")
     return _calculate(policy, card, review)
+
+
+def adapt_assessment(output: Any, *, policy: dict, card: dict) -> dict:
+    """Audit one bounded, lossless shape conversion; never infer editorial values.
+
+    Only a nonempty precheck.reasons string may become a one-element array.
+    Metadata, wrappers, aliases, missing judgments and authority fields are
+    rejected, not silently discarded. Callers persist this result alongside the
+    provider receipt and bind accepted assessments with the full frozen card.
+    """
+    result = {"status": "rejected", "raw_output": copy.deepcopy(output), "assessment": None,
+              "transformations": [], "error": None}
+    try:
+        if len(_json(output).encode("utf-8")) > MAX_ASSESSMENT_BYTES:
+            raise SelectionError("assessment exceeds the 65536-byte limit")
+        _object(output, ASSESSMENT_FIELDS, "assessment")
+        assessment = copy.deepcopy(output)
+        precheck = _object(assessment["precheck"], ("status", "reasons", "evidence_refs"), "precheck")
+        if isinstance(precheck["reasons"], str):
+            _text(precheck["reasons"], "precheck.reasons")
+            precheck["reasons"] = [precheck["reasons"]]
+            result["transformations"].append({"path": "precheck.reasons", "operation": "wrap_nonempty_string_in_array"})
+        _validate_assessment(policy, card, assessment)
+        result.update(status="accepted", assessment=assessment)
+    except SelectionError as exc:
+        result["error"] = str(exc)
+    return result
 
 
 def build_review(root: Path, prepare_id: str, candidate_id: str, assessment: dict, reviewer: dict) -> dict:

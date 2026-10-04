@@ -28,6 +28,8 @@ class PipelineTests(unittest.TestCase):
         # A fully due period even when these tests run before the 09:00 slot.
         self.period = (self.now.date()-timedelta(days=2)).isoformat()
         self.calls=[]
+        self.score_inputs=[]
+        self.malformed_scores=False
         self.defer=False
         self.text='Organizes local files. Install with Python. MIT License.'
         self.client=httpx.Client(transport=httpx.MockTransport(self.respond))
@@ -83,10 +85,13 @@ class PipelineTests(unittest.TestCase):
                     facts['claims'].append(dict(field='event_date',text=self.news_date,evidence_url=url,quote=self.news_date))
                 output={'qualified':True,'reason':'Original documents support it','facts':facts}
         else:
+            self.score_inputs.append(material)
             url=material['card']['evidence_context'][0]['url']
             output=dict(precheck=dict(status='PASS',reasons=['Concrete workflow'],evidence_refs=[url]),
                 scores={key:dict(score=8,reason='Readable source supports this dimension',evidence_refs=[url]) for key in ('value','novelty','evidence','usability','interest')},
                 flags=[],reason='适合本地文件管理读者。')
+            if self.malformed_scores:
+                output['decision']='select'  # Model cannot decide or bind a review.
         return httpx.Response(200,json={'choices':[{'message':{'content':json.dumps(output,ensure_ascii=False)}}],'usage':{'prompt_tokens':10,'completion_tokens':10}})
 
     def run_job(self,kind='daily',period=None):
@@ -231,6 +236,132 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(7,result['result']['item_count'])
         issue=pipeline._existing(self.root,'daily',self.period)
         self.assertEqual(1,sum(item.get('event',{}).get('url')==event_url for item in issue['items']))
+
+    def test_score_input_excludes_ledger_eligibility_and_model_response_is_audited(self):
+        job,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        for value in self.score_inputs:
+            self.assertNotIn('prepare_id',value)
+            self.assertNotIn('reviewer',value)
+            self.assertNotIn('eligibility',value['card'])
+            self.assertNotIn('observation',value['card'])
+            self.assertNotIn('verification_level',value['card']['material'])
+            self.assertNotIn('evidence_status',value['card']['material'])
+        with runtime._db(self.root,write=False) as con:
+            checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        responses=[v for k,v in checkpoints.items() if k.startswith('score-response:')]
+        self.assertEqual(6,len(responses))
+        self.assertTrue(all(v['status']=='accepted' and v['request_id'] for v in responses))
+
+    def test_malformed_score_retains_raw_response_and_finishes_without_retry(self):
+        self.malformed_scores=True
+        job,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual('draft',result['result']['status'])
+        self.assertEqual(0,result['result']['item_count'])
+        self.assertEqual(6,len(result['result']['failures']))
+        self.assertEqual(13,len(self.calls))
+        with runtime._db(self.root,write=False) as con:
+            checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        responses=[v for k,v in checkpoints.items() if k.startswith('score-response:')]
+        self.assertTrue(all(v['status']=='rejected' and v['raw_output']['decision']=='select' for v in responses))
+        self.assertEqual(6,len([k for k in checkpoints if k.startswith('original:')]))
+
+    def test_score_checkpoint_crash_reuses_receipt_instead_of_resending(self):
+        original=runtime.checkpoint
+        interrupted=False
+        def crash(root,job_id,owner,stage,value):
+            nonlocal interrupted
+            original(root,job_id,owner,stage,value)
+            if stage.startswith('score-response:') and not interrupted:
+                interrupted=True
+                raise OSError('interrupted after score-response checkpoint')
+        with patch.object(runtime,'checkpoint',side_effect=crash):
+            job,result=self.run_job()
+        self.assertEqual('failed',result['status'])
+        self.assertEqual(8,len(self.calls))  # screen + 6 originals + first score
+        runtime.retry(self.root,job['job_id'])
+        result=runtime.work_once(self.root)
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual(13,len(self.calls))  # only the remaining 5 scores
+        with runtime._db(self.root,write=False) as con:
+            checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        responses=[v for k,v in checkpoints.items() if k.startswith('score-response:')]
+        self.assertEqual(6,len(responses))
+        self.assertTrue(all(v['raw_output']==v['assessment'] for v in responses))
+
+    def test_date_only_news_is_retained_but_does_not_invent_daily_time(self):
+        self.add_news()
+        self.news_date=self.period
+        self.text='Organizes local files. Install with Python. MIT License. Published '+self.news_date
+        _,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual(6,result['result']['item_count'])
+        # Verify the original date survived ingestion, with no invented midnight.
+        con=digest._connect(self.root)
+        try:
+            rows=con.execute('SELECT payload FROM observations').fetchall()
+        finally:
+            con.close()
+        news=[json.loads(r[0]) for r in rows if json.loads(r[0]).get('kind')=='news' and json.loads(r[0]).get('event')]
+        self.assertTrue(news)
+        self.assertEqual(self.period,news[-1]['event']['occurred_on'])
+        self.assertNotIn('occurred_at',news[-1]['event'])
+
+    def test_date_only_month_interior_can_be_used_without_fake_timestamp(self):
+        previous_month=(self.now.date().replace(day=1)-timedelta(days=1)).strftime('%Y-%m')
+        self.add_news()
+        self.news_date=previous_month+'-15'
+        self.text='Organizes local files. Install with Python. MIT License. Published '+self.news_date
+        job,result=self.run_job('monthly',previous_month)
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual(7,result['result']['item_count'])
+        with runtime._db(self.root,write=False) as con:
+            checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        item=next(x for x in checkpoints['issue']['items'] if x['kind']=='news')
+        self.assertEqual(self.news_date,item['event']['occurred_on'])
+        self.assertEqual('unknown',item['event']['timezone'])
+
+    def test_article_metadata_extraction_skips_modified_date_and_unrelated_jsonld(self):
+        parser=pipeline._Text()
+        parser.feed('''<meta name="published_time" content="2026-09-30T16:00:00Z">
+        <meta property="article:modified_time" content="2026-10-02T00:00:00Z">
+        <time itemprop="dateModified" datetime="2026-10-02T00:00:00Z">October 2, 2026</time>
+        <script type="application/ld+json">{"@graph":[{"@type":"Organization","datePublished":"2020-01-01"},
+        {"@type":"NewsArticle","datePublished":"2026-09-29","dateModified":"2026-10-03"}]}</script>
+        <script>secretCode()</script><p>Visible article</p>''')
+        text=' '.join(parser.parts)
+        self.assertIn('2026-09-30T16:00:00Z',text)
+        self.assertIn('2026-09-29',text)
+        self.assertIn('Visible article',text)
+        for absent in ('2026-10-02','October 2, 2026','2026-10-03','2020-01-01','secretCode'):
+            self.assertNotIn(absent,text)
+
+    def test_quoted_date_cannot_be_promoted_to_fictional_midnight(self):
+        self.assertTrue(pipeline._date_quote_support('2026-09-29','September 29, 2026'))
+        self.assertTrue(pipeline._date_quote_support('2026-09-29','2026年9月29日'))
+        self.assertFalse(pipeline._date_quote_support('2026-09-29T00:00:00Z','September 29, 2026'))
+        self.assertFalse(pipeline._date_quote_support('2026-09-29','no original date'))
+        self.assertFalse(pipeline._date_quote_support('2026-09-29','2026-09-29T14:00:00Z'))
+        self.assertTrue(pipeline._date_quote_support('2026-09-29T22:00:00+08:00','2026-09-29T14:00:00Z'))
+        self.assertTrue(pipeline._date_quote_support('2026-09-29T14:00Z','2026-09-29T14:00Z'))
+        self.assertTrue(pipeline._date_quote_support('2026-09-29T14:00:00+0000','2026-09-29T14:00:00+0000'))
+        self.assertFalse(pipeline._date_quote_support('2026-09-29','2026-09-29',
+                                                     'publication metadata: 2026-09-29T14:00:00Z'))
+
+    def test_modified_date_alone_cannot_verify_news_event(self):
+        self.add_news()
+        self.news_date=self.period
+        self.html=True
+        self.text=f'<p>Organizes local files. Install with Python. MIT License.</p><time itemprop="dateModified" datetime="{self.news_date}">{self.news_date}</time>'
+        _,result=self.run_job()
+        self.assertEqual('failed',result['status'],result)
+        con=digest._connect(self.root)
+        try:
+            records=[json.loads(row[0]) for row in con.execute('SELECT payload FROM observations')]
+        finally:
+            con.close()
+        self.assertFalse(any(r['kind']=='news' and r['evidence_status']=='verified' for r in records))
 
 
 if __name__=='__main__':

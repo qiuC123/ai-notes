@@ -1,6 +1,6 @@
 # 三榜筛选与评分：读者适配与新闻
 
-状态：已实现可审计评分流程；**权重和阈值尚未经过真实人工标注集校准，不声称选题质量已经提升**。当前配置版本 `v2-reader-fit-uncalibrated`（2026-10-04 用户确认定位后更新）；历史冻结 v1 输入和对比结果保持原样。主入口为 `python -m ai_notes.digest_selection`。
+状态：已实现可审计评分流程；**权重和阈值尚未经过真实人工标注集校准，不声称选题质量已经提升**。当前配置版本 `v3-assessment-contract-uncalibrated`（2026-10-04 试刊问题修正）；历史冻结 v1/v2 输入和对比结果保持原样。主入口为 `python -m ai_notes.digest_selection`。
 
 本轮重点是回答“为什么选、为什么暂缓、为什么淘汰”。保留 Python＋SQLite 和三榜规则，不把 AIHOT 的新闻注意力分直接当成实用项目价值分，也不按来源名气给不同门槛。
 
@@ -42,6 +42,8 @@
 `flag_kinds` 限制适用范围：routine_update 只作用于 update/news；新闻不使用 unfulfilled_announcement、unclear_usage、insufficient_usage_evidence 三种工具门槛。已核实的公告可有新闻价值，尚未兑现的效果必须写成计划。新闻看事件变化、影响与原始证据，不能套安装或开源要求。日报偏动态及易用工具，周月看持续使用和保留价值；不设置条数配比。
 
 每个 flag 都要理由及已读取材料的引用，不通过关键词匹配自动触发。初始门槛：≥65 建议入选、<45 建议淘汰，中间暂缓。**这只是待校准编辑标准，不是已测得最优阈值。**
+
+v3 保留全部权重、门槛与限分数值，收紧两类容易误用的理由：`routine_update` 必须指出原文中的有限增量，不能只因版本号或“未改变 AI 格局”触发；`unsupported_promotion` 要定位尚未支持的具体效果主张，不能以没有独立实测否定官方已经宣布的事实。两者按 `flag_basis` 分别增加 `basis={kind,claim,quote,evidence_url}`，kind 为 `limited_increment` / `unsupported_effect_claim`。程序验证引文确实在所引材料中；引文是否足以支持判断仍需模型和编辑审核，不能宣称语义已自动证明。
 
 ## 3. 评分与发表资格
 
@@ -101,9 +103,15 @@
 
 正常 scores 为五维对象，每维 `{score: 0..10, reason: 非空字符串, evidence_refs: 已读URL数组}`；flags 为 `{code,reason,evidence_refs}` 数组；decision 可 select/defer/reject。模型不得覆盖 Python 决策。人工 reviewer.kind=human、model=null，决策不一致需非空 override_reason。未知字段、bool/小数/NaN/越界分数、未读引用、错误输入哈希均拒绝。
 
+v3 的两种敏感 flag 还必须提供上述 `basis`；没有配置 `flag_basis` 的旧冻结策略继续使用其旧契约，不向历史回执追加新字段。
+
 Python 公共 API：`prepare(root, ranking_type, period, limit=30, evidence_context=None, policy_path=None, offset=0, candidate_ids=None)`；`load_preparation(root,id)`；`get_prompt(root,prepared)`；`record(root,review)`；`rank(root,id)`。provider 应用 `get_prompt` 读取被冻结提示词，不悄悄替换为最新版。准备材料是数据，不得拼入更高优先级指令。
 
-自动 provider 推荐只向模型索取 `{precheck,scores,flags,reason}`，保留原始响应回执后，调用 `build_review(root, prepare_id, candidate_id, assessment, reviewer)`。此公共 helper 严格验证判断和引用，按冻结权重与 caps 生成 decision，绑定 input_hash 和调用者的模型身份，返回完整 review，再由 `record` 落库。模型不负责求和、不回填身份、不覆盖决策；无效分项仍明确失败，不能把无效 JSON 猜成可用结果。完整 review 的人工提交兼容路径仍保留。
+自动 provider 只向模型索取 `{precheck,scores,flags,reason}`。先调用纯函数 `build_scoring_input(prepared,candidate_id)`，仅传原文、候选事实及类别规则，剥离资格状态、入库核验状态、历史评审、内部身份和发表门槛。完整卡片仍被冻结；`build_review` / `record` 继续用它检查发表资格，高分不能越过缺证据或重复历史。
+
+收到原始响应后调用 `adapt_assessment(output,policy=prepared['policy'],card=card)`，返回 `status,raw_output,assessment,transformations,error`。唯一兼容转换是将非空 `precheck.reasons` 字符串包成单元素数组；不能猜测缺失分项、重命名维度、删掉越权字段或替模型补理由。有效响应限 65536 UTF-8 字节。pipeline 保存 `score-response:<candidate_id>` 检查点及 request_id，拒绝项保留原响应和原因，继续其他候选，不自动追加付费重试。断点恢复复用相同请求回执。
+
+通过适配后调用 `build_review(root, prepare_id, candidate_id, assessment, reviewer)`，按冻结权重与 caps 生成 decision，绑定 input_hash 和真实调用模型身份，再由 `record` 落库。模型不负责求和、不回填身份、不覆盖决策。上述完整 review 是程序/人工入库契约，评分提示词不再同时要求模型返回它。
 
 ## 5. 用真实错例校准
 
