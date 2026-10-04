@@ -1,7 +1,8 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v4-evidence-scope-uncalibrated",
-  "calibration_status": "Uncalibrated reader-fit policy with source-backed cap reasons and ranking-specific evidence gaps. Weights and thresholds unchanged; frozen v1/v2/v3 inputs retain their original rules. Source quotation checks do not establish semantic entailment.",
+  "version": "v5-scoped-source-uncalibrated",
+  "assessment_contract": "scoped-source.v1",
+  "calibration_status": "Uncalibrated policy with explicit project/event scope, quoted source conditions and schema-guided JSON. Weights and thresholds unchanged; frozen older inputs retain their rules. Neither quotations nor schema guidance prove semantic correctness.",
   "dimensions": ["value", "novelty", "evidence", "usability", "interest"],
   "profiles": {
     "practical": {"value": 4, "novelty": 1, "evidence": 1, "usability": 3, "interest": 1},

@@ -61,7 +61,7 @@ class AssessmentContractTests(unittest.TestCase):
         before = copy.deepcopy(prepared)
         result = selection.build_scoring_input(prepared, "fixture")
         self.assertEqual({"card", "policy"}, set(result))
-        self.assertEqual({"ranking_type", "profile", "material", "evidence_context"}, set(result["card"]))
+        self.assertEqual({"ranking_type", "profile", "material", "evidence_context", "evaluation_target", "source_claims"}, set(result["card"]))
         encoded = json.dumps(result)
         for field in ("eligibility", "evidence_status", "verification_level", "verified_at", "input_hash", "candidate_id", "prepare_id", "issue_history", "observation", "thresholds", "defer_flags", "reviewer", "Ledger discovery reason"):
             self.assertNotIn(field, encoded)

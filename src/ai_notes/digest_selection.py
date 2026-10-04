@@ -17,9 +17,11 @@ import sys
 from typing import Any
 
 from . import digest
+from .digest_claims import validate_claims
 
 DIMENSIONS = ("value", "novelty", "evidence", "usability", "interest")
 ASSESSMENT_FIELDS = ("precheck", "scores", "flags", "reason")
+SCOPED_CONTRACT = "scoped-source.v1"
 FLAG_BASIS_KINDS = {
     "routine_update": "limited_increment", "unsupported_promotion": "unsupported_effect_claim",
     "unfulfilled_announcement": "availability_limit", "unclear_usage": "usage_path_gap",
@@ -79,7 +81,9 @@ def _strings(value: Any, label: str, *, nonempty: bool = True) -> list:
 
 def load_policy(root: Path, policy_path: Path | None = None) -> dict:
     policy = json.loads((policy_path or root / POLICY_PATH).read_text(encoding="utf-8"))
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract"))
+    if "assessment_contract" in policy and policy["assessment_contract"] != SCOPED_CONTRACT:
+        raise SelectionError("unsupported assessment contract")
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -183,6 +187,17 @@ def _card(prepared: dict, candidate_id: str) -> dict:
     return found[0]
 
 
+def evaluation_target(material: dict) -> dict:
+    """Choose the editorial unit from the candidate kind, not its latest source.
+
+    This does not prove that the upstream kind or the model's reasoning is right.
+    A release page in a project card does not turn that card into an update.
+    """
+    units = {"project": "whole_project", "update": "event_increment",
+             "news": "event_increment", "reading": "content_and_method"}
+    return {"kind": material["kind"], "unit": units[material["kind"]]}
+
+
 def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     """Build model-visible material without ledger eligibility or prior decisions.
 
@@ -197,13 +212,17 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     if event:
         material["event"] = {key: copy.deepcopy(event[key]) for key in
                              ("url", "occurred_at", "occurred_on", "date_precision", "timezone", "type") if key in event}
-    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps")
-    return {
+    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract")
+    result = {
         "card": {"ranking_type": card.get("ranking_type", prepared["ranking_type"]), "profile": card["profile"],
                  "material": material,
                  "evidence_context": [{"url": item["url"], "text": item["text"]} for item in card["evidence_context"]]},
         "policy": {key: copy.deepcopy(prepared["policy"][key]) for key in policy_fields if key in prepared["policy"]},
     }
+    if prepared["policy"].get("assessment_contract") == SCOPED_CONTRACT:
+        result["card"]["evaluation_target"] = evaluation_target(material)
+        result["card"]["source_claims"] = copy.deepcopy(card.get("source_claims", []))
+    return result
 
 
 def candidate_id(record: dict) -> str:
@@ -282,7 +301,7 @@ def _exact_candidates(root: Path, ranking_type: str, period: str, requested: lis
 
 def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
             evidence_context: list | None = None, policy_path: Path | None = None, offset: int = 0,
-            candidate_ids: list[str] | None = None) -> dict:
+            candidate_ids: list[str] | None = None, source_claims: dict | None = None) -> dict:
     """Freeze candidate input and externally retrieved source text, without scoring."""
     root = Path(root)
     digest.period_window(ranking_type, period)
@@ -299,6 +318,9 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
     policy = load_policy(root, policy_path)
     prompt = (root / PROMPT_PATH).read_text(encoding="utf-8")
     contexts = [] if evidence_context is None else evidence_context
+    claims_by_id = {} if source_claims is None else source_claims
+    if not isinstance(claims_by_id, dict) or any(not isinstance(key, str) for key in claims_by_id):
+        raise SelectionError("source_claims must map candidate IDs to quoted claim lists")
     if not isinstance(contexts, list):
         raise SelectionError("evidence_context must be a list")
     for context in contexts:
@@ -333,6 +355,12 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
                 "material": material, "evidence_context": relevant,
                 "observation": {key: record.get(key) for key in ("run_id", "collected_at", "verified_at", "first_discovered_at", "period_label")},
                 "eligibility": _eligibility(record, bool(relevant))}
+        if policy.get("assessment_contract") == SCOPED_CONTRACT:
+            card["evaluation_target"] = evaluation_target(material)
+            try:
+                card["source_claims"] = validate_claims(claims_by_id[cid], relevant) if cid in claims_by_id else []
+            except ValueError as exc:
+                raise SelectionError(str(exc)) from exc
         card["input_hash"] = _hash(card)
         cards.append(card)
     prepared = {"schema_version": "digest-selection.prepare.v1", "ranking_type": ranking_type, "period": period,
@@ -698,6 +726,7 @@ def main(argv: list[str] | None = None) -> int:
             item.add_argument("--offset", type=int, default=0)
             item.add_argument("--candidate-id", action="append", dest="candidate_ids", help="Repeat to freeze an exact verified event set; cannot combine with offset")
             item.add_argument("--context", type=Path, help="JSON array of {url,text,fetched_at} source extracts")
+            item.add_argument("--claims", type=Path, help="JSON mapping of candidate IDs to quoted source claims; never inferred for legacy input")
             item.add_argument("--policy", type=Path)
         elif command in ("record", "label"):
             item.add_argument("--input", type=Path, required=True)
@@ -709,7 +738,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "prepare":
             contexts = json.loads(args.context.read_text(encoding="utf-8")) if args.context else None
-            result = prepare(args.root, args.ranking_type, args.period, args.limit, evidence_context=contexts, policy_path=args.policy, offset=args.offset, candidate_ids=args.candidate_ids)
+            claims = json.loads(args.claims.read_text(encoding="utf-8")) if args.claims else None
+            result = prepare(args.root, args.ranking_type, args.period, args.limit, evidence_context=contexts, policy_path=args.policy, offset=args.offset, candidate_ids=args.candidate_ids, source_claims=claims)
         elif args.command in ("record", "label"):
             result = globals()[args.command](args.root, json.loads(args.input.read_text(encoding="utf-8")))
         elif args.command == "evaluate":

@@ -141,6 +141,91 @@ class RuntimeTests(unittest.TestCase):
         self.assertNotIn('DIGEST_MODEL_ENV_FILE', runtime.os.environ)
         self.assertFalse((self.root / runtime.DB_PATH).exists())
 
+    def test_prompt_schema_preserves_legacy_identity_and_has_its_own_cache(self):
+        payloads = []
+        def response(request):
+            payloads.append(json.loads(request.content))
+            return httpx.Response(200, json={'choices': [{'message': {'content': '{"ok":true}'}}]})
+        schema = {'type': 'object', 'properties': {'ok': {'type': 'boolean'}},
+                  'required': ['ok'], 'additionalProperties': False}
+        args = dict(stage='score', system='rules', material={'x': 1}, budget_key='schema-mode')
+        with httpx.Client(transport=httpx.MockTransport(response)) as client:
+            config = dict(base_url='https://model.example/v1', model='test', api_key='test-only', client=client)
+            model = runtime.ModelClient(self.root, **config)
+            old = model.request(**args)
+            old_again = model.request(**args, output_schema=None)
+            new = model.request(**args, output_schema=schema)
+            new_again = model.request(**args, output_schema=schema)
+            changed = model.request(**args, output_schema={**schema, 'description': 'revised shape guidance'})
+        self.assertEqual(runtime._hash({'endpoint': config['base_url'], 'model': config['model'],
+            'stage': 'score', 'system': 'rules', 'material': {'x': 1}, 'max_tokens': 4096,
+            'format': 'json-object.v1'}), old['request_id'])
+        self.assertTrue(old_again['reused'])
+        self.assertTrue(new_again['reused'])
+        self.assertEqual(3, len({old['request_id'], new['request_id'], changed['request_id']}))
+        self.assertEqual(3, len(payloads))
+        self.assertEqual('rules', payloads[0]['messages'][0]['content'])
+        self.assertIn(runtime._json(schema), payloads[1]['messages'][0]['content'])
+        for payload in payloads:
+            self.assertEqual({'type': 'json_object'}, payload['response_format'])
+            self.assertNotIn('tools', payload)
+            self.assertNotIn('tool_choice', payload)
+
+    def test_schema_mode_keeps_extra_output_fields_and_never_repairs_or_retries(self):
+        raw = {'scores': {'value_note': None}, 'reason': 'Preserve invalid assessment verbatim.'}
+        calls = []
+        def response(request):
+            calls.append(request)
+            return httpx.Response(200, json={'choices': [{'message': {'content': json.dumps(raw)}}],
+                                            'usage': {'prompt_tokens': 4, 'completion_tokens': 3}})
+        with httpx.Client(transport=httpx.MockTransport(response)) as client:
+            model = runtime.ModelClient(self.root, base_url='https://model.example/v1', model='test',
+                                        api_key='test-only', client=client)
+            args = dict(stage='score', system='rules', material={}, budget_key='invalid-shape',
+                        output_schema={'type': 'object', 'additionalProperties': False})
+            first = model.request(**args)
+            repeated = model.request(**args)
+        self.assertEqual(raw, first['output'])
+        self.assertEqual(raw, repeated['output'])
+        self.assertTrue(repeated['reused'])
+        self.assertEqual(1, len(calls))
+        with runtime._db(self.root, write=False) as con:
+            self.assertEqual(raw, json.loads(con.execute('SELECT output FROM requests').fetchone()[0]))
+            self.assertEqual(0, con.execute('SELECT count(*) FROM request_retries').fetchone()[0])
+
+    def test_bad_schema_and_oversize_schema_fail_locally_before_receipt_or_network(self):
+        calls = []
+        def response(request):
+            calls.append(request)
+            self.fail('invalid request must not contact provider')
+        with httpx.Client(transport=httpx.MockTransport(response)) as client:
+            model = runtime.ModelClient(self.root, base_url='https://model.example/v1', model='test',
+                                        api_key='test-only', client=client)
+            for schema in ([], {'type': 'not-json-schema-type'}, {'type': 'object', 'description': 'x' * 60000}):
+                with self.subTest(schema_type=type(schema)), self.assertRaises(runtime.RuntimeError):
+                    model.request(stage='score', system='rules', material={}, budget_key='bad-schema', output_schema=schema)
+        self.assertFalse((self.root / runtime.DB_PATH).exists())
+        self.assertEqual([], calls)
+
+    def test_schema_http_rejection_has_no_paid_fallback_or_implicit_retry(self):
+        payloads = []
+        def response(request):
+            payloads.append(json.loads(request.content))
+            return httpx.Response(400)
+        with httpx.Client(transport=httpx.MockTransport(response)) as client:
+            model = runtime.ModelClient(self.root, base_url='https://model.example/v1', model='test',
+                                        api_key='test-only', client=client)
+            args = dict(stage='score', system='rules', material={}, budget_key='rejected-schema',
+                        output_schema={'type': 'object'})
+            for _ in range(2):
+                with self.assertRaises(runtime.RuntimeError):
+                    model.request(**args)
+        self.assertEqual(1, len(payloads))
+        state = runtime.status(self.root)
+        self.assertEqual(1, len(state['requests']))
+        self.assertEqual(('failed', 'HTTPStatusError:400'),
+                         (state['requests'][0]['status'], state['requests'][0]['error']))
+
     def test_model_check_rejects_incomplete_config_and_restores_environment(self):
         path = self.model_config('DIGEST_MODEL_BASE_URL=https://model.example/v1\n')
         with patch.dict(runtime.os.environ, {'DIGEST_MODEL_ENV_FILE': 'old-model.env'}):

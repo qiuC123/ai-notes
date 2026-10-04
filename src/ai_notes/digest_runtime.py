@@ -20,6 +20,7 @@ import threading
 import uuid
 
 import httpx
+from jsonschema import Draft202012Validator, SchemaError
 
 from . import digest
 
@@ -282,15 +283,34 @@ class ModelClient:
         digest._url(self.base_url, 'model endpoint')
         self.client = client
 
-    def request(self, *, stage, system, material, budget_key, max_requests=60, max_output_tokens=4096):
+    def request(self, *, stage, system, material, budget_key, max_requests=60, max_output_tokens=4096,
+                output_schema=None):
         if type(max_requests) is not int or not 1 <= max_requests <= 1000:
             raise RuntimeError('request budget must be an integer in 1..1000')
         if type(max_output_tokens) is not int or not 1 <= max_output_tokens <= 16384:
             raise RuntimeError('output token budget must be bounded')
-        if len(system) + len(_json(material)) > 60000:
+        wire_system = system
+        if output_schema is not None:
+            if not isinstance(output_schema, dict):
+                raise RuntimeError('output schema must be a JSON Schema object')
+            try:
+                schema_text = _json(output_schema)
+                Draft202012Validator.check_schema(output_schema)
+            except (SchemaError, ValueError, TypeError):
+                raise RuntimeError('invalid output JSON Schema') from None
+            # This is the documented JSON-object + prompt-schema approach, not
+            # an unsupported provider-side json_schema/strict parameter. Keep
+            # the untouched output receipt for the application validator.
+            wire_system += ('\n\nOUTPUT JSON SHAPE CONTRACT: Return one JSON instance matching the schema below, '
+                            'not the schema itself. Do not add keys even when their value is null. '
+                            'All explanations must use the existing reason/reasons fields. '
+                            'This contract describes output shape, not source facts or scores.\n' + schema_text)
+        if len(wire_system) + len(_json(material)) > 60000:
             raise RuntimeError('model input exceeds 60000 character budget')
         fingerprint = {'endpoint': self.base_url, 'model': self.model, 'stage': stage, 'system': system,
                        'material': material, 'max_tokens': max_output_tokens, 'format': 'json-object.v1'}
+        if output_schema is not None:
+            fingerprint.update(system=wire_system, output_schema=output_schema, format='json-object.schema-prompt.v1')
         if self.reasoning_effort:
             fingerprint['reasoning_effort'] = self.reasoning_effort
         key = _hash(fingerprint)
@@ -309,7 +329,7 @@ class ModelClient:
                 raise RuntimeError('model request budget exhausted')
             con.execute('INSERT INTO requests VALUES(?,?,?,?,?,NULL,NULL,NULL,?,?)',
                         (key, budget_key, stage, self.model, 'pending', time.time(), time.time()))
-        payload = {'model': self.model, 'messages': [{'role': 'system', 'content': system}, {'role': 'user', 'content': _json(material)}],
+        payload = {'model': self.model, 'messages': [{'role': 'system', 'content': wire_system}, {'role': 'user', 'content': _json(material)}],
                    'response_format': {'type': 'json_object'}, 'max_tokens': max_output_tokens}
         if self.reasoning_effort:
             payload['reasoning_effort'] = self.reasoning_effort

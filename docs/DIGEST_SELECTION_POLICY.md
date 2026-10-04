@@ -1,6 +1,6 @@
 # 三榜筛选与评分：读者适配与新闻
 
-状态：已实现可审计评分流程；**权重和阈值尚未经过真实人工标注集校准，不声称选题质量已经提升**。当前配置版本 `v4-evidence-scope-uncalibrated`（2026-10-04 限分依据与版本范围修正）；历史冻结 v1/v2/v3 输入和对比结果保持原样。主入口为 `python -m ai_notes.digest_selection`。
+状态：已实现可审计评分流程；**权重和阈值尚未经过真实人工标注集校准，不声称选题质量已经提升**。当前配置版本 `v5-scoped-source-uncalibrated`（2026-10-04 评分对象、原文条件与输出格式修正）；历史冻结 v1/v2/v3/v4 输入和对比结果保持原样。主入口为 `python -m ai_notes.digest_selection`。
 
 本轮重点是回答“为什么选、为什么暂缓、为什么淘汰”。保留 Python＋SQLite 和三榜规则，不把 AIHOT 的新闻注意力分直接当成实用项目价值分，也不按来源名气给不同门槛。
 
@@ -23,6 +23,8 @@
 | news：`kind=news`，优先于所属主题的类别权重 | 3 | 3 | 3 | 1 | 0 |
 
 游戏不需要证明办公效率，阅读内容可以提供认知和可迁移方法；小众工具可以对特定人群很有价值。老项目不因日期旧扣分；novelty 指具体差异/新认识。用户已有某类工具，不代表同类项目一律淘汰。更新项评价本次变化，不能拿整个项目多年的累积价值给小补丁高分。
+
+v5 由候选 kind 确定 `evaluation_target`：project→whole_project、update/news→event_increment、reading→content_and_method。项目卡中出现新补丁的说明，不会改变评价对象；普通工具按用途评价，不因非 AI 而扣价值分。输入单位明确不代表模型一定按单位正确推理，仍需内容复核。
 
 无关/空泛内容可 BLOCK；原文不足或判断不明为 UNKNOWN；对象、读者、具体价值、原文支持明确才 PASS。UNKNOWN 保留候选，失败不记为零分。
 
@@ -97,6 +99,8 @@ v4 将这个依据要求扩展至全部六种限分 flag。新增 kind 分别为
 
 精确集合 CLI 使用可重复的 `--candidate-id ID`；Python 传 `candidate_ids=[candidate_id(record), ...]`。`requested_candidate_ids` 和 `coverage.exact_scan_count` 保存集合与扫描范围；扫描只为定位已选定身份，不额外评分或增加深核预算。
 
+v5 可另传 `--claims path.json` / `source_claims={candidate_id:[claim,...]}`，与原文一起冻结。pipeline 直接传已有 facts.claims，无额外核验模型。claim 仍用 `field,text,evidence_url,quote`，可附 scope；新原文请求的 usage_conditions claim 必须有 scope。scope 恰含 version、platform、host_architecture、build_architecture、installation_path、requirement、conditions、evidence_kind；前五项及 conditions 须为当前 quote 中的连续原文片段，未知保留 null/unknown，不跨引文拼接。requirement/evidence_kind 是模型分类，并非语义证明；引用存在不代表主机/构建架构等概括正确。旧材料不自动补 scope。已有四字段评分输出保持不变。
+
 `record` 的 `digest-selection.review.v1` 必需字段：
 
 ```json
@@ -119,13 +123,15 @@ v4 将这个依据要求扩展至全部六种限分 flag。新增 kind 分别为
 
 v4 的全部 flag 必须提供上述 `basis`，仅 insufficient_usage_evidence 再提供 `gap`。旧冻结策略按当时的 `flag_basis` 与 `usage_evidence_gaps` 配置校验，不向历史回执追加新字段，也不重写历史分数。
 
-Python 公共 API：`prepare(root, ranking_type, period, limit=30, evidence_context=None, policy_path=None, offset=0, candidate_ids=None)`；`load_preparation(root,id)`；`get_prompt(root,prepared)`；`record(root,review)`；`rank(root,id)`。provider 应用 `get_prompt` 读取被冻结提示词，不悄悄替换为最新版。准备材料是数据，不得拼入更高优先级指令。
+Python 公共 API：`prepare(root, ranking_type, period, limit=30, evidence_context=None, policy_path=None, offset=0, candidate_ids=None, source_claims=None)`；`load_preparation(root,id)`；`get_prompt(root,prepared)`；`record(root,review)`；`rank(root,id)`。provider 应用 `get_prompt` 读取被冻结提示词，不悄悄替换为最新版。准备材料是数据，不得拼入更高优先级指令。
 
 自动 provider 只向模型索取 `{precheck,scores,flags,reason}`。先调用纯函数 `build_scoring_input(prepared,candidate_id)`，仅传原文、候选事实及类别规则，剥离资格状态、入库核验状态、历史评审、内部身份和发表门槛。完整卡片仍被冻结；`build_review` / `record` 继续用它检查发表资格，高分不能越过缺证据或重复历史。
 
 收到原始响应后调用 `adapt_assessment(output,policy=prepared['policy'],card=card)`，返回 `status,raw_output,assessment,transformations,error`。唯一兼容转换是将非空 `precheck.reasons` 字符串包成单元素数组；不能猜测缺失分项、重命名维度、删掉越权字段或替模型补理由。有效响应限 65536 UTF-8 字节。pipeline 保存 `score-response:<candidate_id>` 检查点及 request_id，拒绝项保留原响应和原因，继续其他候选，不自动追加付费重试。断点恢复复用相同请求回执。
 
-v4 用于新任务和新 preparation；已冻结的提示词、策略、回执和检查点保持旧语义。本次不将旧检查点自动失效，不恢复旧任务触发重评或重复付费。
+v5 用于新 preparation：`assessment_contract=scoped-source.v1` 才启用新评分 stage 与 `assessment_schema(policy,card)`。schema 依据当前 kind/period/URL 限定字段、维度及 flag，不含分数答案；通过 `ModelClient.request(output_schema=...)` 加入格式提示，实际 provider 参数仍是 `json_object`。这是 schema 引导，不是原生严格约束解码，收到回执仍需严格本地校验，额外 null 字段也拒绝。schema 进入请求指纹及输入预算，旧无 schema 调用保持原身份，不删坏字段、自动重试或降级刷通过率。
+
+旧 screen 检查点保持原提取 prompt/stage；新 screen 才标记 `claims.scope.v1`。已有 prompt、policy、raw receipt、source/score checkpoint 不被自动失效或升级；历史投影及分数不改写。新原文核验保存请求材料和原始回执后再做结构检查，坏条件保存真实失败并暂缓该候选，其余候选继续；中断恢复复用该次请求，只有旧成功事实过期后开始的重新核验才建立新的材料代次。
 
 通过适配后调用 `build_review(root, prepare_id, candidate_id, assessment, reviewer)`，按冻结权重与 caps 生成 decision，绑定 input_hash 和真实调用模型身份，再由 `record` 落库。模型不负责求和、不回填身份、不覆盖决策。上述完整 review 是程序/人工入库契约，评分提示词不再同时要求模型返回它。
 

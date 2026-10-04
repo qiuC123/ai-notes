@@ -71,11 +71,69 @@ class SelectionTests(unittest.TestCase):
         result = selection.record(self.root, self.review(prepared))
         self.assertEqual(80, result["total_score"])
         self.assertEqual("select", result["decision"])
-        self.assertEqual("v4-evidence-scope-uncalibrated", result["policy_version"])
+        self.assertEqual("v5-scoped-source-uncalibrated", result["policy_version"])
         self.assertEqual("unchanged", selection.record(self.root, self.review(prepared))["status"])
         ranked = selection.rank(self.root, prepared["prepare_id"])
         self.assertEqual(1, len(ranked["available"]))
         self.assertEqual(80, ranked["available"][0]["review"]["total_score"])
+
+    def test_scoring_unit_is_candidate_kind_not_latest_patch(self):
+        prepared = self.prepare()
+        card = prepared['cards'][0]
+        # A latest-patch reference must not silently change a whole-project card.
+        card['material']['change_note'] = 'Version 1.11.2 fixes a crash.'
+        projected = selection.build_scoring_input(prepared, card['candidate_id'])
+        self.assertEqual({'kind': 'project', 'unit': 'whole_project'}, projected['card']['evaluation_target'])
+        card['material']['kind'] = 'update'
+        projected = selection.build_scoring_input(prepared, card['candidate_id'])
+        self.assertEqual({'kind': 'update', 'unit': 'event_increment'}, projected['card']['evaluation_target'])
+        for key in ('eligibility', 'observation', 'input_hash', 'candidate_id'):
+            self.assertNotIn(key, projected['card'])
+
+    def test_source_conditions_are_frozen_and_bound_to_input(self):
+        prepared = self.prepare()
+        card = prepared['cards'][0]
+        quote = 'The documented workflow imports local files and exports a searchable index.'
+        claim = dict(field='usage_conditions', text='Import local files and export an index.',
+                     evidence_url=sample()['url'], quote=quote,
+                     scope=dict(version=None, platform=None, host_architecture=None,
+                                build_architecture=None, installation_path=None, requirement='unknown',
+                                conditions=['imports local files'], evidence_kind='documentation'))
+        claims = {card['candidate_id']: [claim]}
+        scoped = selection.prepare(self.root, 'daily', '2026-10-01',
+                                   evidence_context=card['evidence_context'], source_claims=claims)
+        scoped_card = scoped['cards'][0]
+        self.assertNotEqual(card['input_hash'], scoped_card['input_hash'])
+        self.assertEqual([claim], scoped_card['source_claims'])
+        projected = selection.build_scoring_input(scoped, scoped_card['candidate_id'])
+        self.assertEqual([claim], projected['card']['source_claims'])
+        claim['scope']['conditions'] = ['not in the original']
+        self.assertEqual(['imports local files'], scoped_card['source_claims'][0]['scope']['conditions'])
+        with self.assertRaises(selection.SelectionError):
+            selection.prepare(self.root, 'daily', '2026-10-01',
+                              evidence_context=card['evidence_context'], source_claims=claims)
+        claim['scope']['conditions'] = []
+        claim['evidence_url'] = 'https://unread.invalid/source'
+        with self.assertRaises(selection.SelectionError):
+            selection.prepare(self.root, 'daily', '2026-10-01',
+                              evidence_context=card['evidence_context'], source_claims=claims)
+
+    def test_legacy_contract_keeps_projection_and_hash_without_new_fields(self):
+        policy_path = self.root / 'config/digest_selection.json'
+        policy = json.loads(policy_path.read_text(encoding='utf-8'))
+        policy.pop('assessment_contract')
+        policy['version'] = 'v4-evidence-scope-uncalibrated'
+        policy_path.write_text(json.dumps(policy), encoding='utf-8')
+        prepared = self.prepare()
+        card = prepared['cards'][0]
+        replay = selection.prepare(self.root, 'daily', '2026-10-01',
+                                   evidence_context=card['evidence_context'],
+                                   source_claims={card['candidate_id']: [{'old': 'never upgraded'}]})
+        self.assertEqual(prepared['prepare_id'], replay['prepare_id'])
+        projected = selection.build_scoring_input(prepared, card['candidate_id'])
+        for key in ('source_claims', 'evaluation_target'):
+            self.assertNotIn(key, projected['card'])
+            self.assertNotIn(key, card)
 
     def test_scores_cannot_verify_or_publish_a_discovered_candidate(self):
         prepared = self.prepare([sample(evidence_status="discovered", verified_at=None, evidence_urls=[])])
