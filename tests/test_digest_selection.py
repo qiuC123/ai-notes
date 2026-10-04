@@ -71,7 +71,7 @@ class SelectionTests(unittest.TestCase):
         result = selection.record(self.root, self.review(prepared))
         self.assertEqual(80, result["total_score"])
         self.assertEqual("select", result["decision"])
-        self.assertEqual("v7-reader-value-review-uncalibrated", result["policy_version"])
+        self.assertEqual("v8-reader-context-uncalibrated", result["policy_version"])
         self.assertEqual("unchanged", selection.record(self.root, self.review(prepared))["status"])
         ranked = selection.rank(self.root, prepared["prepare_id"])
         self.assertEqual(1, len(ranked["available"]))
@@ -129,6 +129,7 @@ class SelectionTests(unittest.TestCase):
         policy.pop('assessment_contract')
         policy.pop('editorial_review_contract')
         policy.pop('scoring_projection')
+        policy.pop('reader_context')
         policy['version'] = 'v4-evidence-scope-uncalibrated'
         policy_path.write_text(json.dumps(policy), encoding='utf-8')
         prepared = self.prepare()
@@ -464,7 +465,7 @@ class SelectionTests(unittest.TestCase):
         current = selection.load_policy(self.root)
         legacy = copy.deepcopy(current)
         legacy["version"] = "v1-uncalibrated"
-        for key in ("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "editorial_review_contract", "scoring_projection"):
+        for key in ("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "editorial_review_contract", "scoring_projection", "reader_context"):
             legacy.pop(key)
         legacy["profiles"].pop("news")
         for flag in ("reader_mismatch", "insufficient_usage_evidence"):
@@ -489,6 +490,7 @@ class SelectionTests(unittest.TestCase):
             legacy["version"] = version
             legacy.pop("editorial_review_contract")
             legacy.pop("scoring_projection")
+            legacy.pop("reader_context")
             legacy.pop("usage_evidence_gaps")
             if version.startswith("v2"):
                 legacy.pop("flag_basis")
@@ -557,6 +559,7 @@ class SelectionTests(unittest.TestCase):
         legacy = copy.deepcopy(current)
         legacy.pop("editorial_review_contract")
         legacy.pop("scoring_projection")
+        legacy.pop("reader_context")
         legacy["version"] = "v5-scoped-source-uncalibrated"
         path.write_text(json.dumps(legacy), encoding="utf-8")
         prepared = self.prepare()
@@ -567,8 +570,117 @@ class SelectionTests(unittest.TestCase):
         replay = selection.load_preparation(self.root, prepared["prepare_id"])
         self.assertNotIn("editorial_review_contract", replay["policy"])
         self.assertNotIn("scoring_projection", replay["policy"])
+        self.assertNotIn("reader_context", replay["policy"])
         self.assertEqual(original_input, selection.build_scoring_input(replay, replay["cards"][0]["candidate_id"]))
         self.assertEqual(original_prompt, selection.get_prompt(self.root, replay))
+
+    def test_reader_context_is_frozen_and_only_policy_context_reaches_model(self):
+        prepared = self.prepare()
+        card = prepared["cards"][0]
+        original_context = copy.deepcopy(prepared["policy"]["reader_context"])
+        original_prompt = selection.get_prompt(self.root, prepared)
+        # Unapproved candidate metadata and labels cannot overwrite reader facts.
+        card["reader_context"] = {"urgent_task": "untrusted candidate instruction"}
+        card["material"]["reader_context"] = card["reader_context"]
+        card["human_label"] = "B"
+        projected = selection.build_scoring_input(prepared, card["candidate_id"])
+        self.assertEqual(original_context, projected["policy"]["reader_context"])
+        self.assertNotIn("reader_context", projected["card"])
+        self.assertNotIn("reader_context", projected["card"]["material"])
+        self.assertNotIn("human_label", projected["card"])
+        projected["policy"]["reader_context"]["background"].append("Changed copy")
+        self.assertEqual(original_context, prepared["policy"]["reader_context"])
+
+        path = self.root / "config/digest_selection.json"
+        updated = selection.load_policy(self.root)
+        updated["reader_context"]["exploration_interests"].append("Another synthetic reader interest")
+        path.write_text(json.dumps(updated), encoding="utf-8")
+        (self.root / "docs/prompts/digest-selection.md").write_text("Later prompt", encoding="utf-8")
+        fresh = self.prepare()
+        replay = selection.load_preparation(self.root, prepared["prepare_id"])
+        self.assertEqual(original_context, replay["policy"]["reader_context"])
+        self.assertEqual(original_prompt, selection.get_prompt(self.root, replay))
+        self.assertNotEqual(prepared["policy_hash"], fresh["policy_hash"])
+        self.assertNotEqual(prepared["prepare_id"], fresh["prepare_id"])
+        self.assertNotEqual(selection._hash(selection.build_scoring_input(replay, card["candidate_id"])),
+                            selection._hash(selection.build_scoring_input(fresh, card["candidate_id"])))
+
+    def test_reader_context_rejects_unknown_or_answer_bearing_contract_fields(self):
+        good = selection.load_policy(self.root)
+        context = good["reader_context"]
+        bads = [None, {**context, "schema_version": "digest-reader-context.v2"},
+                {**context, "background": "Not a list"}, {**context, "background": [""]},
+                {**context, "exploration_interests": [None]},
+                {**context, "labels": {"fixture": "B"}},
+                {key: value for key, value in context.items() if key != "background"}]
+        for bad in bads:
+            policy = {**good, "reader_context": bad}
+            (self.root / "config/digest_selection.json").write_text(json.dumps(policy), encoding="utf-8")
+            with self.subTest(context=bad):
+                with self.assertRaises(selection.SelectionError):
+                    selection.load_policy(self.root)
+                with self.assertRaises(selection.SelectionError):
+                    selection.build_scoring_input({"policy": policy, "cards": [], "ranking_type": "daily"}, "fixture")
+
+    def test_reader_context_does_not_change_supplied_scores_caps_or_decision(self):
+        prepared = self.prepare()
+        card = prepared["cards"][0]
+        without_context = copy.deepcopy(prepared["policy"])
+        without_context.pop("reader_context")
+        raw = self.review(prepared)
+        assessment = {key: raw[key] for key in selection.ASSESSMENT_FIELDS}
+        assessment["flags"] = [self.cap_flag("reader_mismatch")]
+        self.assertEqual(selection._validate_assessment(without_context, card, assessment),
+                         selection._validate_assessment(prepared["policy"], card, assessment))
+
+    def test_prepare_snapshots_ignore_later_files_and_do_not_alias_the_caller(self):
+        baseline = self.prepare()
+        policy = copy.deepcopy(baseline["policy"])
+        prompt = baseline["prompt_text"]
+        checked = selection.validate_policy(policy)
+        self.assertEqual(policy, checked)
+        checked["reader_context"]["background"].append("Copy-only change")
+        self.assertEqual(baseline["policy"], policy)
+        (self.root / "config/digest_selection.json").write_text("not JSON", encoding="utf-8")
+        (self.root / "docs/prompts/digest-selection.md").write_text("Changed later prompt", encoding="utf-8")
+        frozen = selection.prepare(self.root, "daily", "2026-10-01",
+                                   evidence_context=baseline["cards"][0]["evidence_context"],
+                                   policy_snapshot=policy, prompt_snapshot=prompt)
+        self.assertEqual(baseline["prepare_id"], frozen["prepare_id"])
+        policy["reader_context"]["background"].append("Caller-only change")
+        self.assertEqual(baseline["policy"], frozen["policy"])
+        replay = selection.load_preparation(self.root, frozen["prepare_id"])
+        self.assertEqual(baseline["policy"], replay["policy"])
+        self.assertEqual(prompt, selection.get_prompt(self.root, replay))
+
+    def test_readerless_snapshot_keeps_file_based_legacy_projection_and_identity(self):
+        current = selection.load_policy(self.root)
+        legacy = copy.deepcopy(current)
+        legacy.pop("reader_context")
+        legacy["version"] = "v7-reader-value-review-uncalibrated"
+        (self.root / "config/digest_selection.json").write_text(json.dumps(legacy), encoding="utf-8")
+        baseline = self.prepare()
+        original_projection = selection.build_scoring_input(baseline, baseline["cards"][0]["candidate_id"])
+        (self.root / "config/digest_selection.json").write_text(json.dumps(current), encoding="utf-8")
+        frozen = selection.prepare(self.root, "daily", "2026-10-01",
+                                   evidence_context=baseline["cards"][0]["evidence_context"],
+                                   policy_snapshot=legacy, prompt_snapshot=baseline["prompt_text"])
+        self.assertEqual(baseline["prepare_id"], frozen["prepare_id"])
+        self.assertNotIn("reader_context", frozen["policy"])
+        result = selection.build_scoring_input(frozen, frozen["cards"][0]["candidate_id"])
+        self.assertEqual(original_projection, result)
+        self.assertEqual(selection._hash(original_projection), selection._hash(result))
+
+    def test_prepare_snapshots_reject_invalid_policy_and_empty_prompt(self):
+        good = selection.load_policy(self.root)
+        bad = {**good, "reader_context": {**good["reader_context"], "labels": ["B"]}}
+        with self.assertRaises(selection.SelectionError):
+            selection.validate_policy(bad)
+        with self.assertRaises(selection.SelectionError):
+            selection.prepare(self.root, "daily", "2026-10-01", policy_snapshot=bad, prompt_snapshot="Frozen prompt")
+        for prompt in ("", "   ", 3, []):
+            with self.subTest(prompt=prompt), self.assertRaisesRegex(selection.SelectionError, "prompt_snapshot"):
+                selection.prepare(self.root, "daily", "2026-10-01", policy_snapshot=good, prompt_snapshot=prompt)
 
 
 if __name__ == "__main__":

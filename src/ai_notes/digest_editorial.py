@@ -29,6 +29,9 @@ Return exactly verdict, reason, issues as the supplied schema requires. Use acce
 Issue codes: condition_scope (condition attached to the wrong subject), source_conflict (known source disagreement omitted), optionality (optional/alternative changed into required/default), version_or_path (version/build/install routes mixed), evidence_strength (documentation/maintenance/link/excerpt inflated into stronger proof), reader_policy (non-AI identity or age used against the stated evaluation unit), unsupported_assertion (unsupported absolute factual claim), cross_field_conflict (facts or assessment explanations contradict each other).
 Only the supplied text was available: it can be an excerpt, not a whole webpage, complete licence, viewed demo or software test. Do not treat lack of text outside the supplied material as evidence that no other conditions exist.'''
 
+READER_CONTEXT_REVIEW_PROMPT = REVIEW_PROMPT + '''
+When reader_context is present, it contains confirmed background and exploration interests, not urgent tasks or human selection labels. Check that score explanations distinguish concrete reader benefit from ease of setup, and do not turn an exploration interest into a proven current need. Conditional use cases are allowed. News, reading and games may offer decision, learning or play value without immediate practice. Do not reject a candidate merely because it is outside these interests or cannot be installed immediately, and do not predict the reader's personal preference.'''
+
 
 def _object(properties):
     return {'type': 'object', 'properties': properties, 'required': list(properties),
@@ -76,7 +79,7 @@ def _project(value, fields):
     return {field: copy.deepcopy(value[field]) for field in fields if field in value}
 
 
-def build_review_input(*, record, facts, assessment, contexts, ranking_type):
+def build_review_input(*, record, facts, assessment, contexts, ranking_type, reader_context=None):
     """Project current prose and score reasoning, never ledger history/labels.
 
     Source text occurs once as passages rather than also duplicating long legacy
@@ -107,6 +110,12 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type):
             if flag.get('basis'):
                 projected['basis'] = _project(flag['basis'], ('kind', 'claim', 'quote', 'evidence_url'))
             current_assessment['flags'].append(projected)
-    return {'ranking_type': ranking_type, 'candidate': candidate,
+    result = {'ranking_type': ranking_type, 'candidate': candidate,
             'facts': _project(facts, _FACT_FIELDS), 'assessment': current_assessment,
             'passages': passages, 'evidence_scope': 'supplied_text_only_not_full_document_or_software_test'}
+    if reader_context is not None:
+        # Use the same closed context contract as scoring; never forward labels.
+        from .digest_selection import _check_reader_context
+        _check_reader_context({'reader_context': reader_context})
+        result['reader_context'] = copy.deepcopy(reader_context)
+    return result

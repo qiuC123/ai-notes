@@ -142,8 +142,8 @@ class PipelineTests(unittest.TestCase):
         with runtime._db(self.root,write=False) as con:
             prepared=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
             stages={row[0] for row in con.execute('SELECT stage FROM requests')}
-        self.assertEqual({'screen-v4-evidence-scope', 'verify-facts-v7-reader-facts',
-                          'value-score-v5-scoped-source','editorial-v7-source-score'}, stages)
+        self.assertEqual({'screen-v8-reader-context', 'verify-facts-v7-reader-facts',
+                          'value-score-v5-scoped-source','editorial-v8-reader-context'}, stages)
         self.assertEqual(6,len(prepared['issue']['items']))
         self.assertTrue(all(x['verification_level']=='documented' for x in prepared['issue']['items']))
 
@@ -157,7 +157,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(14,runtime.notices(self.root)[0]['payload']['shortfall'])
 
     def test_oversized_item_at_each_model_stage_keeps_other_candidates(self):
-        stages=('verify-facts-v7-reader-facts','value-score-v5-scoped-source','editorial-v7-source-score')
+        stages=('verify-facts-v7-reader-facts','value-score-v5-scoped-source','editorial-v8-reader-context')
         original_request=self.real_model.request
         for index,target_stage in enumerate(stages):
             with self.subTest(stage=target_stage):
@@ -181,7 +181,7 @@ class PipelineTests(unittest.TestCase):
                     cp=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
                 prefix={'verify-facts-v7-reader-facts':'original-input:',
                         'value-score-v5-scoped-source':'preparation',
-                        'editorial-v7-source-score':'editorial-input:'}[target_stage]
+                        'editorial-v8-reader-context':'editorial-input:'}[target_stage]
                 self.assertTrue(any(k.startswith(prefix) for k in cp))
                 before=len(self.calls)
                 self.assertEqual('idle',runtime.work_once(self.root,job_id=job['job_id'])['status'])
@@ -264,6 +264,64 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(150,len({x['candidate_id'] for x in compact}))
         self.assertLessEqual(len(runtime._json({'cards':compact})),50000)
         self.assertEqual('文字'*1000,cards[0]['summary'])
+
+    def test_screen_receipt_recovery_reuses_frozen_input_and_policy(self):
+        runtime.enqueue(self.root,{'action':'generate','ranking_type':'daily','period':self.period})
+        job=runtime.claim(self.root,'owner')
+        model=self.real_model(self.root,base_url='https://provider.example/v1',model='fixture',api_key='fixture-only',client=self.client)
+        original_checkpoint=runtime.checkpoint
+        def crash(root,job_id,owner,stage,value):
+            if stage=='screen':
+                raise OSError('screen response saved; screen checkpoint interrupted')
+            original_checkpoint(root,job_id,owner,stage,value)
+        with patch.object(runtime,'checkpoint',side_effect=crash), self.assertRaises(OSError):
+            pipeline._screen(self.root,job,'owner',model,'daily',self.period,30,12)
+        frozen=copy.deepcopy(job['checkpoints']['screen-input'])
+        self.assertEqual(1,len(self.calls))
+        policy=json.loads((self.root/'config/digest_selection.json').read_text(encoding='utf-8'))
+        policy['reader_context']['exploration_interests']=['later interest must not enter recovered job']
+        (self.root/'config/digest_selection.json').write_text(json.dumps(policy),encoding='utf-8')
+        (self.root/pipeline.selection.PROMPT_PATH).write_text('Later prompt must not enter recovered job.',encoding='utf-8')
+        # Reload actual persisted input, not the in-memory state of the caller.
+        with runtime._db(self.root,write=False) as con:
+            job['checkpoints']=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        with patch.object(digest,'candidates',side_effect=AssertionError('must not requery on resume')):
+            result=pipeline._screen(self.root,job,'owner',model,'daily',self.period,30,12)
+        self.assertEqual(frozen,job['checkpoints']['screen-input'])
+        self.assertEqual(frozen['policy_snapshot'],result['policy_snapshot'])
+        self.assertEqual(frozen['prompt_snapshot'],result['prompt_snapshot'])
+        self.assertEqual(1,len(self.calls))
+
+    def test_legacy_screen_without_preparation_does_not_inherit_reader_context(self):
+        runtime.enqueue(self.root,{'action':'generate','ranking_type':'daily','period':self.period})
+        job=runtime.claim(self.root,'owner')
+        cards=digest.candidates(self.root,ranking_type='daily',period=self.period)['candidates']
+        records={pipeline.selection.candidate_id(card):card for card in cards}
+        pipeline._save(self.root,job,'owner','screen',dict(records=records,selected_ids=list(records),
+            decisions=[],offset=0,source_review_contract=pipeline.SOURCE_REVIEW_CONTRACT))
+        result=pipeline.generate(self.root,job,'owner')
+        self.assertEqual('archived',result['status'])
+        prepared=pipeline.selection.load_preparation(self.root,job['checkpoints']['preparation']['prepare_id'])
+        self.assertNotIn('reader_context',prepared['policy'])
+        self.assertTrue(self.score_inputs)
+        self.assertTrue(all('reader_context' not in x['policy'] for x in self.score_inputs))
+        self.assertTrue(all('reader_context' not in x for x in self.editorial_inputs))
+
+    def test_unfrozen_legacy_screen_receipt_stops_without_new_http(self):
+        runtime.enqueue(self.root,{'action':'generate','ranking_type':'daily','period':self.period})
+        job=runtime.claim(self.root,'owner')
+        model=self.real_model(self.root,base_url='https://provider.example/v1',model='fixture',api_key='fixture-only',client=self.client)
+        model.request(stage='screen-v4-evidence-scope',system='You shortlist',
+            material={'cards':[],'deep_limit':12},budget_key=job['job_id'])
+        with self.assertRaisesRegex(runtime.RuntimeError,'legacy initial-screen receipt'):
+            pipeline._screen(self.root,job,'owner',model,'daily',self.period,30,12)
+        with patch.object(pipeline.sources,'collect') as collect, patch.object(pipeline.sources,'fetch') as fetch:
+            with self.assertRaisesRegex(runtime.RuntimeError,'legacy initial-screen receipt'):
+                pipeline.generate(self.root,job,'owner')
+        collect.assert_not_called()
+        fetch.assert_not_called()
+        self.assertEqual(1,len(self.calls))
+        self.assertNotIn('screen-input',job['checkpoints'])
 
     def test_verified_update_uses_original_increment_not_discovery_claim(self):
         runtime.enqueue(self.root,{'action':'generate','ranking_type':'daily','period':self.period})

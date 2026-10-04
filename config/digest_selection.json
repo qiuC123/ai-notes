@@ -1,10 +1,23 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v7-reader-value-review-uncalibrated",
+  "version": "v8-reader-context-uncalibrated",
   "assessment_contract": "scoped-source.v1",
   "editorial_review_contract": "source-score.v1",
   "scoring_projection": "source-refs.v1",
-  "calibration_status": "Uncalibrated reader-value policy with a separate source/score editorial review. Weights, caps and thresholds unchanged; frozen older inputs retain their rules. Schema validity and quoted sources do not prove semantic correctness or calibrated selection quality.",
+  "reader_context": {
+    "schema_version": "digest-reader-context.v1",
+    "background": [
+      "用户自述不太会代码，需要用通俗语言理解用途。",
+      "偏好实用开源项目，也关注 AI 动态与开发机会。",
+      "重视清楚的使用条件与可操作路径。"
+    ],
+    "exploration_interests": [
+      "视频录屏、语音转文字与字幕提取。",
+      "机器人、项目管理与飞书自动化。",
+      "信息收集、筛选，以及日榜、周榜、月榜汇总。"
+    ]
+  },
+  "calibration_status": "Uncalibrated reader-context policy. Confirmed background and exploratory interests are frozen input, not urgent tasks or sample labels. Weights, caps and thresholds unchanged; frozen older inputs retain their rules. Context and schema validity do not prove semantic correctness or calibrated selection quality.",
   "dimensions": ["value", "novelty", "evidence", "usability", "interest"],
   "profiles": {
     "practical": {"value": 4, "novelty": 1, "evidence": 1, "usability": 3, "interest": 1},

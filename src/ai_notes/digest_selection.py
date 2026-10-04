@@ -23,6 +23,7 @@ DIMENSIONS = ("value", "novelty", "evidence", "usability", "interest")
 ASSESSMENT_FIELDS = ("precheck", "scores", "flags", "reason")
 SCOPED_CONTRACT = "scoped-source.v1"
 SOURCE_REFS_PROJECTION = "source-refs.v1"
+READER_CONTEXT_CONTRACT = "digest-reader-context.v1"
 FLAG_BASIS_KINDS = {
     "routine_update": "limited_increment", "unsupported_promotion": "unsupported_effect_claim",
     "unfulfilled_announcement": "availability_limit", "unclear_usage": "usage_path_gap",
@@ -82,12 +83,19 @@ def _strings(value: Any, label: str, *, nonempty: bool = True) -> list:
 
 def load_policy(root: Path, policy_path: Path | None = None) -> dict:
     policy = json.loads((policy_path or root / POLICY_PATH).read_text(encoding="utf-8"))
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection"))
+    return validate_policy(policy)
+
+
+def validate_policy(policy: dict) -> dict:
+    """Validate an in-memory policy and return an independent, unmodified copy."""
+    policy = copy.deepcopy(policy)
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context"))
     if "assessment_contract" in policy and policy["assessment_contract"] != SCOPED_CONTRACT:
         raise SelectionError("unsupported assessment contract")
     if "editorial_review_contract" in policy and policy["editorial_review_contract"] != "source-score.v1":
         raise SelectionError("unsupported editorial review contract")
     _check_scoring_projection(policy)
+    _check_reader_context(policy)
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -211,6 +219,17 @@ def _check_scoring_projection(policy: dict) -> None:
         raise SelectionError("source-refs projection requires scoped-source assessment contract")
 
 
+def _check_reader_context(policy: dict) -> None:
+    """Validate optional reader facts without filling in missing personal context."""
+    if "reader_context" not in policy:
+        return
+    context = _object(policy["reader_context"], ("schema_version", "background", "exploration_interests"), "reader_context")
+    if context["schema_version"] != READER_CONTEXT_CONTRACT:
+        raise SelectionError("unsupported reader context contract")
+    for key in ("background", "exploration_interests"):
+        _strings(context[key], "reader_context." + key, nonempty=False)
+
+
 def _source_claim_refs(claims: list, contexts: list) -> list:
     """Replace repeated quotations with reversible positions, leaving originals intact.
 
@@ -242,6 +261,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     This is a pure projection: no database, filesystem or network operations.
     """
     _check_scoring_projection(prepared["policy"])
+    _check_reader_context(prepared["policy"])
     card = _card(prepared, candidate_id)
     fields = ("url", "title", "category", "kind", "summary", "source_urls", "evidence_urls", "published_at", "change_note")
     material = {key: copy.deepcopy(card["material"][key]) for key in fields if key in card["material"]}
@@ -249,7 +269,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     if event:
         material["event"] = {key: copy.deepcopy(event[key]) for key in
                              ("url", "occurred_at", "occurred_on", "date_precision", "timezone", "type") if key in event}
-    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection")
+    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context")
     result = {
         "card": {"ranking_type": card.get("ranking_type", prepared["ranking_type"]), "profile": card["profile"],
                  "material": material,
@@ -341,8 +361,13 @@ def _exact_candidates(root: Path, ranking_type: str, period: str, requested: lis
 
 def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
             evidence_context: list | None = None, policy_path: Path | None = None, offset: int = 0,
-            candidate_ids: list[str] | None = None, source_claims: dict | None = None) -> dict:
-    """Freeze candidate input and externally retrieved source text, without scoring."""
+            candidate_ids: list[str] | None = None, source_claims: dict | None = None,
+            policy_snapshot: dict | None = None, prompt_snapshot: str | None = None) -> dict:
+    """Freeze candidate input and source text, without scoring.
+
+    Supplied snapshots take precedence over the corresponding on-disk policy
+    (including policy_path) or prompt. Omitted snapshots retain the file path.
+    """
     root = Path(root)
     digest.period_window(ranking_type, period)
     _integer(limit, 1, 1000, "limit")
@@ -355,8 +380,9 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
             raise SelectionError("exact candidate set exceeds the review limit")
         if offset:
             raise SelectionError("candidate_ids cannot be combined with offset")
-    policy = load_policy(root, policy_path)
-    prompt = (root / PROMPT_PATH).read_text(encoding="utf-8")
+    policy = load_policy(root, policy_path) if policy_snapshot is None else validate_policy(policy_snapshot)
+    prompt = ((root / PROMPT_PATH).read_text(encoding="utf-8") if prompt_snapshot is None
+              else _text(prompt_snapshot, "prompt_snapshot"))
     contexts = [] if evidence_context is None else evidence_context
     claims_by_id = {} if source_claims is None else source_claims
     if not isinstance(claims_by_id, dict) or any(not isinstance(key, str) for key in claims_by_id):

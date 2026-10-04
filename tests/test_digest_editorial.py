@@ -155,6 +155,20 @@ class EditorialInputTests(unittest.TestCase):
         result['passages'][0]['heading_path'].clear()
         self.assertEqual(before, (self.record, self.facts, self.assessment, self.contexts))
 
+    def test_optional_reader_context_is_closed_copied_and_not_backfilled(self):
+        context=dict(schema_version='digest-reader-context.v1',background=['不太会代码'],
+                     exploration_interests=['信息筛选和周报'])
+        old=self.build()
+        result=editorial.build_review_input(record=self.record,facts=self.facts,assessment=self.assessment,
+            contexts=self.contexts,ranking_type='weekly',reader_context=context)
+        self.assertNotIn('reader_context',old)
+        self.assertEqual(context,result['reader_context'])
+        result['reader_context']['exploration_interests'].append('Return-only change')
+        self.assertEqual(['信息筛选和周报'],context['exploration_interests'])
+        context['selection_gold']='select'
+        with self.assertRaises(ValueError):
+            editorial.build_review_input(record=self.record,facts=self.facts,assessment=self.assessment,
+                contexts=self.contexts,ranking_type='weekly',reader_context=context)
     def test_date_precision_and_news_event_fields_are_retained_without_event_metadata(self):
         self.record.update(kind='news', event=dict(id='HIDDEN_HISTORY', url=self.url, type='news',
                             occurred_on='2020-01-15', date_precision='date', timezone='unknown', labels='HIDDEN_HISTORY'))

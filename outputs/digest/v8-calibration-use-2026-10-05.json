@@ -1,0 +1,73 @@
+{
+  "schema_version": "digest-reader-calibration-use.v1",
+  "recorded_at": "2026-10-05T01:41:35.904474+08:00",
+  "source_feedback": "outputs/digest/v7-reader-feedback-2026-10-05.json",
+  "source_feedback_sha256": "f513bf37abf132d11c6d9271a6ae6e0d26a5b700b2df4e47e8c845993baea1e8",
+  "policy_version": "v8-reader-context-uncalibrated",
+  "use": "Develop distinction between reader value and ease of use; optional confirmed reader context. No threshold/weight/cap tuning.",
+  "formal_selection_gold_added": 0,
+  "sample_identities_or_labels_sent_to_model": false,
+  "items": [
+    {
+      "id": "R1",
+      "canonical_project_group": "https://github.com/kovidgoyal/calibre",
+      "preference_label": "B",
+      "selection_gold": null,
+      "split_at_feedback": "holdout",
+      "historical_split": null,
+      "subsequent_evaluation_split": "dev",
+      "reason": "Feedback informed v8 policy; no future blind holdout claim."
+    },
+    {
+      "id": "R2",
+      "canonical_project_group": "https://moral.games",
+      "preference_label": "B",
+      "selection_gold": null,
+      "split_at_feedback": "dev",
+      "historical_split": "dev",
+      "subsequent_evaluation_split": "dev",
+      "reason": "Feedback informed v8 policy; no future blind holdout claim."
+    },
+    {
+      "id": "R3",
+      "canonical_project_group": "https://github.com/pch/rawmakase",
+      "preference_label": "B",
+      "selection_gold": null,
+      "split_at_feedback": "dev",
+      "historical_split": "holdout",
+      "subsequent_evaluation_split": "dev",
+      "reason": "Feedback informed v8 policy; no future blind holdout claim."
+    },
+    {
+      "id": "R4",
+      "canonical_project_group": "product:google/notebooklm",
+      "preference_label": "B",
+      "selection_gold": null,
+      "split_at_feedback": "holdout",
+      "historical_split": null,
+      "subsequent_evaluation_split": "dev",
+      "reason": "Feedback informed v8 policy; no future blind holdout claim."
+    },
+    {
+      "id": "R5",
+      "canonical_project_group": "https://github.com/posit-dev/great-tables",
+      "preference_label": "B",
+      "selection_gold": null,
+      "split_at_feedback": "dev",
+      "historical_split": "holdout",
+      "subsequent_evaluation_split": "dev",
+      "reason": "Feedback informed v8 policy; no future blind holdout claim."
+    },
+    {
+      "id": "R6",
+      "canonical_project_group": "https://jamesclear.com/implementation-intentions",
+      "preference_label": "B",
+      "selection_gold": null,
+      "split_at_feedback": "holdout",
+      "historical_split": null,
+      "subsequent_evaluation_split": "dev",
+      "reason": "Feedback informed v8 policy; no future blind holdout claim."
+    }
+  ],
+  "original_feedback_and_queue_rewritten": false
+}

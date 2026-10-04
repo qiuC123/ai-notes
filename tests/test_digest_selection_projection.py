@@ -98,6 +98,7 @@ class SourceReferenceProjectionTests(unittest.TestCase):
     def test_absent_marker_keeps_exact_legacy_fields_values_and_serialized_fingerprint(self):
         legacy = copy.deepcopy(self.prepared)
         legacy["policy"].pop("scoring_projection")
+        legacy["policy"].pop("reader_context")
         # Frozen legacy projection contract, including the exact policy whitelist.
         policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles",
                          "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract")
