@@ -1,0 +1,131 @@
+{
+  "schema_version": "digest-live-preview.v1",
+  "presentation": "discovery.v1",
+  "created_at": "2026-10-05T19:41:32.905410+08:00",
+  "formal_ranking": false,
+  "ranking_profile": "weekly",
+  "trial_period": "2026-10-05",
+  "model": "glm-5.3-flash",
+  "policy_version": "v11-discovery-introduction-uncalibrated",
+  "screened": 7,
+  "deep_selected": 6,
+  "verified": 4,
+  "model_selected": 2,
+  "displayed_items": [
+    {
+      "candidate_id": "7304d008f254499f8b4d04df",
+      "url": "https://github.com/Flow-Launcher/Flow.Launcher",
+      "kind": "project",
+      "title": "Flow Launcher：Windows 上的快速文件搜索与应用启动器",
+      "category": "开源项目",
+      "summary": "Flow Launcher 是一个 Windows 平台的快速文件搜索和应用启动器，支持社区插件，可通过键盘快速搜索应用、文件、书签、网页等内容，减少反复找文件和切换应用的操作。",
+      "supported_systems": "Windows",
+      "verification_level": "documented",
+      "verified_at": "2026-10-05T11:24:12.115159+00:00",
+      "evidence_urls": [
+        "https://github.com/flow-launcher/flow.launcher/blob/5da5103df70632485a72ce0dec81d5f4df9faa57/README.md",
+        "https://github.com/flow-launcher/flow.launcher/blob/5da5103df70632485a72ce0dec81d5f4df9faa57/LICENSE"
+      ],
+      "trial_score": 71
+    }
+  ],
+  "selection_results": [
+    {
+      "cid": "cc37548b4bc3b4b3a6ebdbdb",
+      "name": "Ditto",
+      "url": "https://github.com/CyberShadow/Ditto",
+      "model_status": "verify_deferred",
+      "score": null,
+      "editorial_verdict": null,
+      "public_summary_status": "not_generated_correct_defer",
+      "public_systems_status": "not_generated_correct_defer",
+      "pipeline_included": false
+    },
+    {
+      "cid": "7304d008f254499f8b4d04df",
+      "name": "Flow Launcher",
+      "url": "https://github.com/Flow-Launcher/Flow.Launcher",
+      "model_status": "selected",
+      "score": 71,
+      "editorial_verdict": "accept",
+      "public_summary_status": "supported",
+      "public_systems_status": "supported",
+      "pipeline_included": true
+    },
+    {
+      "cid": "1dac17c374d0a06edbc859e8",
+      "name": "Vane",
+      "url": "https://github.com/ItzCrazyKns/Vane",
+      "model_status": "value_deferred",
+      "score": 64,
+      "editorial_verdict": "accept",
+      "public_summary_status": "supported",
+      "public_systems_status": "unknown_kept_null",
+      "pipeline_included": false
+    },
+    {
+      "cid": "ec3f9f81a18d49dd7b5fa1e8",
+      "name": "Kopia",
+      "url": "https://github.com/kopia/kopia",
+      "model_status": "selected",
+      "score": 72,
+      "editorial_verdict": "accept",
+      "public_summary_status": "primary_metadata_supported_but_bound_citation_incomplete",
+      "public_systems_status": "unknown_kept_null",
+      "pipeline_included": true
+    },
+    {
+      "cid": "e965e390cb739b5e5357e9f1",
+      "name": "Syncthing",
+      "url": "https://github.com/syncthing/syncthing",
+      "model_status": "editorial_deferred",
+      "score": null,
+      "editorial_verdict": "defer",
+      "public_summary_status": "supported",
+      "public_systems_status": "supported_with_gui_scope",
+      "pipeline_included": false
+    },
+    {
+      "cid": "8868d7c1ad8ba610ba7764c9",
+      "name": "TagSpaces",
+      "url": "https://github.com/tagspaces/tagspaces",
+      "model_status": "verify_deferred",
+      "score": null,
+      "editorial_verdict": null,
+      "public_summary_status": "supported_in_unbound_raw_response",
+      "public_systems_status": "supported_in_unbound_raw_response",
+      "pipeline_included": false
+    },
+    {
+      "cid": "80153704316baf3a89c22efa",
+      "name": "Zotero",
+      "url": "https://github.com/zotero/zotero",
+      "model_status": "not_deep_reviewed",
+      "score": null,
+      "editorial_verdict": null,
+      "public_summary_status": "not_generated",
+      "public_systems_status": "not_generated",
+      "pipeline_included": false
+    }
+  ],
+  "original_model_text_modified": false,
+  "independent_audit_completed": true,
+  "human_gold_labels_added": false,
+  "accuracy_rate": null,
+  "actual_http_calls": 15,
+  "retries": 0,
+  "provider_usage": {
+    "prompt_tokens": 191712,
+    "completion_tokens": 15457,
+    "total_tokens": 207169
+  },
+  "actual_billing_amount": null,
+  "local_evidence_root": "work\\digest-v11-live-20261005",
+  "raw_evidence_sha256": {
+    "summary.json": "d9caa17a47805d934201f5741c077bdcb691459874415fde4213c963f3de6822",
+    "checkpoints.json": "1422b1ff1cc17eaea9e026292d704c5cdfb6d4ed234e175acbd235bfd35b985a",
+    "frozen.json": "4048999b5140ffaa56ddd2d1a68fec680fc3a35c09f1649974e4665dfd9c6c92",
+    "independent-content-audit.json": "2208dd9c9bff3f70c0b256ae550c777442d831b5533233aea14bc124be6d4726"
+  },
+  "trial_finished_at": "2026-10-05T19:28:25.827814+08:00"
+}
