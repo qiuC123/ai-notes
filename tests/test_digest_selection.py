@@ -32,7 +32,12 @@ class SelectionTests(unittest.TestCase):
         self.prompt = Path(__file__).resolve().parents[1] / "docs/prompts/digest-selection.md"
         (self.root / "config").mkdir()
         (self.root / "docs/prompts").mkdir(parents=True)
-        (self.root / "config/digest_selection.json").write_bytes(self.policy.read_bytes())
+        legacy_policy = json.loads(self.policy.read_text(encoding="utf-8"))
+        # These existing score fixtures predate evidence-linked understanding.
+        # New-contract card tests are in test_digest_selection_projection.
+        legacy_policy.pop("understanding_contract", None)
+        legacy_policy["version"] = "v9-editorial-first-uncalibrated"
+        (self.root / "config/digest_selection.json").write_text(json.dumps(legacy_policy), encoding="utf-8")
         (self.root / "docs/prompts/digest-selection.md").write_bytes(self.prompt.read_bytes())
 
     def prepare(self, records=None, context=True):

@@ -130,3 +130,13 @@ flags 是数组；无标记时用空数组。所有 evidence_refs 只能来自�
 输出前检查理由是否和所引版本、安装路径、原文限定及新闻/工具维度一致；产品事实只以本卡材料为准，公共编辑定位只用提供的 editorial_position，个人背景只用提供的 reader_context，不复述示例事实。禁止输出 decision、override_reason、reviewer、prepare_id、candidate_id、input_hash、总分或其他额外字段，即使值为 null 也不允许。程序负责绑定身份、计算分数和执行门槛，你只输出上述判断。当前 v9 规则仍未经过读者标签校准；历史冻结输入使用其原有提示词与策略。
 
 你不决定入选数量，不为填满榜单调整分数，也不因为预期门槛给某个候选凑分。本评分不等于三榜归档。
+<!-- understanding_contract: project-reading.v1 -->
+## 仅在 project-reading.v1 合同启用时使用的理解检查
+
+card.understanding 是待审阅的理解卡，不是第二份独立证据。先把 purpose、input、output 和 operations 的具体对象、动作与结果逐项对照原文，再评分。不能仅凭措辞顺畅、段落 ID 合法或另一模型总结就认定用途成立；格式支持不自动等于转换功能，部署用户流程不等于安装运行环境，可选功能不等于默认行为。
+
+understanding.proof_map 的 passage ID 对应 evidence_url、heading_path 与 source_span；按 card.evidence_context[context_index].text[start:end] 还原引文（Unicode 字符索引，左闭右开）。原始全文材料仍只在 evidence_context 中出现一次，不能把同一原文的多份概括当作多个证据。来源范围在 card.source_documents 中；complete_text 只表示抓取了该份文档，excerpt/unknown 不能证明读完原网页、整个仓库、完整许可证或已实测。
+
+用途与使用条件判断必须保留条件的主体：兼容平台、必须依赖、可选能力、替代安装路径和付费渠道分别处理。某个分支需要的条件不能推广到所有路径；免费替代路径不能让已提及的商店版变免费。unknowns 和 reading_scope_issues 应限制结论，不能靠想象补全，也不能直接把材料未覆盖写成产品没有该能力。
+
+本补充不改变既定维度、权重、限分、门槛及四字段输出；仍按候选 kind 的评价单位判断公开读者价值。明确区分原文事实、编辑推论与尚未核实的效果，遇到理解与原文冲突时不要将该理解作为评分根据。

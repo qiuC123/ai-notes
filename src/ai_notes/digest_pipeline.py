@@ -20,6 +20,7 @@ from .digest_claims import validate_claims
 from .digest_output_schema import assessment_schema, source_review_schema
 from .digest_passages import build_passages, bind_review
 from . import digest_editorial as editorial
+from . import digest_reading as reading, digest_understanding as understanding
 
 BUDGETS = {'daily': (30, 12, 8), 'weekly': (80, 35, 25), 'monthly': (150, 60, 30)}
 SOURCE_REVIEW_CONTRACT = 'passages.reviewed.v1'
@@ -152,6 +153,23 @@ def _source_text(root, fetched):
     return body[:14000]
 
 
+def _source_context(root, fetched, *, max_chars=14000):
+    """Retain the actual extracted-text coverage, never an assumed full page."""
+    body = sources._payload(Path(root), fetched).decode('utf-8', errors='replace')
+    reader = 'decoded-text'
+    if 'html' in fetched.get('content_type', ''):
+        parser = _Text(); parser.feed(body); body = parser.text()
+        reader = 'html-extracted-text'
+    text = body[:max_chars]
+    return {'url': fetched['url'], 'text': text, 'fetched_at': fetched['fetched_at'],
+            'source_scope': {'schema_version': 'digest-source-scope.v1',
+                'coverage': 'complete_text' if len(text) == len(body) else 'excerpt',
+                'document_chars': len(body), 'supplied_chars': len(text),
+                'ranges': [{'start': 0, 'end': len(text)}],
+                'document_sha256': hashlib.sha256(body.encode('utf-8')).hexdigest(),
+                'reader': reader, 'commit_sha': None, 'file_path': None}}
+
+
 def _save(root, job, owner, key, value):
     runtime.checkpoint(root, job['job_id'], owner, key, value)
     job['checkpoints'][key] = value
@@ -270,7 +288,7 @@ def _screen(root, job, owner, model, kind, period, screen_limit, deep_limit):
         cid = selection.candidate_id(card)
         records[cid] = card
     policy = selection.load_policy(root)
-    prompt = (Path(root) / selection.PROMPT_PATH).read_text(encoding='utf-8')
+    prompt = selection.load_prompt(root, policy)
     material = {'cards':compact,'deep_limit':deep_limit,'ranking_type':kind}
     context = policy.get('reader_context')
     position = policy.get('editorial_position')
@@ -298,7 +316,8 @@ def _screen(root, job, owner, model, kind, period, screen_limit, deep_limit):
                    'explanations. Ease of setup alone still does not prove value. This editorial position governs value judgments '
                    'when the preceding reader-focus wording might suggest personal urgency.')
     frozen = _save(root, job, owner, 'screen-input', dict(records=records, offset=offset, eligible_count=total,
-        source_review_contract=SOURCE_REVIEW_CONTRACT, policy_snapshot=policy, prompt_snapshot=prompt,
+        source_review_contract=understanding.SOURCE_REVIEW_CONTRACT if policy.get('understanding_contract') == 'project-reading.v1'
+                               else SOURCE_REVIEW_CONTRACT, policy_snapshot=policy, prompt_snapshot=prompt,
         request=dict(stage='screen-v9-editorial-first' if position is not None else
                      'screen-v8-reader-context' if context is not None else 'screen-v4-evidence-scope',
                      system=system, material=material, max_output_tokens=min(16384, 512 + len(compact)*90))))
@@ -420,7 +439,7 @@ def _date_quote_support(event_date, quote, original=None):
     return event_date in dates
 
 
-def _facts(output, contexts, record, *, require_scope=False):
+def _facts(output, contexts, record, *, require_scope=False, require_understanding=False):
     if set(output) != {'qualified','reason','facts'} or type(output['qualified']) is not bool or not isinstance(output['reason'],str):
         raise runtime.RuntimeError('invalid source review result')
     if not output['qualified']:
@@ -430,9 +449,12 @@ def _facts(output, contexts, record, *, require_scope=False):
     required={'title','category','summary','reason','audience','usage_conditions','detail','retention_reason','evidence_urls','claims','open_source_status'}
     if record['kind']=='reading': required |= {'author','original_date'}
     if record['kind']=='news': required.add('event_date')
+    if require_understanding: required.add('understanding')
     if not isinstance(facts,dict) or set(facts)!=required: raise runtime.RuntimeError('invalid extracted facts fields')
-    for field in required - {'evidence_urls','claims'}:
+    for field in required - {'evidence_urls','claims','understanding'}:
         if not isinstance(facts[field],str) or not facts[field].strip(): raise runtime.RuntimeError('empty extracted '+field)
+    if require_understanding:
+        understanding.validate_understanding(facts['understanding'])
     refs = facts['evidence_urls']
     originals={c['url']:c['text'] for c in contexts}
     if not isinstance(refs,list) or not refs or set(refs)-set(originals): raise runtime.RuntimeError('source review cited unread evidence')
@@ -474,8 +496,9 @@ def _review_original(root, job, owner, model, record, cid, budget):
     # older jobs keep their previous prompt/stage and do not replay paid calls
     # merely because the current contract can retain more source scope.
     contract=job['checkpoints'].get('screen',{}).get('source_review_contract')
-    bound=contract in ('passages.v1','passages.reviewed.v1')
-    scoped=contract in ('claims.scope.v1','passages.v1','passages.reviewed.v1')
+    understood=contract==understanding.SOURCE_REVIEW_CONTRACT
+    bound=understood or contract in ('passages.v1','passages.reviewed.v1')
+    scoped=understood or contract in ('claims.scope.v1','passages.v1','passages.reviewed.v1')
     passages=None
     base_request_id=saved.get('request_id') if saved else None
     input_stage='original-input:'+cid
@@ -500,13 +523,29 @@ def _review_original(root, job, owner, model, record, cid, budget):
             if bound: passages=request['material']['passages']
         else:
             urls=list(dict.fromkeys(([record['event']['url']] if record.get('event') else []) + record.get('evidence_urls',[]) + [record['url']] + record.get('source_urls',[])))[:3]
-            contexts=[]; checks=[]; failures=[]
+            contexts=[]; checks=[]; failures=[]; reading_plans=[]
             for url in urls:
                 runtime.renew(root,job['job_id'],owner)
                 try:
                     parsed=urlsplit(url)
                     repository=(parsed.hostname in ('github.com','www.github.com') and
                                 len([piece for piece in parsed.path.split('/') if piece])==2)
+                    if repository and understood:
+                        target=url
+                        event_url=record.get('event',{}).get('url')
+                        if event_url:
+                            event_parts=urlsplit(event_url).path.strip('/').split('/')
+                            if (urlsplit(event_url).hostname in ('github.com','www.github.com') and
+                                digest.canonical_url(event_url)==digest.canonical_url(url) and
+                                (event_parts[2:4]==['releases','tag'] or event_parts[2:3]==['commit'])):
+                                target=event_url
+                        packet=reading.read_project(root,target,max_documents=4,max_chars=14000)
+                        contexts.extend(packet['contexts'])
+                        checks.extend(packet['receipts'])
+                        reading_plans.append({key:packet[key] for key in
+                            ('repository_url','commit_sha','status','coverage','reading_plan','gitingest')})
+                        failures.extend(packet.get('failures', []))
+                        continue
                     if repository:
                         pinned=sources.read_github(root,url)
                         raw=(Path(root)/pinned['document_path']).read_bytes()
@@ -514,9 +553,13 @@ def _review_original(root, job, owner, model, record, cid, budget):
                         response=pinned; url=pinned['original_url']; text=raw.decode('utf-8',errors='replace')[:14000]
                     else:
                         response=sources.fetch(root,url)
-                        text=_source_text(root,response)
+                        if understood:
+                            context=_source_context(root,response)
+                            text=context['text']
+                        else:
+                            text=_source_text(root,response)
                     if not text.strip(): raise runtime.RuntimeError('empty original text')
-                    contexts.append({'url':url,'text':text,'fetched_at':response['fetched_at']})
+                    contexts.append(context if understood else {'url':url,'text':text,'fetched_at':response['fetched_at']})
                     checks.append({'url':url,'checked_at':response['checked_at'],'sha256':response['sha256']})
                 except (sources.SourceError, OSError, runtime.RuntimeError) as exc:
                     failures.append({'url':url,'error':type(exc).__name__})
@@ -528,11 +571,17 @@ def _review_original(root, job, owner, model, record, cid, budget):
                          material={'candidate':compact,'originals':contexts,'source_checks':checks,'ranking_type':job['payload']['ranking_type']})
             if bound:
                 passages=build_passages(contexts)
-                reviewed=contract=='passages.reviewed.v1'
-                request=dict(stage='verify-facts-v7-reader-facts' if reviewed else 'verify-facts-v6-passages',
+                reviewed=understood or contract=='passages.reviewed.v1'
+                request=dict(stage='verify-facts-v10-project-reading' if understood else
+                                   'verify-facts-v7-reader-facts' if reviewed else 'verify-facts-v6-passages',
                              system=(REVIEWED_PASSAGE_VERIFY_PROMPT if reviewed else PASSAGE_VERIFY_PROMPT)+'\n'+READER_FOCUS,
                              material={'candidate':compact,'passages':passages,'source_checks':checks,'ranking_type':job['payload']['ranking_type']},
-                             output_schema=source_review_schema(record=record,passages=passages))
+                             output_schema=source_review_schema(record=record,passages=passages,include_understanding=True)
+                                           if understood else source_review_schema(record=record,passages=passages))
+                if understood:
+                    request['system'] += '\n' + understanding.UNDERSTANDING_PROMPT_SUPPLEMENT
+                    request['material']['source_documents']=understanding.source_documents(contexts)
+                    request['material']['reading_plans']=reading_plans
             if scoped:
                 # Persist the whole request before HTTP: even a crash between
                 # the runtime receipt and our response checkpoint must keep
@@ -550,8 +599,10 @@ def _review_original(root, job, owner, model, record, cid, budget):
                   receipt=receipt,contexts=contexts,checks=checks,failures=failures,
                   **({'passages':passages} if bound else {})))
     try:
-        normalized=bind_review(receipt['output'],passages,record) if bound else receipt['output']
-        facts=_facts(normalized,contexts,record,require_scope=contract=='claims.scope.v1')
+        normalized=(understanding.bind_understanding_review(receipt['output'],passages,record,
+                    job['checkpoints'][input_stage]['request']['material']['source_documents']) if understood else
+                    bind_review(receipt['output'],passages,record) if bound else receipt['output'])
+        facts=_facts(normalized,contexts,record,require_scope=contract=='claims.scope.v1',require_understanding=understood)
     except (ValueError, TypeError, KeyError) as exc:
         if not scoped: raise
         error=str(exc) if isinstance(exc,ValueError) else type(exc).__name__
@@ -559,6 +610,12 @@ def _review_original(root, job, owner, model, record, cid, budget):
                                         'failures':failures,'request_id':receipt['request_id']})
     if facts is None:
         return _save(root,job,owner,stage,{'deferred':True,'reason':receipt['output']['reason'],'failures':failures,'request_id':receipt['request_id']})
+    if understood:
+        scope_issues = (facts['understanding']['reading_scope_issues'] +
+                        understanding.prose_scope_issues(facts, facts['understanding']['source_documents']))
+        if scope_issues:
+            return _save(root,job,owner,stage,{'deferred':True,'reason':'文案超出实际阅读范围',
+                         'reading_scope_issues':scope_issues,'failures':failures,'request_id':receipt['request_id']})
     # Successful source-review receipt is immutable and checkpointed. A restart
     # keeps its actual verification time, never merely refreshes a timestamp.
     verified_at=receipt['completed_at']
@@ -579,8 +636,8 @@ def _review_original(root, job, owner, model, record, cid, budget):
     return evidence
 
 
-def _review_editorial(root, job, owner, model, card, entry, assessment, score_receipt, budget, *, reader_context=None, editorial_position=None):
-    """One independent consistency review, retaining every raw judgment.
+def _review_editorial(root, job, owner, model, card, entry, assessment, score_receipt, budget, *, reader_context=None, editorial_position=None, understanding_contract=None):
+    """One source-linked consistency review, retaining every raw judgment.
 
     This does not amend facts/scores or assert human accuracy. A rejected review
     stays deferred; only new frozen source/score inputs create a new generation.
@@ -592,6 +649,8 @@ def _review_editorial(root, job, owner, model, card, entry, assessment, score_re
         identity['reader_context']=reader_context
     if editorial_position is not None:
         identity['editorial_position']=editorial_position
+    if understanding_contract is not None:
+        identity['understanding_contract']=understanding_contract
     signature=runtime._hash(identity)
     saved=job['checkpoints'].get(stage)
     if saved and saved['signature']==signature:
@@ -602,10 +661,12 @@ def _review_editorial(root, job, owner, model, card, entry, assessment, score_re
     if not frozen or frozen['signature']!=signature:
         material=editorial.build_review_input(record=card['material'],facts=entry['facts'],
             assessment=assessment,contexts=entry['contexts'],ranking_type=card['ranking_type'],reader_context=reader_context,
-            editorial_position=editorial_position)
-        request=dict(stage='editorial-v9-editorial-first' if editorial_position is not None else
+            editorial_position=editorial_position,understanding_contract=understanding_contract)
+        request=dict(stage='editorial-v10-project-reading' if understanding_contract is not None else
+                          'editorial-v9-editorial-first' if editorial_position is not None else
                      'editorial-v8-reader-context' if reader_context is not None else 'editorial-v7-source-score',
-                     system=editorial.EDITORIAL_POSITION_REVIEW_PROMPT if editorial_position is not None else
+                     system=editorial.PROJECT_READING_REVIEW_PROMPT if understanding_contract is not None else
+                            editorial.EDITORIAL_POSITION_REVIEW_PROMPT if editorial_position is not None else
                      editorial.READER_CONTEXT_REVIEW_PROMPT if reader_context is not None else editorial.REVIEW_PROMPT,
                      material=material,output_schema=editorial.review_schema(material['passages']),
                      max_output_tokens=4096)
@@ -686,6 +747,10 @@ def generate(root, job, owner):
             raise runtime.RuntimeError('screen policy/prompt snapshot unavailable; do not apply current rules to a legacy job')
         preparation=selection.prepare(root,kind,period,limit=initial,evidence_context=contexts,candidate_ids=list(materials),
                                       source_claims={cid:entry['facts']['claims'] for cid,entry in materials.items()},
+                                      source_understanding={cid:entry['facts']['understanding'] for cid,entry in materials.items()
+                                                            if 'understanding' in entry['facts']},
+                                      candidate_contexts={cid:entry['contexts'] for cid,entry in materials.items()}
+                                                         if policy_snapshot.get('understanding_contract') else None,
                                       policy_snapshot=policy_snapshot,prompt_snapshot=screening.get('prompt_snapshot'))
         _save(root,job,owner,'preparation',{'signature':signature,'prepare_id':preparation['prepare_id']})
     selected=[]
@@ -715,10 +780,19 @@ def generate(root, job, owner):
         if adapted['status']!='accepted':
             failures.append(cid+':评分响应无效：'+adapted['error'])
             continue
+        if preparation['policy'].get('understanding_contract'):
+            facts=materials[cid]['facts']
+            scope_issues=understanding.prose_scope_issues(adapted['assessment'],
+                              facts['understanding']['source_documents'],facts['claims'])
+            if scope_issues:
+                _save(root,job,owner,'score-reading-scope:'+cid,dict(request_id=receipt['request_id'],issues=scope_issues))
+                failures.append(cid+':评分文案超出实际阅读范围')
+                continue
         if preparation['policy'].get('editorial_review_contract')==editorial.REVIEW_CONTRACT:
             checked=_review_editorial(root,job,owner,model,card,materials[cid],adapted['assessment'],receipt,budget,
                                       reader_context=preparation['policy'].get('reader_context'),
-                                      editorial_position=preparation['policy'].get('editorial_position'))
+                                      editorial_position=preparation['policy'].get('editorial_position'),
+                                      understanding_contract=preparation['policy'].get('understanding_contract'))
             if checked['verdict']!='accept':
                 failures.append(cid+':内容复核暂缓：'+checked['reason'])
                 continue

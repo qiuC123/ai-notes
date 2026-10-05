@@ -33,6 +33,8 @@ class PipelineTests(unittest.TestCase):
         self.malformed_scores=False
         self.malformed_scope=False
         self.malformed_passage=False
+        self.prose_overclaim=False
+        self.score_overclaim=False
         self.editorial_defer=False
         self.malformed_editorial=False
         self.editorial_inputs=[]
@@ -86,6 +88,8 @@ class PipelineTests(unittest.TestCase):
                     retention_reason='本地文件管理是持续需求。',evidence_urls=[url],open_source_status='confirmed',
                     claims=[{'field':field,'text':text,'evidence_url':url,'quote':text} for field,text in
                         [('summary','Organizes local files.'),('usage_conditions','Install with Python.'),('license','MIT License.'),('category','Organizes local files.')]])
+                if self.prose_overclaim:
+                    facts['reason']='许可证文件中包含 MIT 许可证全文，已完成阅读。'
                 if material['candidate']['kind']=='update':
                     facts['claims'].append(dict(field='change_note',text='Adds local file organization.',evidence_url=url,quote='Organizes local files.'))
                 if material['candidate']['kind']=='news':
@@ -110,6 +114,19 @@ class PipelineTests(unittest.TestCase):
                     output['facts']={k:v for k,v in facts.items() if k not in ('claims','evidence_urls')}
                     output['evidence']=refs
                     if self.malformed_passage: output['evidence']['usage_conditions']=['invented-passage']
+            if material.get('source_documents') is not None:
+                if not output['qualified']:
+                    output['understanding'] = None
+                else:
+                    ids = output['evidence']['summary']
+                    output['understanding'] = {
+                        'purpose': {'text': output['facts']['summary'], 'passage_ids': ids},
+                        'input': {'text': None, 'passage_ids': []},
+                        'output': {'text': None, 'passage_ids': []},
+                        'operations': [],
+                        'conditions': [{'subject': 'documented installation', 'kind': 'mandatory',
+                            'text': output['facts']['usage_conditions'], 'passage_ids': output['evidence']['usage_conditions']}],
+                        'unknowns': ['Exact input and output formats not specified.']}
         elif material.get('evidence_scope') == 'supplied_text_only_not_full_document_or_software_test':
             self.editorial_inputs.append(material)
             output=dict(verdict='accept',reason='No material source or scoring contradiction.',issues=[])
@@ -124,11 +141,96 @@ class PipelineTests(unittest.TestCase):
                 flags=[],reason='适合本地文件管理读者。')
             if self.malformed_scores:
                 output['decision']='select'  # Model cannot decide or bind a review.
+            if self.score_overclaim:
+                output['scores']['evidence']['reason']='已阅读许可证全文，确认授权条件。'
         return httpx.Response(200,json={'choices':[{'message':{'content':json.dumps(output,ensure_ascii=False)}}],'usage':{'prompt_tokens':10,'completion_tokens':10}})
 
     def run_job(self,kind='daily',period=None):
         job=runtime.enqueue(self.root,{'action':'generate','ranking_type':kind,'period':period or self.period})
         return job,runtime.work_once(self.root)
+
+    def use_legacy_reading_policy(self):
+        policy_path=self.root/'config/digest_selection.json'
+        policy=json.loads(policy_path.read_text(encoding='utf-8'))
+        policy.pop('understanding_contract',None)
+        policy_path.write_text(json.dumps(policy),encoding='utf-8')
+
+    def test_reading_card_and_document_scope_reach_score_and_editorial(self):
+        job,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        for scored,reviewed in zip(self.score_inputs,self.editorial_inputs):
+            self.assertIn('understanding',scored['card'])
+            self.assertEqual('complete_text',scored['card']['source_documents'][0]['scope']['coverage'])
+            self.assertEqual(scored['card']['source_documents'],reviewed['source_documents'])
+            self.assertEqual(scored['card']['understanding']['purpose'],reviewed['facts']['understanding']['purpose'])
+        self.assertEqual(6,len(self.editorial_inputs))
+
+    def test_excerpt_full_license_claim_stops_before_score_and_keeps_receipt(self):
+        self.text += '\n' + 'Additional license material. '*800
+        self.prose_overclaim=True
+        job,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual('draft',result['result']['status'])
+        self.assertEqual([],self.score_inputs)
+        self.assertEqual(7,len(self.calls))
+        with runtime._db(self.root,write=False) as con:
+            checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        original=[v for k,v in checkpoints.items() if k.startswith('original:')]
+        self.assertTrue(all(v['reading_scope_issues'] for v in original))
+        raw=[v for k,v in checkpoints.items() if k.startswith('original-response:')]
+        self.assertTrue(all('全文' in v['receipt']['output']['facts']['reason'] for v in raw))
+
+    def test_new_reading_response_recovery_keeps_same_card_and_avoids_fetch(self):
+        runtime.enqueue(self.root,{'action':'generate','ranking_type':'daily','period':self.period})
+        job=runtime.claim(self.root,'owner')
+        pipeline._save(self.root,job,'owner','screen',{'source_review_contract':pipeline.understanding.SOURCE_REVIEW_CONTRACT})
+        record=digest.candidates(self.root,ranking_type='daily',period=self.period)['candidates'][0]
+        model=self.real_model(self.root,base_url='https://provider.example/v1',model='fixture',api_key='fixture-only',client=self.client)
+        original=runtime.checkpoint
+        def crash(root,job_id,owner,stage,value):
+            original(root,job_id,owner,stage,value)
+            if stage.startswith('original-response:'):
+                raise OSError('raw response saved before normalized fact checkpoint')
+        with patch.object(runtime,'checkpoint',side_effect=crash),self.assertRaises(OSError):
+            pipeline._review_original(self.root,job,'owner',model,record,'resume-card',37)
+        with runtime._db(self.root,write=False) as con:
+            job['checkpoints']=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        frozen=copy.deepcopy(job['checkpoints']['original-input:resume-card'])
+        with patch.object(pipeline.sources,'fetch',side_effect=AssertionError('must not fetch')),patch.object(pipeline.reading,'read_project',side_effect=AssertionError('must not reread')):
+            result=pipeline._review_original(self.root,job,'owner',model,record,'resume-card',37)
+        self.assertFalse(result.get('deferred'),result)
+        self.assertEqual(frozen,job['checkpoints']['original-input:resume-card'])
+        self.assertEqual(frozen['request']['material']['source_documents'],result['facts']['understanding']['source_documents'])
+        self.assertEqual(1,len(self.calls))
+
+    def test_excerpt_full_license_score_claim_keeps_raw_and_skips_editorial(self):
+        self.text += '\n' + 'Additional license material. '*800
+        self.score_overclaim=True
+        job,result=self.run_job()
+        self.assertEqual('completed',result['status'],result)
+        self.assertEqual('draft',result['result']['status'])
+        self.assertEqual(13,len(self.calls))
+        self.assertEqual([],self.editorial_inputs)
+        with runtime._db(self.root,write=False) as con:
+            checkpoints=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
+        self.assertEqual(6,len([key for key in checkpoints if key.startswith('score-reading-scope:')]))
+        self.assertTrue(all('全文' in value['raw_output']['scores']['evidence']['reason']
+                           for key,value in checkpoints.items() if key.startswith('score-response:')))
+
+    def test_update_repository_reader_receives_its_original_release_ref(self):
+        runtime.enqueue(self.root,{'action':'generate','ranking_type':'daily','period':self.period})
+        job=runtime.claim(self.root,'owner')
+        pipeline._save(self.root,job,'owner','screen',{'source_review_contract':pipeline.understanding.SOURCE_REVIEW_CONTRACT})
+        record=digest.candidates(self.root,ranking_type='daily',period=self.period)['candidates'][0]
+        repo='https://github.com/example/tool'
+        event=repo+'/releases/tag/v1.2.3'
+        record.update(url=repo,source_urls=[repo],kind='update',event=dict(id='v1.2.3',url=event,type='update',occurred_at=self.now.isoformat()))
+        context=pipeline._source_context(self.root,self.fetch(self.root,repo))
+        packet=dict(contexts=[context],receipts=[],repository_url=repo,commit_sha='a'*40,status='ok',coverage={},reading_plan={},gitingest={})
+        model=self.real_model(self.root,base_url='https://provider.example/v1',model='fixture',api_key='fixture-only',client=self.client)
+        with patch.object(pipeline.reading,'read_project',return_value=packet) as reader:
+            pipeline._review_original(self.root,job,'owner',model,record,'tagged',37)
+        reader.assert_called_once_with(self.root,event,max_documents=4,max_chars=14000)
 
     def test_original_review_score_archive_and_retry_are_idempotent(self):
         job,result=self.run_job()
@@ -142,8 +244,8 @@ class PipelineTests(unittest.TestCase):
         with runtime._db(self.root,write=False) as con:
             prepared=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
             stages={row[0] for row in con.execute('SELECT stage FROM requests')}
-        self.assertEqual({'screen-v9-editorial-first', 'verify-facts-v7-reader-facts',
-                          'value-score-v5-scoped-source','editorial-v9-editorial-first'}, stages)
+        self.assertEqual({'screen-v9-editorial-first', 'verify-facts-v10-project-reading',
+                          'value-score-v5-scoped-source','editorial-v10-project-reading'}, stages)
         self.assertEqual(6,len(prepared['issue']['items']))
         self.assertTrue(all(x['verification_level']=='documented' for x in prepared['issue']['items']))
 
@@ -157,7 +259,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(14,runtime.notices(self.root)[0]['payload']['shortfall'])
 
     def test_oversized_item_at_each_model_stage_keeps_other_candidates(self):
-        stages=('verify-facts-v7-reader-facts','value-score-v5-scoped-source','editorial-v9-editorial-first')
+        stages=('verify-facts-v10-project-reading','value-score-v5-scoped-source','editorial-v10-project-reading')
         original_request=self.real_model.request
         for index,target_stage in enumerate(stages):
             with self.subTest(stage=target_stage):
@@ -179,9 +281,9 @@ class PipelineTests(unittest.TestCase):
                 self.assertIn('60000',result['result']['failures'][0])
                 with runtime._db(self.root,write=False) as con:
                     cp=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
-                prefix={'verify-facts-v7-reader-facts':'original-input:',
+                prefix={'verify-facts-v10-project-reading':'original-input:',
                         'value-score-v5-scoped-source':'preparation',
-                        'editorial-v9-editorial-first':'editorial-input:'}[target_stage]
+                        'editorial-v10-project-reading':'editorial-input:'}[target_stage]
                 self.assertTrue(any(k.startswith(prefix) for k in cp))
                 before=len(self.calls)
                 self.assertEqual('idle',runtime.work_once(self.root,job_id=job['job_id'])['status'])
@@ -316,6 +418,7 @@ class PipelineTests(unittest.TestCase):
         legacy=pipeline.selection.load_policy(self.root)
         legacy.pop('reader_context')
         legacy.pop('editorial_position')
+        legacy.pop('understanding_contract',None)
         legacy['version']='v7-reader-value-review-uncalibrated'
         prepared=pipeline.selection.prepare(self.root,'daily',self.period,policy_snapshot=legacy,
                                             prompt_snapshot='Authoritative frozen legacy prompt.')
@@ -372,6 +475,7 @@ class PipelineTests(unittest.TestCase):
 
     @patch.object(pipeline,'SOURCE_REVIEW_CONTRACT','claims.scope.v1')
     def test_invalid_new_scope_retains_raw_receipt_and_defers_without_retries(self):
+        self.use_legacy_reading_policy()
         self.malformed_scope=True
         job,result=self.run_job()
         self.assertEqual('completed',result['status'],result)
@@ -393,6 +497,7 @@ class PipelineTests(unittest.TestCase):
 
     @patch.object(pipeline,'SOURCE_REVIEW_CONTRACT','claims.scope.v1')
     def test_original_response_checkpoint_crash_reuses_bad_scope_without_fetching(self):
+        self.use_legacy_reading_policy()
         self.malformed_scope=True
         original=runtime.checkpoint
         interrupted=False
@@ -776,6 +881,7 @@ class PipelineTests(unittest.TestCase):
         legacy.pop('assessment_contract',None)
         legacy.pop('editorial_review_contract',None)
         legacy.pop('scoring_projection',None)
+        legacy.pop('understanding_contract',None)
         legacy['flag_basis']={k:legacy['flag_basis'][k] for k in ('routine_update','unsupported_promotion')}
         policy_path.write_text(json.dumps(legacy),encoding='utf-8')
         legacy_prompt='Frozen v3 scoring prompt. Return the four assessment fields.'

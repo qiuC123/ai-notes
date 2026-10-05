@@ -64,7 +64,7 @@ def assessment_schema(*, policy: dict, card: dict) -> dict:
     return schema
 
 
-def source_review_schema(*, record: dict, passages: list[dict]) -> dict:
+def source_review_schema(*, record: dict, passages: list[dict], include_understanding: bool = False) -> dict:
     """Guide a source review that cites program-owned passage IDs only.
 
     The caller binds IDs to original URLs, quotes and headings. This schema
@@ -109,4 +109,14 @@ def source_review_schema(*, record: dict, passages: list[dict]) -> dict:
         'then': {'properties': {'facts': {'$ref': '#/$defs/facts'}, 'evidence': {'$ref': '#/$defs/evidence'}}},
         'else': {'properties': {'facts': {'type': 'null'}, 'evidence': {'type': 'null'}}},
     }]
+    if include_understanding:
+        from .digest_understanding import understanding_schema
+
+        schema['$defs']['understanding'] = understanding_schema()
+        schema['properties']['understanding'] = {
+            'anyOf': [{'$ref': '#/$defs/understanding'}, {'type': 'null'}]}
+        schema['required'].append('understanding')
+        branch = schema['allOf'][0]
+        branch['then']['properties']['understanding'] = {'$ref': '#/$defs/understanding'}
+        branch['else']['properties']['understanding'] = {'type': 'null'}
     return schema

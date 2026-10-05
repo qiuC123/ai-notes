@@ -119,6 +119,63 @@ class EditorialInputTests(unittest.TestCase):
         return editorial.build_review_input(record=self.record, facts=self.facts, assessment=self.assessment,
                                              contexts=self.contexts, ranking_type='weekly')
 
+    def add_understanding(self):
+        from ai_notes.digest_understanding import source_documents
+        first = build_passages(self.contexts)[0]
+        self.facts['understanding'] = {
+            'schema_version': 'digest-understanding.v1',
+            'purpose': {'text': 'Documented desktop route.', 'passage_ids': [first['id']]},
+            'input': {'text': None, 'passage_ids': []}, 'output': {'text': None, 'passage_ids': []},
+            'operations': [], 'conditions': [], 'unknowns': ['The short excerpt does not identify inputs and outputs.'],
+            'proof_map': {first['id']: {key: first[key] for key in ('evidence_url', 'quote', 'heading_path')}},
+            'source_documents': source_documents(self.contexts), 'reading_scope_issues': [],
+        }
+
+    def understood(self, marker='project-reading.v1'):
+        return editorial.build_review_input(record=self.record, facts=self.facts, assessment=self.assessment,
+            contexts=self.contexts, ranking_type='weekly', understanding_contract=marker)
+
+    def test_understanding_opt_in_reads_every_actual_passage_not_just_card_citations(self):
+        self.add_understanding()
+        result = self.understood()
+        cited = set(result['facts']['understanding']['purpose']['passage_ids'])
+        self.assertTrue(any(row['id'] not in cited for row in result['passages']))
+        self.assertEqual(self.contexts[0]['text'], ''.join(row['quote'] for row in result['passages']))
+        self.assertIn('GPU acceleration can be enabled.', result['passages'][-1]['quote'])
+        self.assertNotIn('proof_map', result['facts']['understanding'])
+        self.assertNotIn('source_documents', result['facts']['understanding'])
+        self.assertEqual(self.facts['understanding']['source_documents'], result['source_documents'])
+
+    def test_unmarked_editorial_input_remains_exact_even_when_facts_contain_understanding(self):
+        before = self.build()
+        self.facts['understanding'] = {'invalid': 'must not enable a contract via model data'}
+        self.assertEqual(json.dumps(before, sort_keys=True), json.dumps(self.build(), sort_keys=True))
+        self.assertNotIn('source_documents', self.build())
+
+    def test_project_reading_input_deep_copies_ranges_and_unknowns(self):
+        length = len(self.contexts[0]['text'])
+        self.contexts[0]['source_scope'] = dict(schema_version='digest-source-scope.v1', coverage='excerpt',
+            document_chars=10000, supplied_chars=length, ranges=[dict(start=100,end=100+length)],
+            document_sha256='a' * 64, reader='fixture', commit_sha='abc123', file_path='README.md')
+        self.add_understanding()
+        before = copy.deepcopy((self.facts, self.contexts))
+        result = self.understood()
+        self.assertEqual('excerpt', result['source_documents'][0]['scope']['coverage'])
+        result['source_documents'][0]['scope']['ranges'][0]['start'] = 1
+        result['facts']['understanding']['unknowns'].clear()
+        self.assertEqual(before, (self.facts, self.contexts))
+
+    def test_project_reading_rejects_unknown_contract_missing_card_or_stale_source(self):
+        for marker in ('', 'project-reading.v2', {}):
+            with self.subTest(marker=marker), self.assertRaisesRegex(ValueError, 'unsupported understanding'):
+                self.understood(marker)
+        with self.assertRaises(ValueError):
+            self.understood()
+        self.add_understanding()
+        self.contexts[0]['text'] += 'A newly captured condition changes passage IDs.'
+        with self.assertRaises(ValueError):
+            self.understood()
+
     def test_all_fact_prose_and_current_score_explanations_are_retained(self):
         result = self.build()
         self.assertEqual(set(self.facts) - {'evidence_urls', 'claims', 'human_label'}, set(result['facts']))

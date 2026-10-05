@@ -25,6 +25,8 @@ SCOPED_CONTRACT = "scoped-source.v1"
 SOURCE_REFS_PROJECTION = "source-refs.v1"
 READER_CONTEXT_CONTRACT = "digest-reader-context.v1"
 EDITORIAL_POSITION_CONTRACT = "digest-editorial-position.v1"
+UNDERSTANDING_CONTRACT = "project-reading.v1"
+UNDERSTANDING_PROMPT_MARKER = "<!-- understanding_contract: project-reading.v1 -->"
 FLAG_BASIS_KINDS = {
     "routine_update": "limited_increment", "unsupported_promotion": "unsupported_effect_claim",
     "unfulfilled_announcement": "availability_limit", "unclear_usage": "usage_path_gap",
@@ -90,7 +92,7 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
 def validate_policy(policy: dict) -> dict:
     """Validate an in-memory policy and return an independent, unmodified copy."""
     policy = copy.deepcopy(policy)
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract"))
     if "assessment_contract" in policy and policy["assessment_contract"] != SCOPED_CONTRACT:
         raise SelectionError("unsupported assessment contract")
     if "editorial_review_contract" in policy and policy["editorial_review_contract"] != "source-score.v1":
@@ -98,6 +100,7 @@ def validate_policy(policy: dict) -> dict:
     _check_scoring_projection(policy)
     _check_reader_context(policy)
     _check_editorial_position(policy)
+    _check_understanding_contract(policy)
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -184,11 +187,23 @@ def load_preparation(root: Path, prepare_id: str) -> dict:
         connection.close()
 
 
+def load_prompt(root: Path, policy: dict) -> str:
+    """Select optional instructions before freezing; never upgrade a snapshot."""
+    _check_understanding_contract(policy)
+    text = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8")
+    base, marker, _ = text.partition(UNDERSTANDING_PROMPT_MARKER)
+    if policy.get("understanding_contract") == UNDERSTANDING_CONTRACT:
+        if not marker:
+            raise SelectionError("project-reading prompt supplement is unavailable")
+        return text
+    return base
+
+
 def get_prompt(root: Path, prepared: dict) -> str:
     """Return the system prompt belonging to the preparation, not a later edit."""
     text = prepared.get("prompt_text")
     if text is None:  # Preparations made before prompt text persistence.
-        text = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8")
+        text = load_prompt(root, prepared["policy"])
     if hashlib.sha256(text.encode("utf-8")).hexdigest() != prepared["prompt_hash"]:
         raise SelectionError("prepared prompt is unavailable or its hash does not match")
     return text
@@ -243,6 +258,51 @@ def _check_editorial_position(policy: dict) -> None:
         _strings(position[key], "editorial_position." + key)
 
 
+def _check_understanding_contract(policy: dict) -> None:
+    if "understanding_contract" in policy and policy["understanding_contract"] != UNDERSTANDING_CONTRACT:
+        raise SelectionError("unsupported understanding contract")
+
+
+def _validated_understanding(value: dict, contexts: list) -> dict:
+    """Check frozen bindings against these sources, without claiming entailment."""
+    from .digest_passages import build_passages
+    from .digest_understanding import source_documents, validate_understanding
+    try:
+        card = validate_understanding(value)
+        documents = source_documents(contexts)
+        if card["source_documents"] != documents:
+            raise ValueError("understanding source documents differ from supplied contexts")
+        actual = {item["id"]: {key: item[key] for key in ("evidence_url", "quote", "heading_path")}
+                  for item in build_passages(contexts)}
+        if any(actual.get(pid) != proof for pid, proof in card["proof_map"].items()):
+            raise ValueError("understanding proof does not match the supplied original passage")
+        return card
+    except ValueError as exc:
+        raise SelectionError(str(exc)) from exc
+
+
+def _understanding_projection(value: dict, contexts: list, *, source_spans: bool) -> dict:
+    """Keep one original text copy; source IDs refer to passages or exact spans."""
+    card = _validated_understanding(value, contexts)
+    proofs = card.pop("proof_map")
+    card.pop("source_documents")  # The enclosing input carries these once.
+    if source_spans:
+        from .digest_passages import build_passages
+        indices = {item["url"]: index for index, item in enumerate(contexts)}
+        cursors, spans = {}, {}
+        for passage in build_passages(contexts):
+            index = indices[passage["evidence_url"]]
+            start = contexts[index]["text"].index(passage["quote"], cursors.get(index, 0))
+            end = start + len(passage["quote"])
+            spans[passage["id"]] = {"context_index": index, "start": start, "end": end}
+            cursors[index] = end
+        for pid, proof in proofs.items():
+            proof.pop("quote")
+            proof["source_span"] = spans[pid]
+        card["proof_map"] = proofs
+    return card
+
+
 def _source_claim_refs(claims: list, contexts: list) -> list:
     """Replace repeated quotations with reversible positions, leaving originals intact.
 
@@ -276,6 +336,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     _check_scoring_projection(prepared["policy"])
     _check_reader_context(prepared["policy"])
     _check_editorial_position(prepared["policy"])
+    _check_understanding_contract(prepared["policy"])
     card = _card(prepared, candidate_id)
     fields = ("url", "title", "category", "kind", "summary", "source_urls", "evidence_urls", "published_at", "change_note")
     material = {key: copy.deepcopy(card["material"][key]) for key in fields if key in card["material"]}
@@ -283,7 +344,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     if event:
         material["event"] = {key: copy.deepcopy(event[key]) for key in
                              ("url", "occurred_at", "occurred_on", "date_precision", "timezone", "type") if key in event}
-    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position")
+    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract")
     result = {
         "card": {"ranking_type": card.get("ranking_type", prepared["ranking_type"]), "profile": card["profile"],
                  "material": material,
@@ -296,6 +357,10 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
             result["card"]["source_claims"] = _source_claim_refs(card.get("source_claims", []), card["evidence_context"])
         else:
             result["card"]["source_claims"] = copy.deepcopy(card.get("source_claims", []))
+    if prepared["policy"].get("understanding_contract") == UNDERSTANDING_CONTRACT:
+        from .digest_understanding import source_documents
+        result["card"]["understanding"] = _understanding_projection(card.get("understanding"), card["evidence_context"], source_spans=True)
+        result["card"]["source_documents"] = source_documents(card["evidence_context"])
     return result
 
 
@@ -376,11 +441,14 @@ def _exact_candidates(root: Path, ranking_type: str, period: str, requested: lis
 def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
             evidence_context: list | None = None, policy_path: Path | None = None, offset: int = 0,
             candidate_ids: list[str] | None = None, source_claims: dict | None = None,
+            source_understanding: dict | None = None, candidate_contexts: dict | None = None,
             policy_snapshot: dict | None = None, prompt_snapshot: str | None = None) -> dict:
     """Freeze candidate input and source text, without scoring.
 
     Supplied snapshots take precedence over the corresponding on-disk policy
     (including policy_path) or prompt. Omitted snapshots retain the file path.
+    The optional project-reading candidate_contexts mapping binds each candidate
+    to its entire source set, avoiding cross-candidate joins on shared event URLs.
     """
     root = Path(root)
     digest.period_window(ranking_type, period)
@@ -395,25 +463,42 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
         if offset:
             raise SelectionError("candidate_ids cannot be combined with offset")
     policy = load_policy(root, policy_path) if policy_snapshot is None else validate_policy(policy_snapshot)
-    prompt = ((root / PROMPT_PATH).read_text(encoding="utf-8") if prompt_snapshot is None
+    prompt = (load_prompt(root, policy) if prompt_snapshot is None
               else _text(prompt_snapshot, "prompt_snapshot"))
     contexts = [] if evidence_context is None else evidence_context
     claims_by_id = {} if source_claims is None else source_claims
+    understands = policy.get("understanding_contract") == UNDERSTANDING_CONTRACT
+    if candidate_contexts is not None:
+        if not understands:
+            raise SelectionError("candidate_contexts requires project-reading understanding contract")
+        if not isinstance(candidate_contexts, dict) or any(not isinstance(key, str) or not key.strip() for key in candidate_contexts):
+            raise SelectionError("candidate_contexts must map candidate IDs to source context lists")
+    understanding_by_id = {} if source_understanding is None else source_understanding
+    if understands and (not isinstance(understanding_by_id, dict) or any(not isinstance(key, str) for key in understanding_by_id)):
+        raise SelectionError("source_understanding must map candidate IDs to understanding cards")
     if not isinstance(claims_by_id, dict) or any(not isinstance(key, str) for key in claims_by_id):
         raise SelectionError("source_claims must map candidate IDs to quoted claim lists")
-    if not isinstance(contexts, list):
-        raise SelectionError("evidence_context must be a list")
-    for context in contexts:
-        _object(context, ("url", "text", "fetched_at"), "context")
-        digest._url(context["url"])
-        _text(context["text"], "context.text")
-        if digest._timestamp(context["fetched_at"], "context.fetched_at") > digest._now():
-            raise SelectionError("context fetched_at cannot be in the future")
+    def validate_contexts(items, label):
+        if not isinstance(items, list):
+            raise SelectionError(label + " must be a list")
+        for context in items:
+            _object(context, ("url", "text", "fetched_at"), "context", optional=("source_scope",) if understands else ())
+            digest._url(context["url"])
+            _text(context["text"], "context.text")
+            if digest._timestamp(context["fetched_at"], "context.fetched_at") > digest._now():
+                raise SelectionError("context fetched_at cannot be in the future")
+
+    validate_contexts(contexts, "evidence_context")
     if candidate_ids is None:
         query = _query(root, ranking_type, period, limit, offset)
         records = query["candidates"]
     else:
         query, records = _exact_candidates(root, ranking_type, period, candidate_ids)
+    if candidate_contexts is not None:
+        if set(candidate_contexts) != {candidate_id(record) for record in records}:
+            raise SelectionError("candidate_contexts keys must match exactly the prepared candidate IDs")
+        for cid, items in candidate_contexts.items():
+            validate_contexts(items, "candidate_contexts." + cid)
     cards = []
     seen = set()
     keys = ("url", "title", "category", "kind", "summary", "reason", "source_urls", "evidence_urls", "evidence_status", "verification_level", "verified_at", "published_at", "discovered_at", "change_note", "event")
@@ -425,11 +510,14 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
             continue
         seen.add(cid)
         material = {key: record.get(key) for key in keys}
-        allowed = set(record.get("evidence_urls", []))
-        relevant = [copy.deepcopy(context) for context in contexts if context["url"] in allowed]
-        # Discovered source text may be read but does not promote verification.
-        if not relevant:
-            relevant = [copy.deepcopy(context) for context in contexts if context["url"] in record.get("source_urls", [])]
+        if candidate_contexts is not None:
+            relevant = copy.deepcopy(candidate_contexts[cid])
+        else:
+            allowed = set(record.get("evidence_urls", []))
+            relevant = [copy.deepcopy(context) for context in contexts if context["url"] in allowed]
+            # Discovered source text may be read but does not promote verification.
+            if not relevant:
+                relevant = [copy.deepcopy(context) for context in contexts if context["url"] in record.get("source_urls", [])]
         card = {"candidate_id": cid, "canonical_url": record["canonical_url"], "ranking_type": ranking_type,
                 "profile": policy.get("kind_profiles", {}).get(record["kind"], policy["category_profiles"][record["category"]]),
                 "material": material, "evidence_context": relevant,
@@ -441,8 +529,12 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
                 card["source_claims"] = validate_claims(claims_by_id[cid], relevant) if cid in claims_by_id else []
             except ValueError as exc:
                 raise SelectionError(str(exc)) from exc
+        if understands:
+            card["understanding"] = _validated_understanding(understanding_by_id.get(cid), relevant)
         card["input_hash"] = _hash(card)
         cards.append(card)
+    if understands and set(understanding_by_id) - seen:
+        raise SelectionError("source_understanding includes unknown candidate IDs")
     prepared = {"schema_version": "digest-selection.prepare.v1", "ranking_type": ranking_type, "period": period,
                 "policy": policy, "policy_hash": _hash(policy), "prompt_hash": hashlib.sha256(prompt.encode("utf-8")).hexdigest(), "prompt_text": prompt,
                 "cards": cards, "blocked_candidates": query.get("blocked_candidates", []),

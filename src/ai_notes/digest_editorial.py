@@ -40,6 +40,11 @@ When editorial_position is present, it defines the publication audience and sele
 Use reader_context only for explicitly confirmed exclusions or mandatory-condition conflicts and conditional personal explanations. Do not require a known current individual need, an exploration-topic match or immediate practice to recognise public value. Exploration interests do not add or subtract base value or interest scores. News may change understanding or choices without installation; reading and games may offer learning or play without immediate action. A reader_mismatch flag must connect a source-supported mandatory condition with an explicitly confirmed constraint; unknown personal interest is not such a conflict.
 Review semantic consistency and source support, not whether you agree with the numerical score or predict human taste. Do not manufacture a defect merely because an item is outside the listed personal interests.'''
 
+PROJECT_READING_REVIEW_PROMPT = EDITORIAL_POSITION_REVIEW_PROMPT + '''
+When understanding_contract is project-reading.v1, facts.understanding is an evidence-linked interpretation to REVIEW, not a second independent source. Compare purpose, input, output and every operation against the actual passages with those IDs, then inspect all other supplied passages for omitted qualifications. Check what object each operation acts on and produces: supporting a format, platform or downstream tool is not proof of generating, installing or replacing it.
+Check each condition's subject and kind against its source: compatibility, mandatory requirements, optional capabilities, alternative routes and prices must not be interchanged. A paid route remains paid when a free alternative exists. Preserve conflicts, version-specific conditions and explicit unknowns rather than resolving them from another model's prose. Treat source_documents as provenance and reading coverage, not independent product evidence: complete_text describes only the captured document, while excerpt and unknown never establish whole-document reading. Check reading_scope_issues against the supplied coverage; a valid passage ID does not prove the interpretation is correct.
+Do not accept a useful-sounding input/output chain merely because its IDs are valid or its score is high. Use the unchanged accept/defer schema and existing evidence-linked issue codes for material misunderstandings. Do not rewrite the understanding card, award new scores or treat its confidence as corroboration.'''
+
 
 def _object(properties):
     return {'type': 'object', 'properties': properties, 'required': list(properties),
@@ -87,7 +92,8 @@ def _project(value, fields):
     return {field: copy.deepcopy(value[field]) for field in fields if field in value}
 
 
-def build_review_input(*, record, facts, assessment, contexts, ranking_type, reader_context=None, editorial_position=None):
+def build_review_input(*, record, facts, assessment, contexts, ranking_type, reader_context=None, editorial_position=None,
+                       understanding_contract=None):
     """Project current prose and score reasoning, never ledger history/labels.
 
     Source text occurs once as passages rather than also duplicating long legacy
@@ -130,4 +136,11 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type, rea
         from .digest_selection import _check_editorial_position
         _check_editorial_position({'editorial_position': editorial_position})
         result['editorial_position'] = copy.deepcopy(editorial_position)
+    if understanding_contract is not None:
+        from .digest_selection import _check_understanding_contract, _understanding_projection
+        from .digest_understanding import source_documents
+        _check_understanding_contract({'understanding_contract': understanding_contract})
+        result['understanding_contract'] = understanding_contract
+        result['source_documents'] = source_documents(contexts)
+        result['facts']['understanding'] = _understanding_projection(facts.get('understanding'), contexts, source_spans=False)
     return result

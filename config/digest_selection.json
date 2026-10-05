@@ -1,6 +1,7 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v9-editorial-first-uncalibrated",
+  "version": "v10-project-reading-uncalibrated",
+  "understanding_contract": "project-reading.v1",
   "assessment_contract": "scoped-source.v1",
   "editorial_review_contract": "source-score.v1",
   "scoring_projection": "source-refs.v1",
@@ -31,7 +32,7 @@
       "信息收集、筛选，以及日榜、周榜、月榜汇总。"
     ]
   },
-  "calibration_status": "Uncalibrated editorial-first policy. Public column value is assessed before confirmed personal constraints and conditional relevance; unknown current needs do not lower baseline value. Weights, caps and thresholds unchanged; frozen older inputs retain their rules. Shape validity does not prove semantic correctness or calibrated selection quality.",
+  "calibration_status": "Uncalibrated project-reading policy. Source-bound purpose, input, operations, output, conditions and exact supplied-document coverage are carried into scoring and review. Public column value remains primary. Weights, caps and thresholds unchanged; frozen older inputs retain their rules. Valid bindings and development regression results do not prove semantic correctness or calibrated selection quality.",
   "dimensions": ["value", "novelty", "evidence", "usability", "interest"],
   "profiles": {
     "practical": {"value": 4, "novelty": 1, "evidence": 1, "usability": 3, "interest": 1},
