@@ -20,6 +20,8 @@ description: 为三榜候选定向读取原文，内部核对用途、操作、�
 6. 评分和复核必须读取同一份事实卡与原文。卡片本身也是待核对模型判断，段落引用存在不代表含义正确。程序能核对范围与结构，不能证明所有语义。
 7. 每候选按已保存输入和回执恢复，不循环付费重试，不安装候选软件、不恢复已暂停的生产任务。新合同不改写旧冻结输入、分数或归档。
 
+新任务显式采用 `source_reading_contract=discovery-reading.v1` 时，可在上面的只读命令加 `--reading-contract discovery-reading.v1`。仓库 metadata 的名称、简介与主页字段作为 GitHub API 原始 JSON 的确切片段保存，绑定该 API URL、实际取回时间、原始字节哈希及字符范围；这些是当前仓库 metadata，`commit_sha=null`，不能冒充同 commit 的文件事实。读到 AppWizard 模板或简短开发入口时，按真实目录优先选用户指南／静态 Help 文档；保留根目录许可证，不让子模块内部许可证用完预算。只在未固定事件、仍有预算且 metadata 声明关联主页时，读取该精确入口的一页静态文字；不将“仓库声明关联入口”说成额外认证过的官网，不跟其他外链或跳转。失败、空文字与未读原因按实际记录。metadata、主页及仓库供文共用原有文档、字符及补充请求预算，不为补齐介绍扩大采集。固定 release／commit／ref 对象排除当前 metadata 和主页，只读该对象所指 commit 的原文。缺省旧阅读合同不变。
+
 `introduction_contract=discovery.v1` 时，正文是名称、用途、亮点、已知支持系统和链接的发现式介绍，配图按需。前述输入、输出、操作和条件用于内部核对，不要求正文全部展开。复核只拦实际写出的实质事实错误；只有遗漏使已写出的主张错误或实质误导时才 defer，不因没有列全条件、操作和步骤而拒绝。内部卡不充当说明书。已知支持系统须单独绑定原文证据；未知或不适用留 null，不能从使用条件字符串自动猜。这个 marker 不改评分权重、门槛、flags 或来源等级，缺省旧合同沿用原冻结规则。
 
 方法借鉴 [Repomix Explorer](https://github.com/yamadashy/repomix/blob/main/skills/repomix-explorer/SKILL.md) 的定向搜索和文件证据原则；原文整理工具为 [Gitingest](https://github.com/coderamp-labs/gitingest)。本 Skill 面向普通读者的工具用途介绍，不要求建立全仓架构或代码审计报告。

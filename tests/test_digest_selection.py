@@ -37,6 +37,8 @@ class SelectionTests(unittest.TestCase):
         # New-contract card tests are in test_digest_selection_projection.
         legacy_policy.pop("understanding_contract", None)
         legacy_policy.pop("introduction_contract", None)
+        legacy_policy.pop('source_reading_contract', None)
+        legacy_policy.pop('editorial_scope', None)
         legacy_policy["version"] = "v9-editorial-first-uncalibrated"
         (self.root / "config/digest_selection.json").write_text(json.dumps(legacy_policy), encoding="utf-8")
         (self.root / "docs/prompts/digest-selection.md").write_bytes(self.prompt.read_bytes())

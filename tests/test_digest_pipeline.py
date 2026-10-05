@@ -24,6 +24,14 @@ class PipelineTests(unittest.TestCase):
             dest = self.root / file
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes((project/file).read_bytes())
+        # These regressions exercise the already frozen v11 contract. New v12
+        # integration fixtures explicitly opt in rather than changing old tests.
+        policy_path = self.root / 'config/digest_selection.json'
+        policy = json.loads(policy_path.read_text(encoding='utf-8'))
+        policy.pop('source_reading_contract', None)
+        policy.pop('editorial_scope', None)
+        policy['version'] = 'v11-discovery-introduction-uncalibrated'
+        policy_path.write_text(json.dumps(policy), encoding='utf-8')
         self.now = digest._now()
         # A fully due period even when these tests run before the 09:00 slot.
         self.period = (self.now.date()-timedelta(days=2)).isoformat()
@@ -167,6 +175,8 @@ class PipelineTests(unittest.TestCase):
         policy=json.loads(policy_path.read_text(encoding='utf-8'))
         policy.pop('understanding_contract',None)
         policy.pop('introduction_contract',None)
+        policy.pop('source_reading_contract', None)
+        policy.pop('editorial_scope', None)
         policy_path.write_text(json.dumps(policy),encoding='utf-8')
 
     def test_reading_card_and_document_scope_reach_score_and_editorial(self):
@@ -224,6 +234,8 @@ class PipelineTests(unittest.TestCase):
         path=self.root/'config/digest_selection.json'
         policy=json.loads(path.read_text(encoding='utf-8'))
         policy.pop('introduction_contract')
+        policy.pop('source_reading_contract', None)
+        policy.pop('editorial_scope', None)
         policy['version']='v10-project-reading-uncalibrated'
         path.write_text(json.dumps(policy),encoding='utf-8')
         job,result=self.run_job()
@@ -490,6 +502,8 @@ class PipelineTests(unittest.TestCase):
         legacy.pop('editorial_position')
         legacy.pop('understanding_contract',None)
         legacy.pop('introduction_contract',None)
+        legacy.pop('source_reading_contract', None)
+        legacy.pop('editorial_scope', None)
         legacy['version']='v7-reader-value-review-uncalibrated'
         prepared=pipeline.selection.prepare(self.root,'daily',self.period,policy_snapshot=legacy,
                                             prompt_snapshot='Authoritative frozen legacy prompt.')
@@ -912,6 +926,8 @@ class PipelineTests(unittest.TestCase):
         policy.pop('editorial_review_contract')
         policy.pop('scoring_projection',None)
         policy.pop('introduction_contract',None)
+        policy.pop('source_reading_contract', None)
+        policy.pop('editorial_scope', None)
         policy['version']='v5-scoped-source-uncalibrated'
         path.write_text(json.dumps(policy),encoding='utf-8')
         _,result=self.run_job()
@@ -955,6 +971,8 @@ class PipelineTests(unittest.TestCase):
         legacy.pop('scoring_projection',None)
         legacy.pop('understanding_contract',None)
         legacy.pop('introduction_contract',None)
+        legacy.pop('source_reading_contract', None)
+        legacy.pop('editorial_scope', None)
         legacy['flag_basis']={k:legacy['flag_basis'][k] for k in ('routine_update','unsupported_promotion')}
         policy_path.write_text(json.dumps(legacy),encoding='utf-8')
         legacy_prompt='Frozen v3 scoring prompt. Return the four assessment fields.'

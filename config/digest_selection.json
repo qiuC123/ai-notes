@@ -1,7 +1,9 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v11-discovery-introduction-uncalibrated",
+  "version": "v12-discovery-selection-uncalibrated",
   "introduction_contract": "discovery.v1",
+  "source_reading_contract": "discovery-reading.v1",
+  "editorial_scope": "public-introduction.v1",
   "understanding_contract": "project-reading.v1",
   "assessment_contract": "scoped-source.v1",
   "editorial_review_contract": "source-score.v1",
@@ -34,7 +36,7 @@
       "信息收集、筛选，以及日榜、周榜、月榜汇总。"
     ]
   },
-  "calibration_status": "Uncalibrated discovery-introduction policy. Public items cover name, purpose, highlights, known supported systems and links; internal source cards are not user manuals. Review checks material factual errors in actual claims, without requiring exhaustive conditions or steps. No new real-model quality regression has been run for discovery.v1. Weights, caps, thresholds, flags and source grades remain unchanged; frozen older inputs retain their rules. Offline contract tests do not prove semantic correctness or calibrated selection quality.",
+  "calibration_status": "Uncalibrated discovery-selection policy. v11 real trial found source routing, citation provenance and unpublished-field review defects. Explicit discovery-reading.v1 exposes captured repository metadata and bounded user-facing originals; public-introduction.v1 reviews planned public fields plus selection reasons, with exact weekly featured scope. New passage-ID guidance does not guarantee model compliance. No paid v12 semantic trial has run. Weights, caps, thresholds, flags and source grades remain unchanged; frozen older inputs and verdicts retain their rules. Offline tests and saved-response projections do not prove calibrated selection quality.",
   "dimensions": ["value", "novelty", "evidence", "usability", "interest"],
   "profiles": {
     "practical": {"value": 4, "novelty": 1, "evidence": 1, "usability": 3, "interest": 1},

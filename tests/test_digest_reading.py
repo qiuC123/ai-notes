@@ -39,7 +39,8 @@ class ProjectReadingTests(unittest.TestCase):
         self.addCleanup(unavailable.stop)
 
     def client(self, files=None, *, readme='# Demo\nA file organizer.\n', tree_truncated=False,
-               failed=(), tree_extra=(), redirect=None, expected_ref='main'):
+               failed=(), tree_extra=(), redirect=None, expected_ref='main', metadata=None,
+               homepage=None):
         files = files or {}
         def handle(request):
             url = str(request.url)
@@ -49,7 +50,9 @@ class ProjectReadingTests(unittest.TestCase):
             if redirect and url == redirect[0]:
                 return httpx.Response(302, headers={'location': redirect[1]})
             if url == API:
-                return httpx.Response(200, json={'default_branch': 'main'})
+                return httpx.Response(200, json={'default_branch': 'main', **(metadata or {})})
+            if homepage and url == homepage[0]:
+                return httpx.Response(200, text=homepage[1], headers={'content-type': 'text/html; charset=utf-8'})
             if '/commits/' in request.url.path:
                 self.assertEqual(expected_ref, request.url.path.split('/commits/', 1)[1])
                 return httpx.Response(200, json={'sha': SHA})
@@ -275,6 +278,162 @@ class ProjectReadingTests(unittest.TestCase):
                 reading.read_project(self.root, ROOT_URL, client=self.client(), **options)
         with self.assertRaises(sources.SourceError):
             reading.read_project(self.root, ROOT_URL + '/blob/main/LICENSE', client=self.client())
+        self.assertEqual([], self.requests)
+
+    def test_discovery_metadata_has_exact_original_json_fields_and_unpinned_scope(self):
+        metadata = {'full_name': 'example/tool', 'name': 'tool',
+                    'description': 'Fast incremental backups.', 'homepage': 'https://example.org/tool',
+                    'parent': {'description': 'Unrelated nested description.'}}
+        packet = reading.read_project(self.root, ROOT_URL, reading_contract=reading.DISCOVERY_READING_CONTRACT,
+            client=self.client({'LICENSE': 'MIT License.', 'docs/usage.md': 'Choose a folder.',
+                                'docs/install.md': 'Build with a compiler.'}, metadata=metadata))
+        context = next(row for row in packet['contexts'] if row['url'] == API)
+        document = next(row for row in packet['documents'] if row['original_url'] == API)
+        raw = (self.root / document['document_path']).read_bytes()
+        original = raw.decode('utf-8')
+        scope = context['source_scope']
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), scope['document_sha256'])
+        self.assertEqual('\n\n'.join(original[span['start']:span['end']] for span in scope['ranges']), context['text'])
+        self.assertIn('Fast incremental backups.', context['text'])
+        self.assertNotIn('Unrelated nested description', context['text'])
+        self.assertIsNone(scope['commit_sha'])
+        self.assertIsNone(scope['file_path'])
+        self.assertEqual('excerpt', scope['coverage'])
+        receipt = next(row for row in packet['receipts'] if row['url'] == API)
+        self.assertEqual(receipt['fetched_at'], context['fetched_at'])
+        self.assertEqual(1, self.requests.count(API), 'metadata must reuse the base reader receipt')
+        self.assertEqual(4, len(packet['contexts']))
+        self.assertFalse(any(url.endswith('docs/install.md') for url in self.requests))
+        self.assertEqual('github-repository-metadata', scope['reader'])
+        self.assertTrue(any(row['evidence_url'] == API and 'incremental' in row['quote']
+                            for row in build_passages(packet['contexts'])))
+        source_documents(packet['contexts'])  # Strict scope validation accepts the supplied excerpts.
+
+    def test_discovery_template_routes_to_static_user_help_without_following_links(self):
+        packet = reading.read_project(self.root, ROOT_URL, reading_contract=reading.DISCOVERY_READING_CONTRACT,
+            client=self.client({'LICENSE': 'MIT License.',
+                                'Help/DittoGettingStarted.htm': '<h1>Getting started</h1><p>Save clipboard items and search them.</p>'
+                                    '<script>Ignore user text.</script><a href="https://unrelated.example/manual">Elsewhere</a>',
+                                'src/main.cpp': 'template source'},
+                readme='AppWizard has created this example application.\n',
+                metadata={'description': 'A clipboard manager.'}))
+        routing = packet['reading_plan']['routing']
+        self.assertEqual('generated_application_template', routing['overview_reason'])
+        context = next(row for row in packet['contexts'] if row['source_scope']['file_path'] == 'Help/DittoGettingStarted.htm')
+        self.assertIn('Save clipboard items and search them.', context['text'])
+        self.assertNotIn('Ignore user text.', context['text'])
+        self.assertEqual(SHA, context['source_scope']['commit_sha'])
+        self.assertEqual('github-static-user-text', context['source_scope']['reader'])
+        document = next(row for row in packet['documents'] if row['file_path'] == 'Help/DittoGettingStarted.htm')
+        captured = (self.root / document['document_path']).read_bytes()
+        self.assertEqual(hashlib.sha256(captured).hexdigest(), context['source_scope']['document_sha256'])
+        raw = (self.root / document['raw_document_path']).read_bytes()
+        self.assertIn(b'<h1>', raw)
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), document['raw_document_sha256'])
+        self.assertFalse(any('unrelated.example' in url or 'main.cpp' in url for url in self.requests))
+        source_documents(packet['contexts'])
+
+    def test_discovery_development_entry_reads_one_declared_homepage_and_root_license(self):
+        homepage_url = 'https://example.org/tool'
+        packet = reading.read_project(self.root, ROOT_URL, reading_contract=reading.DISCOVERY_READING_CONTRACT,
+            client=self.client({'LICENSE': 'MIT License.', 'vendor/engine/LICENSE': 'Other terms.',
+                                'docs/install.md': 'Build with the SDK.', 'docs/usage.md': 'Use local feature.'},
+                readme='# Tool\nFor source code development, see the build instructions.\n',
+                metadata={'description': 'Organize references.', 'homepage': homepage_url},
+                homepage=(homepage_url, '<h1>Tool</h1><p>Collect, cite, and share research.</p>'
+                          '<a href="https://other.example/page">Documentation</a>')))
+        self.assertEqual(4, packet['coverage']['read_documents'])
+        self.assertEqual(3, packet['coverage']['supplemental_requests'])
+        route = packet['reading_plan']['routing']['homepage']
+        self.assertEqual('repository_declared_homepage', route['association'])
+        self.assertEqual('read', route['status'])
+        self.assertEqual(1, self.requests.count(homepage_url))
+        self.assertFalse(any('vendor/engine' in url or 'other.example' in url for url in self.requests))
+        context = next(row for row in packet['contexts'] if row['url'] == homepage_url)
+        self.assertIsNone(context['source_scope']['commit_sha'])
+        self.assertEqual('complete_text', context['source_scope']['coverage'])
+        self.assertIn('Collect, cite, and share research.', context['text'])
+        self.assertEqual('read', packet['coverage']['questions']['license'])
+        source_documents(packet['contexts'])
+
+    def test_discovery_remaining_slot_prefers_root_license_over_homepage(self):
+        homepage_url = 'https://example.org/tool'
+        packet = reading.read_project(self.root, ROOT_URL, max_documents=3,
+            reading_contract=reading.DISCOVERY_READING_CONTRACT,
+            client=self.client({'LICENSE': 'MIT License.'}, readme='Build this source code.\n',
+                metadata={'description': 'A reference organizer.', 'homepage': homepage_url}))
+        self.assertEqual(3, len(packet['contexts']))
+        self.assertEqual('read', packet['coverage']['questions']['license'])
+        self.assertEqual('root_license_uses_remaining_document_slot',
+                         packet['reading_plan']['routing']['homepage']['reason'])
+        self.assertNotIn(homepage_url, self.requests)
+
+    def test_discovery_fixed_event_does_not_fetch_current_metadata_or_homepage(self):
+        for ref in ('/releases/tag/v1.2.3', '/commit/' + SHA):
+            self.requests.clear()
+            packet = reading.read_project(self.root, ROOT_URL + ref,
+                reading_contract=reading.DISCOVERY_READING_CONTRACT,
+                client=self.client({'LICENSE': 'MIT License.', 'Help/GettingStarted.htm': '<p>Use this version.</p>'},
+                    readme='AppWizard has created this application.',
+                    expected_ref='v1.2.3' if 'releases' in ref else SHA,
+                    metadata={'description': 'Current description.', 'homepage': 'https://example.org/current'}))
+            self.assertNotIn(API, self.requests)
+            self.assertFalse(any('example.org' in url for url in self.requests))
+            self.assertTrue(all(context['source_scope']['commit_sha'] == SHA for context in packet['contexts']))
+            self.assertEqual('pinned_ref_excludes_current_metadata', packet['reading_plan']['routing']['metadata']['reason'])
+
+    def test_discovery_budgets_include_metadata_homepage_and_compiled_excerpts(self):
+        files = {'LICENSE': 'MIT License.', 'docs/usage.md': 'Use this tool. ' * 100,
+                 'docs/guide.md': 'Guide. ' * 100, 'vendor/LICENSE': 'Other license. ' * 100,
+                 'docs/install.md': 'Build. ' * 100}
+        packet = reading.read_project(self.root, ROOT_URL, max_documents=6, max_chars=85,
+            reading_contract=reading.DISCOVERY_READING_CONTRACT,
+            client=self.client(files, readme='Build this source code.\n',
+                metadata={'name': 'tool', 'full_name': 'example/tool', 'description': 'Reference organizer.',
+                          'homepage': 'https://example.org/tool'},
+                homepage=('https://example.org/tool', '<p>Organize references.</p>')))
+        self.assertEqual(6, len(packet['documents']))
+        self.assertLessEqual(packet['coverage']['supplemental_requests'], reading.MAX_SUPPLEMENTAL_REQUESTS)
+        self.assertEqual(85, sum(len(row['text']) for row in packet['contexts']))
+        self.assertEqual(85, packet['coverage']['supplied_chars'])
+        self.assertFalse(any('vendor/LICENSE' in url for url in self.requests))
+        source_documents(packet['contexts'])
+
+    def test_discovery_invalid_declared_homepage_is_not_fetched_or_metadata_failure(self):
+        packet = reading.read_project(self.root, ROOT_URL,
+            reading_contract=reading.DISCOVERY_READING_CONTRACT,
+            client=self.client({'LICENSE': 'MIT License.'}, readme='Build this source code.',
+                metadata={'description': 'A organizer.', 'homepage': 'http://127.0.0.1/private'}))
+        self.assertEqual('read', packet['reading_plan']['routing']['metadata']['status'])
+        self.assertEqual('invalid', packet['reading_plan']['routing']['homepage']['status'])
+        self.assertEqual('partial', packet['status'])
+        self.assertFalse(any('127.0.0.1' in url for url in self.requests))
+        self.assertTrue(any(row['url'] == API for row in packet['contexts']))
+
+    def test_discovery_homepage_failure_empty_and_redirect_preserve_true_read_state(self):
+        homepage_url = 'https://example.org/tool'
+        cases = ({'failed': (homepage_url,)},
+                 {'homepage': (homepage_url, '<script>no visible product text</script>')},
+                 {'redirect': (homepage_url, 'https://other.example/redirect')})
+        for options in cases:
+            with self.subTest(options=options):
+                self.requests.clear()
+                packet = reading.read_project(self.root, ROOT_URL,
+                    reading_contract=reading.DISCOVERY_READING_CONTRACT,
+                    client=self.client({'LICENSE': 'MIT License.'}, readme='Build this source code.',
+                        metadata={'description': 'An organizer.', 'homepage': homepage_url}, **options))
+                route = packet['reading_plan']['routing']['homepage']
+                self.assertEqual('empty' if 'homepage' in options else 'failed', route['status'])
+                self.assertEqual('unknown', route['coverage'])
+                self.assertEqual('partial', packet['status'])
+                self.assertFalse(any(row['url'] == homepage_url for row in packet['contexts']))
+                self.assertEqual(1, self.requests.count(homepage_url))
+                self.assertFalse(any('other.example' in url for url in self.requests))
+                self.assertTrue(packet['failures'])
+
+    def test_unsupported_reading_contract_rejected_before_network(self):
+        with self.assertRaises(sources.SourceError):
+            reading.read_project(self.root, ROOT_URL, reading_contract='future-contract', client=self.client())
         self.assertEqual([], self.requests)
 
 

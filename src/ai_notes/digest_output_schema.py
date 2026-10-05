@@ -65,7 +65,7 @@ def assessment_schema(*, policy: dict, card: dict) -> dict:
 
 
 def source_review_schema(*, record: dict, passages: list[dict], include_understanding: bool = False,
-                         include_discovery: bool = False) -> dict:
+                         include_discovery: bool = False, inline_passage_ids: bool = False) -> dict:
     """Guide a source review that cites program-owned passage IDs only.
 
     The caller binds IDs to original URLs, quotes and headings. This schema
@@ -78,6 +78,8 @@ def source_review_schema(*, record: dict, passages: list[dict], include_understa
     ids = [passage['id'] for passage in passages]
     if any(not isinstance(value, str) or not value.strip() for value in ids):
         raise ValueError('source passage IDs must be nonempty strings')
+    if inline_passage_ids and len(ids) != len(set(ids)):
+        raise ValueError('source passage IDs must be distinct')
     ids = sorted(set(ids))
     text = {'$ref': '#/$defs/nonempty_text'}
     fact_fields = ('title', 'category', 'summary', 'reason', 'audience',
@@ -130,4 +132,20 @@ def source_review_schema(*, record: dict, passages: list[dict], include_understa
         branch = schema['allOf'][0]
         branch['then']['properties']['understanding'] = {'$ref': '#/$defs/understanding'}
         branch['else']['properties']['understanding'] = {'type': 'null'}
+    if inline_passage_ids:
+        # Ordinary JSON-object mode does not enforce a schema. Put the literal
+        # allowed choices beside each ID array, without changing legacy schemas
+        # or repairing a malformed paid response.
+        def expand(value):
+            if isinstance(value, list):
+                return [expand(item) for item in value]
+            if not isinstance(value, dict):
+                return value
+            if value == {'$ref': '#/$defs/passage_id'}:
+                return copy.deepcopy(schema['$defs']['passage_id'])
+            result = {key: expand(item) for key, item in value.items()}
+            if result.get('type') == 'array' and value.get('items') == {'$ref': '#/$defs/passage_id'}:
+                result['maxItems'] = min(result.get('maxItems', len(ids)), len(ids))
+            return result
+        schema = expand(schema)
     return schema

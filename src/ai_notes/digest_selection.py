@@ -29,6 +29,9 @@ UNDERSTANDING_CONTRACT = "project-reading.v1"
 UNDERSTANDING_PROMPT_MARKER = "<!-- understanding_contract: project-reading.v1 -->"
 INTRODUCTION_CONTRACT = "discovery.v1"
 INTRODUCTION_PROMPT_MARKER = "<!-- introduction_contract: discovery.v1 -->"
+SOURCE_READING_CONTRACT = "discovery-reading.v1"
+PUBLIC_REVIEW_SCOPE = "public-introduction.v1"
+SELECTION_FIX_PROMPT_MARKER = "<!-- editorial_scope: public-introduction.v1 -->"
 FLAG_BASIS_KINDS = {
     "routine_update": "limited_increment", "unsupported_promotion": "unsupported_effect_claim",
     "unfulfilled_announcement": "availability_limit", "unclear_usage": "usage_path_gap",
@@ -94,7 +97,7 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
 def validate_policy(policy: dict) -> dict:
     """Validate an in-memory policy and return an independent, unmodified copy."""
     policy = copy.deepcopy(policy)
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope"))
     if "assessment_contract" in policy and policy["assessment_contract"] != SCOPED_CONTRACT:
         raise SelectionError("unsupported assessment contract")
     if "editorial_review_contract" in policy and policy["editorial_review_contract"] != "source-score.v1":
@@ -104,6 +107,7 @@ def validate_policy(policy: dict) -> dict:
     _check_editorial_position(policy)
     _check_understanding_contract(policy)
     _check_introduction_contract(policy)
+    _check_discovery_selection_contracts(policy)
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -194,7 +198,8 @@ def load_prompt(root: Path, policy: dict) -> str:
     """Select optional instructions before freezing; never upgrade a snapshot."""
     _check_understanding_contract(policy)
     _check_introduction_contract(policy)
-    text = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8")
+    _check_discovery_selection_contracts(policy)
+    text, fix_marker, fix = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8").partition(SELECTION_FIX_PROMPT_MARKER)
     existing, discovery_marker, discovery = text.partition(INTRODUCTION_PROMPT_MARKER)
     base, marker, _ = existing.partition(UNDERSTANDING_PROMPT_MARKER)
     if policy.get("understanding_contract") == UNDERSTANDING_CONTRACT:
@@ -205,6 +210,10 @@ def load_prompt(root: Path, policy: dict) -> str:
         if not discovery_marker:
             raise SelectionError("discovery prompt supplement is unavailable")
         base += discovery_marker + discovery
+    if policy.get("editorial_scope") == PUBLIC_REVIEW_SCOPE:
+        if not fix_marker:
+            raise SelectionError("public-introduction prompt supplement is unavailable")
+        base += fix_marker + fix
     return base
 
 
@@ -283,6 +292,20 @@ def _supported_systems(value):
     return None if value is None else _text(value, "supported_systems")
 
 
+def _check_discovery_selection_contracts(policy: dict) -> None:
+    """New routing/review semantics require explicit, frozen opt-in markers."""
+    for field, expected in (("source_reading_contract", SOURCE_READING_CONTRACT),
+                            ("editorial_scope", PUBLIC_REVIEW_SCOPE)):
+        if field not in policy:
+            continue
+        if policy[field] != expected:
+            raise SelectionError("unsupported " + field)
+        if policy.get("introduction_contract") != INTRODUCTION_CONTRACT or policy.get("understanding_contract") != UNDERSTANDING_CONTRACT:
+            raise SelectionError(field + " requires discovery and project-reading contracts")
+    if "editorial_scope" in policy and policy.get("editorial_review_contract") != "source-score.v1":
+        raise SelectionError("public introduction review requires source-score contract")
+
+
 def _validated_understanding(value: dict, contexts: list) -> dict:
     """Check frozen bindings against these sources, without claiming entailment."""
     from .digest_passages import build_passages
@@ -358,6 +381,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     _check_editorial_position(prepared["policy"])
     _check_understanding_contract(prepared["policy"])
     _check_introduction_contract(prepared["policy"])
+    _check_discovery_selection_contracts(prepared["policy"])
     card = _card(prepared, candidate_id)
     fields = ("url", "title", "category", "kind", "summary", "source_urls", "evidence_urls", "published_at", "change_note")
     material = {key: copy.deepcopy(card["material"][key]) for key in fields if key in card["material"]}
@@ -367,7 +391,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     if event:
         material["event"] = {key: copy.deepcopy(event[key]) for key in
                              ("url", "occurred_at", "occurred_on", "date_precision", "timezone", "type") if key in event}
-    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract")
+    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope")
     result = {
         "card": {"ranking_type": card.get("ranking_type", prepared["ranking_type"]), "profile": card["profile"],
                  "material": material,

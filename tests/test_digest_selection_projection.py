@@ -17,6 +17,8 @@ class SourceReferenceProjectionTests(unittest.TestCase):
         # These fixtures freeze the pre-understanding projection contract.
         self.policy.pop("understanding_contract", None)
         self.policy.pop("introduction_contract", None)
+        self.policy.pop('source_reading_contract', None)
+        self.policy.pop('editorial_scope', None)
         self.url = "https://example.com/guide"
         self.other = "https://example.com/license"
         self.quote = "中文🙂 Windows 10 or later."

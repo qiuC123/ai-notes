@@ -11,6 +11,7 @@ from contextlib import contextmanager
 import hashlib
 import importlib.util
 from importlib import metadata
+from html.parser import HTMLParser
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -29,6 +30,7 @@ MAX_DOCUMENTS = 6
 MAX_SUPPLEMENTAL_REQUESTS = 6
 MAX_DOCUMENT_BYTES = 512 * 1024
 MAX_CONTEXT_CHARS = 100_000
+DISCOVERY_READING_CONTRACT = 'discovery-reading.v1'
 _QUESTIONS = {
     'overview': 'What does the project do and who can use it?',
     'license': 'What does the original license text permit and require?',
@@ -165,6 +167,178 @@ def _select(tree: dict, readme_path: str, maximum: int) -> tuple[list[dict], int
     return selected, len(choices)
 
 
+def _discovery_route(text: str) -> str:
+    """Small routing signals, never a project eligibility or quality verdict."""
+    if re.search(r'AppWizard has created|MICROSOFT FOUNDATION CLASS LIBRARY', text, re.I):
+        return 'generated_application_template'
+    if len(text) <= 2000 and re.search(r'source[_ ]code|\bdevelopment\b|\bbuilding\b', text, re.I):
+        return 'short_source_development_entry'
+    return 'repository_overview'
+
+
+def _discovery_kind(path: str) -> str | None:
+    existing = _kind(path)
+    if existing:
+        return existing
+    file = PurePosixPath(path)
+    if file.suffix.lower() not in ('.md', '.mdx', '.rst', '.txt', '.adoc', '.html', '.htm'):
+        return None
+    # Static, repository-owned user material only. No source execution or
+    # guessed filenames, and no arbitrary README links become fetch targets.
+    if not any(part.lower() in ('docs', 'doc', 'documentation', 'help', 'website') for part in file.parts[:-1]):
+        return None
+    name = re.sub(r'[_ -]+', '', file.stem.lower())
+    if any(name.endswith(ending) for ending in ('gettingstarted', 'quickstart', 'userguide', 'usage', 'faq')):
+        return 'usage'
+    if name in ('overview', 'features', 'index', '_index'):
+        return 'overview'
+    return None
+
+
+def _select_discovery(tree: dict, readme_path: str, maximum: int) -> tuple[list[dict], int]:
+    # Reuse the inventory validation of the legacy path, without its policy.
+    _select(tree, readme_path, 0)
+    choices = []
+    for row in tree['tree']:
+        if not isinstance(row, dict) or row.get('type') != 'blob' or row.get('mode') not in ('100644', '100755'):
+            continue
+        try:
+            path = _safe_path(row.get('path'))
+        except sources.SourceError:
+            continue
+        if path == readme_path or len(PurePosixPath(path).parts) > 5:
+            continue
+        purpose = _discovery_kind(path)
+        if purpose:
+            choices.append({'file_path': path, 'question': purpose})
+    def preference(row):
+        file = PurePosixPath(row['file_path'])
+        # A root licence answers project terms before auxiliary submodule
+        # licences. User material outranks build instructions and extra terms.
+        priority = (0 if row['question'] == 'license' and len(file.parts) == 1 else
+                    1 if row['question'] in ('usage', 'overview') else
+                    2 if row['question'] == 'installation' else 3)
+        generic = file.stem.lower() in ('index', '_index', 'readme')
+        return (priority, generic, len(file.parts), row['file_path'].lower(), row['file_path'])
+    choices.sort(key=preference)
+    return choices[:maximum], len(choices)
+
+
+def _metadata_ranges(text: str) -> list[dict]:
+    """Exact top-level JSON field slices; no generated prose is evidence."""
+    decoder = json.JSONDecoder()
+    position = 0
+    def skip_space():
+        nonlocal position
+        while position < len(text) and text[position].isspace():
+            position += 1
+    skip_space()
+    if text[position:position + 1] != '{':
+        raise sources.SourceError('GitHub repository metadata is not an object')
+    position += 1
+    ranges = []
+    while True:
+        skip_space()
+        if text[position:position + 1] == '}':
+            break
+        start = position
+        key, position = decoder.raw_decode(text, position)
+        skip_space()
+        if text[position:position + 1] != ':':
+            raise sources.SourceError('invalid GitHub metadata field')
+        position += 1
+        skip_space()
+        value, position = decoder.raw_decode(text, position)
+        if key in ('name', 'full_name', 'description', 'homepage') and isinstance(value, str) and value.strip():
+            ranges.append({'start': start, 'end': position})
+        skip_space()
+        if text[position:position + 1] == '}':
+            break
+        if text[position:position + 1] != ',':
+            raise sources.SourceError('invalid GitHub metadata separator')
+        position += 1
+    return ranges
+
+
+class _ProductText(HTMLParser):
+    """Capture static page text; scripts and styles are never executed."""
+    def __init__(self):
+        super().__init__()
+        self.parts = []
+        self.hidden = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ('script', 'style', 'template'):
+            self.hidden += 1
+        if self.hidden:
+            return
+        if re.fullmatch('h[1-6]', tag):
+            self.parts.append('\n' + '#' * int(tag[1]) + ' ')
+        elif tag in ('p', 'div', 'section', 'article', 'li', 'br', 'hr', 'tr'):
+            self.parts.append('\n')
+
+    def handle_endtag(self, tag):
+        if tag in ('script', 'style', 'template'):
+            self.hidden = max(0, self.hidden - 1)
+        elif not self.hidden and tag in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'li', 'section', 'article', 'tr'):
+            self.parts.append('\n')
+
+    def handle_data(self, data):
+        if not self.hidden:
+            self.parts.append(data)
+
+    def text(self):
+        text = re.sub(r'[^\S\n]+', ' ', ''.join(self.parts))
+        return re.sub(r'\n(?: *\n){2,}', '\n\n', text).strip()
+
+
+def _page_text(raw: bytes) -> str:
+    parser = _ProductText()
+    parser.feed(raw.decode('utf-8'))
+    return parser.text()
+
+
+def _discovery_contexts(documents: list[dict], maximum: int, commit: str) -> list[dict]:
+    def full_text(row):
+        spans = row.get('selected_ranges')
+        return ('\n\n'.join(row['decoded'][span['start']:span['end']] for span in spans)
+                if spans is not None else row['decoded'])
+    contents = [full_text(row) for row in documents]
+    share = maximum // max(1, len(documents))
+    counts = [min(len(text), share) for text in contents]
+    remaining = maximum - sum(counts)
+    for index, text in enumerate(contents):
+        addition = min(remaining, len(text) - counts[index])
+        counts[index] += addition
+        remaining -= addition
+    contexts = []
+    for row, content, count in zip(documents, contents, counts):
+        spans = row.get('selected_ranges')
+        ranges = []
+        if spans is None and count:
+            ranges = [{'start': 0, 'end': count}]
+        elif spans:
+            left = count
+            for index, span in enumerate(spans):
+                if index:
+                    left -= 2  # Exact separator used in full_text above.
+                taken = min(max(0, left), span['end'] - span['start'])
+                if taken:
+                    ranges.append({'start': span['start'], 'end': span['start'] + taken})
+                left -= taken
+                if left <= 0:
+                    break
+        row['supplied_chars'] = count
+        row['coverage'] = ('complete_text' if spans is None and count == len(row['decoded']) else 'excerpt')
+        if count:
+            contexts.append(dict(url=row['original_url'], text=content[:count], fetched_at=row['fetched_at'],
+                source_scope=dict(schema_version='digest-source-scope.v1', coverage=row['coverage'],
+                    document_chars=len(row['decoded']), supplied_chars=count, ranges=ranges,
+                    document_sha256=row['document_sha256'], reader=row['reader'],
+                    commit_sha=row.get('commit_sha', commit), file_path=row['file_path'])))
+    return contexts
+
+
 def package_selected_documents(documents: Mapping[str, bytes]) -> dict:
     """Run optional Gitingest against only these immutable original bytes.
 
@@ -249,19 +423,26 @@ def _contexts(documents: list[dict], maximum: int, commit: str) -> list[dict]:
 
 
 def read_project(root: Path, url: str, *, client: httpx.Client | None = None,
-                 max_documents: int = 4, max_chars: int = 14_000) -> dict:
+                 max_documents: int = 4, max_chars: int = 14_000,
+                 reading_contract: str | None = None) -> dict:
     """Read README plus bounded original license/install/use documents.
 
     ``max_documents`` includes the README. Tree plus supplemental document
     requests never exceeds six; no release listing, clones, code execution,
     recursive link following, or repository eligibility gate is involved.
     Returned source ranges index decoded originals before any excerpting.
+    Explicit ``discovery-reading.v1`` additionally supplies repository metadata
+    and routes thin development/template entries toward user material. Current
+    metadata and homepage text never enter a pinned event's source packet.
     """
     root = Path(root).resolve()
     if type(max_documents) is not int or not 1 <= max_documents <= MAX_DOCUMENTS:
         raise sources.SourceError(f'max_documents must be 1 to {MAX_DOCUMENTS}')
     if type(max_chars) is not int or not 1 <= max_chars <= MAX_CONTEXT_CHARS:
         raise sources.SourceError(f'max_chars must be 1 to {MAX_CONTEXT_CHARS}')
+    if reading_contract not in (None, DISCOVERY_READING_CONTRACT):
+        raise sources.SourceError('unsupported project reading contract')
+    discovery = reading_contract == DISCOVERY_READING_CONTRACT
     identity = digest.canonical_url(url)
     if urlsplit(identity).hostname != 'github.com':
         raise sources.SourceError('project reader requires a GitHub repository URL')
@@ -277,6 +458,12 @@ def read_project(root: Path, url: str, *, client: httpx.Client | None = None,
                            'max_supplemental_requests': MAX_SUPPLEMENTAL_REQUESTS,
                            'supplemental_requests': 0, 'tree_truncated': None}}
     result['reading_plan']['failures'] = result['failures']
+    if discovery:
+        result['reading_contract'] = reading_contract
+        result['reading_plan']['routing'] = {'overview_reason': None,
+            'metadata': {'status': 'not_read', 'reason': 'pending_original_readme'},
+            'homepage': {'status': 'not_read', 'reason': 'pending_metadata',
+                         'association': 'repository_declared_homepage', 'max_pages': 1}}
     rows, document_bytes = [], {}
     try:
         readme = sources.read_github(root, identity, ref=ref, client=client)
@@ -304,6 +491,71 @@ def read_project(root: Path, url: str, *, client: httpx.Client | None = None,
                                    'questions': {key: 'unknown' for key in _QUESTIONS}})
         result['gitingest'] = {'tool': 'gitingest', 'status': 'not_run', 'reason': 'no original documents'}
         return result
+    homepage = None
+    reserve_homepage = 0
+    if discovery:
+        routing = result['reading_plan']['routing']
+        routing['overview_reason'] = _discovery_route(decoded)
+        if ref is not None:
+            routing['metadata'] = {'status': 'skipped', 'reason': 'pinned_ref_excludes_current_metadata'}
+            routing['homepage'].update(status='skipped', reason='pinned_ref_excludes_current_homepage')
+        elif max_documents == 1:
+            routing['metadata'] = {'status': 'skipped', 'reason': 'document_budget_exhausted'}
+            routing['homepage'].update(status='skipped', reason='document_budget_exhausted')
+        else:
+            metadata_url = f'https://api.github.com/repos/{owner_repo}'
+            try:
+                receipt = next(record for record in readme['fetches'] if record['url'] == metadata_url)
+                if receipt['final_url'] != metadata_url:
+                    raise sources.SourceError('repository metadata redirected to a different URL')
+                raw_metadata = sources._payload(root, receipt)
+                if len(raw_metadata) > MAX_DOCUMENT_BYTES:
+                    raise sources.SourceError('repository metadata exceeds original document byte budget')
+                metadata_text = raw_metadata.decode('utf-8')
+                repository = json.loads(metadata_text)
+                full_name = repository.get('full_name', owner_repo) if isinstance(repository, dict) else None
+                if not isinstance(full_name, str) or full_name.lower() != owner_repo.lower():
+                    raise sources.SourceError('repository metadata identity differs')
+                ranges = _metadata_ranges(metadata_text)
+                if ranges:
+                    metadata_row = dict(file_path=None, question='metadata', status='read',
+                        original_url=metadata_url, reader='github-repository-metadata', commit_sha=None,
+                        fetched_at=receipt['fetched_at'], document_path=receipt['body_path'],
+                        document_sha256=receipt['sha256'], document_chars=len(metadata_text),
+                        decoded=metadata_text, selected_ranges=ranges)
+                    rows.append(metadata_row)
+                    result['documents'].append(metadata_row)
+                    result['reading_plan']['selected_documents'].append(
+                        {'file_path': None, 'question': 'metadata', 'url': metadata_url})
+                    routing['metadata'] = {'status': 'read', 'reason': 'exact_repository_json_fields',
+                        'url': metadata_url, 'field_ranges': ranges, 'commit_sha': None}
+                else:
+                    routing['metadata'] = {'status': 'empty', 'reason': 'no_nonempty_discovery_fields',
+                        'url': metadata_url}
+                declared_homepage = repository.get('homepage')
+                if not isinstance(declared_homepage, str) or not declared_homepage.strip():
+                    routing['homepage'].update(status='skipped', reason='no_repository_declared_homepage')
+                elif routing['overview_reason'] == 'repository_overview':
+                    routing['homepage'].update(status='skipped', reason='repository_overview_retained',
+                                               url=declared_homepage)
+                else:
+                    sources._public_url(declared_homepage, resolve=False)
+                    if len(rows) >= max_documents:
+                        routing['homepage'].update(status='skipped', reason='document_budget_exhausted',
+                                                   url=declared_homepage)
+                    else:
+                        homepage = declared_homepage
+                        reserve_homepage = 1
+                        routing['homepage'].update(status='planned', reason=routing['overview_reason'],
+                                                   url=homepage, metadata_url=metadata_url)
+            except (ValueError, OSError, KeyError, TypeError, IndexError, StopIteration) as exc:
+                metadata_read = routing['metadata']['status'] == 'read'
+                if not metadata_read:
+                    routing['metadata'].update(status='failed', reason=str(exc))
+                routing['homepage'].update(status='invalid' if metadata_read else 'skipped',
+                    reason=str(exc) if metadata_read else 'metadata_or_declared_url_invalid')
+                result['failures'].append({'url': declared_homepage if metadata_read else metadata_url,
+                    'question': 'homepage' if metadata_read else 'metadata', 'error': str(exc)})
     tree_url = f'https://api.github.com/repos/{owner_repo}/git/trees/{commit}?recursive=1'
     selected = []
     result['coverage']['supplemental_requests'] += 1
@@ -313,7 +565,18 @@ def read_project(root: Path, url: str, *, client: httpx.Client | None = None,
         if receipt['final_url'] != tree_url:
             raise sources.SourceError('pinned inventory redirected to a different URL')
         tree = json.loads(sources._payload(root, receipt))
-        selected, available = _select(tree, path, max_documents - 1)
+        if discovery:
+            # A root licence remains ahead of the reserved product page. The
+            # reservation only reduces extra user/build/submodule documents.
+            selected, available = _select_discovery(tree, path, max(0, max_documents - len(rows) - reserve_homepage))
+            if homepage and not any(row['question'] == 'license' for row in selected):
+                root_license, _ = _select_discovery(tree, path, 1)
+                if root_license and root_license[0]['question'] == 'license' and not selected:
+                    selected, reserve_homepage = root_license, 0
+                    homepage = None
+                    routing['homepage'].update(status='skipped', reason='root_license_uses_remaining_document_slot')
+        else:
+            selected, available = _select(tree, path, max_documents - 1)
         result['reading_plan']['tree_status'] = 'read'
         result['coverage'].update({'tree_truncated': tree['truncated'], 'matching_documents': available,
                                    'document_budget_excluded': available - len(selected)})
@@ -336,6 +599,14 @@ def read_project(root: Path, url: str, *, client: httpx.Client | None = None,
                 raise sources.SourceError('pinned original redirected to a different document URL')
             raw = sources._payload(root, receipt)
             decoded = raw.decode('utf-8')
+            original_raw = raw
+            if discovery and PurePosixPath(path).suffix.lower() in ('.html', '.htm'):
+                decoded = _page_text(raw)
+                if not decoded.strip():
+                    raise sources.SourceError('static user document contains no readable text')
+                raw = decoded.encode('utf-8')
+                row.update(reader='github-static-user-text', raw_document_sha256=sources._sha(original_raw),
+                           raw_document_path=receipt['body_path'])
             document_path = root / sources.SOURCE_DIR / 'documents' / (sources._sha(raw) + '.original')
             if not document_path.exists():
                 sources._atomic(document_path, raw)
@@ -344,13 +615,54 @@ def read_project(root: Path, url: str, *, client: httpx.Client | None = None,
                         'document_sha256': sources._sha(raw), 'document_chars': len(decoded),
                         'decoded': decoded})
             rows.append(row)
-            document_bytes[path] = raw
+            document_bytes[path] = original_raw
         except (ValueError, OSError, KeyError, TypeError) as exc:
             row.update({'status': 'failed', 'coverage': 'unknown', 'error': str(exc)})
             result['failures'].append({'url': raw_url, 'file_path': path,
                                        'question': selection['question'], 'error': str(exc)})
             result['receipts'].append(_failed_receipt(root, raw_url, exc))
-    result['contexts'] = _contexts(rows, max_chars, commit)
+    if discovery and homepage:
+        route = result['reading_plan']['routing']['homepage']
+        if result['coverage']['supplemental_requests'] >= MAX_SUPPLEMENTAL_REQUESTS:
+            route.update(status='skipped', reason='supplemental_request_budget_exhausted')
+        else:
+            homepage_row = dict(file_path=None, question='overview', original_url=homepage,
+                                reader='repository-homepage-text', commit_sha=None)
+            result['documents'].append(homepage_row)
+            result['reading_plan']['selected_documents'].append(
+                {'file_path': None, 'question': 'overview', 'url': homepage})
+            result['coverage']['supplemental_requests'] += 1
+            try:
+                receipt = _pinned_fetch(root, homepage, client=client, max_bytes=MAX_DOCUMENT_BYTES)
+                result['receipts'].append({**receipt, 'status': 'ok'})
+                if receipt['final_url'] != homepage:
+                    raise sources.SourceError('declared homepage redirected to a different URL')
+                raw = sources._payload(root, receipt)
+                is_html = 'html' in receipt.get('content_type', '').lower()
+                decoded = _page_text(raw) if is_html else raw.decode('utf-8')
+                if not decoded.strip():
+                    route.update(status='empty', reason='declared_homepage_contains_no_readable_text')
+                    raise sources.SourceError('declared homepage contains no readable text')
+                captured = decoded.encode('utf-8')
+                document_path = root / sources.SOURCE_DIR / 'documents' / (sources._sha(captured) + '.original')
+                if not document_path.exists():
+                    sources._atomic(document_path, captured)
+                homepage_row.update(status='read', fetched_at=receipt['fetched_at'], decoded=decoded,
+                    document_path=sources._relative(root, document_path), document_sha256=sources._sha(captured),
+                    document_chars=len(decoded), raw_document_path=receipt['body_path'],
+                    raw_document_sha256=receipt['sha256'],
+                    reader='repository-homepage-html-text' if is_html else 'repository-homepage-decoded-text')
+                rows.append(homepage_row)
+                route.update(status='read', reason='one_repository_declared_product_entry',
+                             captured_text_chars=len(decoded), commit_sha=None)
+            except (ValueError, OSError, KeyError, TypeError) as exc:
+                status = 'empty' if route['status'] == 'empty' else 'failed'
+                homepage_row.update(status=status, coverage='unknown', error=str(exc))
+                route.update(status=status, reason=str(exc), coverage='unknown')
+                result['failures'].append({'url': homepage, 'question': 'overview', 'error': str(exc)})
+                result['receipts'].append(_failed_receipt(root, homepage, exc))
+    result['contexts'] = (_discovery_contexts(rows, max_chars, commit) if discovery else
+                          _contexts(rows, max_chars, commit))
     questions = {}
     for purpose in _QUESTIONS:
         relevant = [row for row in result['documents'] if row['question'] == purpose]
@@ -375,6 +687,8 @@ def read_project(root: Path, url: str, *, client: httpx.Client | None = None,
                            if key not in ('content', 'summary', 'tree')}
     for row in result['documents']:
         row.pop('decoded', None)
+        if discovery:
+            row.pop('selected_ranges', None)
     return result
 
 
@@ -384,9 +698,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--url', required=True)
     parser.add_argument('--max-documents', type=int, default=4)
     parser.add_argument('--max-chars', type=int, default=14_000)
+    parser.add_argument('--reading-contract', choices=[DISCOVERY_READING_CONTRACT])
     args = parser.parse_args(argv)
     try:
-        packet = read_project(args.root, args.url, max_documents=args.max_documents, max_chars=args.max_chars)
+        options = {'max_documents': args.max_documents, 'max_chars': args.max_chars}
+        if args.reading_contract is not None:
+            options['reading_contract'] = args.reading_contract
+        packet = read_project(args.root, args.url, **options)
         summary = {**packet, 'contexts': [{'url': row['url'], 'fetched_at': row['fetched_at'],
                                           'source_scope': row['source_scope']}
                                           for row in packet['contexts']]}

@@ -263,6 +263,131 @@ class EditorialInputTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'requires supplied original text'):
             self.build()
 
+    def public(self, *, ranking_type='weekly', featured=False, **kwargs):
+        return editorial.build_review_input(record=self.record, facts=self.facts, assessment=self.assessment,
+            contexts=self.contexts, ranking_type=ranking_type, introduction_contract='discovery.v1',
+            review_scope=editorial.PUBLIC_INTRODUCTION_SCOPE, featured=featured, **kwargs)
+
+    def test_public_scope_excludes_unpublished_prose_and_understanding_but_keeps_sources(self):
+        self.add_understanding()
+        self.facts.update(usage_conditions='UNPUBLISHED_CONDITION', audience='UNPUBLISHED_AUDIENCE',
+                          open_source_status='UNPUBLISHED_LICENCE', supported_systems='Windows')
+        self.facts['understanding']['unknowns'] = ['UNPUBLISHED_INTERPRETATION']
+        before = copy.deepcopy((self.record, self.facts, self.assessment, self.contexts))
+        result = self.public(understanding_contract='project-reading.v1')
+        self.assertEqual({'title', 'category', 'summary', 'url', 'supported_systems'}, set(result['public_fields']))
+        self.assertNotIn('facts', result)
+        self.assertNotIn('assessment', result)
+        self.assertNotIn('understanding', result)
+        self.assertNotIn('UNPUBLISHED_', json.dumps(result))
+        self.assertEqual(self.contexts[0]['text'], ''.join(row['quote'] for row in result['passages']))
+        self.assertEqual(self.facts['understanding']['source_documents'], result['source_documents'])
+        self.assertEqual(before, (self.record, self.facts, self.assessment, self.contexts))
+
+    def test_weekly_detail_is_reviewed_only_for_real_featured_items(self):
+        self.assertNotIn('detail', self.public()['public_fields'])
+        self.assertEqual(self.facts['detail'], self.public(featured=True)['public_fields']['detail'])
+        self.assertNotIn('detail', self.public(ranking_type='daily', featured=True)['public_fields'])
+        self.facts['detail'] = ''
+        self.public(featured=False)
+        with self.assertRaisesRegex(ValueError, 'nonempty detail'):
+            self.public(featured=True)
+
+    def test_monthly_retention_and_verified_update_increment_are_reviewed(self):
+        self.record.update(kind='update', change_note='Adds documented batch rename.',
+                           event=dict(url=self.url + '/releases/v2', type='update', occurred_on='2026-10-05',
+                                      date_precision='date', timezone='unknown'))
+        result = self.public(ranking_type='monthly', featured=True)
+        self.assertEqual(self.facts['retention_reason'], result['public_fields']['retention_reason'])
+        self.assertEqual(self.record['change_note'], result['public_fields']['change_note'])
+        self.assertEqual(self.record['event']['url'], result['public_fields']['event_url'])
+        self.assertNotIn('detail', result['public_fields'])
+        self.facts['retention_reason'] = ''
+        with self.assertRaisesRegex(ValueError, 'nonempty retention_reason'):
+            self.public(ranking_type='monthly')
+
+    def test_news_event_date_matches_actual_beijing_display_not_hidden_fact_date(self):
+        self.record.update(kind='news', event=dict(url=self.url, type='news',
+            occurred_at='2026-10-04T20:30:00+00:00', date_precision='timestamp', timezone='UTC'))
+        self.facts.update(event_date='2026-10-04T20:30:00+00:00', supported_systems='HIDDEN_SYSTEM')
+        result = self.public(ranking_type='daily')
+        self.assertEqual('2026-10-05', result['public_fields']['event_date'])
+        self.assertNotIn('supported_systems', result['public_fields'])
+        self.record['event'] = dict(url=self.url, type='news', occurred_on='2026-10-04',
+                                    date_precision='date', timezone='unknown')
+        self.assertEqual('2026-10-04（原文仅日期，时区未知；未确认具体时刻）',
+                         self.public()['public_fields']['event_date'])
+
+    def test_reading_attribution_is_public_but_platform_and_detail_are_not(self):
+        self.record['kind'] = 'reading'
+        self.facts.update(author='Original interviewer', original_date='2026-10-04', supported_systems='HIDDEN_SYSTEM')
+        result = self.public()
+        self.assertEqual('Original interviewer', result['public_fields']['author'])
+        self.assertEqual('2026-10-04', result['public_fields']['original_date'])
+        self.assertNotIn('supported_systems', result['public_fields'])
+        self.assertNotIn('detail', result['public_fields'])
+        with self.assertRaisesRegex(ValueError, 'featured reading'):
+            self.public(featured=True)
+
+    def test_public_scope_keeps_score_explanations_and_source_refs_reviewable(self):
+        self.assessment['scores']['usability']['reason'] = 'Licence supposedly restricts the supported Windows route.'
+        result = self.public()
+        self.assertEqual(self.build()['assessment'], result['selection_basis'])
+        self.assertEqual(self.assessment['scores']['usability']['reason'],
+                         result['selection_basis']['scores']['usability']['reason'])
+        self.assertNotIn('HIDDEN_HISTORY', json.dumps(result))
+        raw = dict(verdict='defer', reason='The score explanation invents a documented condition.', issues=[dict(
+            field='selection_basis.scores.usability.reason', code='unsupported_assertion',
+            passage_ids=[result['passages'][0]['id']], reason='The supplied desktop passage gives no such licence restriction.')])
+        self.assertEqual(raw, editorial.validate_review(raw, result['passages']))
+        raw['issues'][0]['field'] = 'public_fields.supported_systems'
+        raw['issues'][0]['reason'] = 'The supplied passage does not establish Windows support.'
+        self.assertEqual(raw, editorial.validate_review(raw, result['passages']))
+
+    def test_public_scope_is_explicit_requires_discovery_and_rejects_bad_inputs(self):
+        self.record['review_scope'] = editorial.PUBLIC_INTRODUCTION_SCOPE
+        self.facts['review_scope'] = editorial.PUBLIC_INTRODUCTION_SCOPE
+        old = editorial.build_review_input(record=self.record, facts=self.facts, assessment=self.assessment,
+            contexts=self.contexts, ranking_type='weekly', introduction_contract='discovery.v1')
+        self.assertNotIn('public_fields', old)
+        for scope in ('', 'public-introduction.v2', {}):
+            with self.subTest(scope=scope), self.assertRaisesRegex(ValueError, 'unsupported editorial review scope'):
+                editorial.build_review_input(record=self.record, facts=self.facts, assessment=self.assessment,
+                    contexts=self.contexts, ranking_type='weekly', introduction_contract='discovery.v1', review_scope=scope)
+        with self.assertRaisesRegex(ValueError, 'requires discovery'):
+            editorial.build_review_input(record=self.record, facts=self.facts, assessment=self.assessment,
+                contexts=self.contexts, ranking_type='weekly', review_scope=editorial.PUBLIC_INTRODUCTION_SCOPE)
+        with self.assertRaisesRegex(ValueError, 'must be a boolean'):
+            self.public(featured=1)
+
+    def test_public_scope_outputs_are_independent_and_null_systems_are_not_guessed(self):
+        self.facts['usage_conditions'] = 'Runs on Linux according to an unpublished interpretation.'
+        self.facts['supported_systems'] = None
+        self.add_understanding()
+        before = copy.deepcopy((self.record, self.facts, self.assessment, self.contexts))
+        result = self.public(understanding_contract='project-reading.v1')
+        self.assertIsNone(result['public_fields']['supported_systems'])
+        result['selection_basis']['flags'][0]['basis']['claim'] = 'Return-only change.'
+        result['source_documents'][0]['scope']['ranges'].append({'start': 0, 'end': 1})
+        result['public_fields']['summary'] = 'Return-only summary.'
+        result['passages'][0]['heading_path'].clear()
+        self.assertEqual(before, (self.record, self.facts, self.assessment, self.contexts))
+
+    def test_public_projection_matches_discovery_renderer_conditional_parts(self):
+        from ai_notes import digest
+        for ranking_type, featured in (('daily', False), ('weekly', True), ('monthly', True)):
+            with self.subTest(ranking_type=ranking_type, featured=featured):
+                item = dict(self.facts, url=self.url, kind='project', featured=featured,
+                            supported_systems='Windows', evidence_urls=[self.url], change_note='')
+                self.facts['supported_systems'] = 'Windows'
+                projected = self.public(ranking_type=ranking_type, featured=featured)['public_fields']
+                rendered = digest._render_discovery(dict(items=[item], ranking_type=ranking_type), draft=True, preview=True)
+                for field in ('summary', 'detail', 'retention_reason', 'supported_systems'):
+                    if field in projected:
+                        self.assertIn(projected[field], rendered)
+                    elif field in self.facts and self.facts[field] is not None:
+                        self.assertNotIn(self.facts[field], rendered)
+
 
 if __name__ == '__main__':
     unittest.main()

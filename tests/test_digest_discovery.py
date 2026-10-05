@@ -143,10 +143,12 @@ class DiscoveryProjectionPromptTests(unittest.TestCase):
 
     def test_current_policy_only_changes_contract_and_version_not_scoring_rules(self):
         current = selection.load_policy(ROOT)
-        self.assertEqual('v11-discovery-introduction-uncalibrated', current['version'])
+        self.assertEqual('v12-discovery-selection-uncalibrated', current['version'])
         self.assertEqual('discovery.v1', current['introduction_contract'])
         old = copy.deepcopy(current)
         old.pop('introduction_contract')
+        old.pop('source_reading_contract', None)
+        old.pop('editorial_scope', None)
         old['version'] = 'v10-project-reading-uncalibrated'
         self.assertEqual(old, selection.validate_policy(old))
         assessment = dict(precheck=dict(status='PASS', reasons=['Documented use.'], evidence_refs=[self.url]),
@@ -276,6 +278,8 @@ class DiscoveryProjectionPromptTests(unittest.TestCase):
                 prepare({cid: None}, self.claims + [valid_claim])
             legacy = copy.deepcopy(self.policy)
             legacy.pop('introduction_contract')
+            legacy.pop('source_reading_contract', None)
+            legacy.pop('editorial_scope', None)
             with self.assertRaisesRegex(ValueError, 'requires discovery'):
                 prepare({cid: None}, policy=legacy)
 

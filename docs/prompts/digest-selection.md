@@ -152,3 +152,11 @@ understanding.proof_map 的 passage ID 对应 evidence_url、heading_path 与 so
 material.supported_systems 只保存原文证据支持的系统表述；null 表示未知或不适用，新闻、阅读不强制具有软件系统。不能从 usage_conditions 自动猜系统，也不能把支持某平台误写成安装其运行环境。understanding 中的 unknowns、空操作或有限供文不自动构成缺陷；实际已写出的用途、亮点、操作对象、系统和费用仍须与原文一致。
 
 本补充只收窄介绍范围和证据完整性判断，不改变评分维度、权重、门槛、flags 或来源等级。当前 v11-discovery-introduction-uncalibrated 尚未经过读者标签校准；旧冻结策略不应用此补充。
+<!-- editorial_scope: public-introduction.v1 -->
+## 仅在 public-introduction.v1 启用时使用的取舍与原文范围
+
+公开文字与选择依据分别核对。以已支持的用途、亮点、系统及其栏目价值评分，不把内部理解卡中未展示的许可证、条件或完整性说明自动变成刊用门槛。理解卡是待核对解释，不是证据；只有内部问题实质影响公开主张或评分理由时，才按原文报告相应缺口，不因未罗列无关安装路线限分。
+
+source_reading_contract=discovery-reading.v1 时，当前 GitHub 仓库 metadata 是本次抓取的作者自述原文，可支持其中确切的功能或平台描述，但应引用其实际 API URL 和供文范围；它不是同 commit 的文件、历史 release 证据或独立使用反馈，不能用不含该功能的 README 引文替代。仓库声明主页仅建立关联入口，抓取成功的页面内容才提供产品事实；发现标题、更名线索、source_checks 和 fetched_at 不当产品事实或发布日期。
+
+成熟非 AI 工具、清晰的使用方向仍可带来发现价值，不要求用户现在急需，也不要求作者必须发布新版本。评分引用仍只来自供给原文，标题修饰、周榜重点 detail、月榜保留理由和每个实质评分理由均须有据。保留旧权重、门槛和 flags；本补充未通过新一轮真实模型质量验收，不把离线机械验证当选择准确率。
