@@ -45,6 +45,11 @@ When understanding_contract is project-reading.v1, facts.understanding is an evi
 Check each condition's subject and kind against its source: compatibility, mandatory requirements, optional capabilities, alternative routes and prices must not be interchanged. A paid route remains paid when a free alternative exists. Preserve conflicts, version-specific conditions and explicit unknowns rather than resolving them from another model's prose. Treat source_documents as provenance and reading coverage, not independent product evidence: complete_text describes only the captured document, while excerpt and unknown never establish whole-document reading. Check reading_scope_issues against the supplied coverage; a valid passage ID does not prove the interpretation is correct.
 Do not accept a useful-sounding input/output chain merely because its IDs are valid or its score is high. Use the unchanged accept/defer schema and existing evidence-linked issue codes for material misunderstandings. Do not rewrite the understanding card, award new scores or treat its confidence as corroboration.'''
 
+DISCOVERY_REVIEW_PROMPT = EDITORIAL_POSITION_REVIEW_PROMPT + '''
+Only when introduction_contract is discovery.v1, apply this discovery-introduction scope. The intended public item gives a name, purpose, distinctive highlights, supported systems when known and a source link; images are optional. The internal facts and understanding card is a source-checking aid, not a user manual or a requirement to publish every condition, input, output, operation or setup step.
+Review the material factual claims actually written in facts, understanding and assessment. Defer only for a concrete source-linked material factual error or contradiction in those claims. An omitted condition is a defect only when it makes an actually stated claim false or materially misleading: a named paid route described as free or an unlimited offer stated beyond its supported model scope remains an error. Do not defer merely because a short introduction does not enumerate all alternative routes, conditions, inputs, outputs, steps or uncaptured details. Unknown or inapplicable supported_systems may be null; do not demand a platform assertion for every news or reading item. A documented, limited purpose needs no local software test.
+When facts.understanding exists, it is a model interpretation to compare with original passages, never an independent source. Check the objects and results of operations actually asserted, without demanding a complete workflow. source_documents describes captured coverage only; excerpt or unknown cannot support a claim of reading the whole document, but is not itself a reason to reject a limited source-supported introduction. supported_systems must come from its supplied evidence, not an automatic inference from usage_conditions. Use the existing accept/defer schema and issue codes, without rewriting prose, scores, weights, thresholds, flags or source grades. Missing exhaustive detail or disagreement with a numerical score is not a factual error.'''
+
 
 def _object(properties):
     return {'type': 'object', 'properties': properties, 'required': list(properties),
@@ -93,7 +98,7 @@ def _project(value, fields):
 
 
 def build_review_input(*, record, facts, assessment, contexts, ranking_type, reader_context=None, editorial_position=None,
-                       understanding_contract=None):
+                       understanding_contract=None, introduction_contract=None):
     """Project current prose and score reasoning, never ledger history/labels.
 
     Source text occurs once as passages rather than also duplicating long legacy
@@ -127,6 +132,11 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type, rea
     result = {'ranking_type': ranking_type, 'candidate': candidate,
             'facts': _project(facts, _FACT_FIELDS), 'assessment': current_assessment,
             'passages': passages, 'evidence_scope': 'supplied_text_only_not_full_document_or_software_test'}
+    if introduction_contract is not None:
+        from .digest_selection import _check_introduction_contract, _supported_systems
+        _check_introduction_contract({'introduction_contract': introduction_contract})
+        result['introduction_contract'] = introduction_contract
+        result['facts']['supported_systems'] = _supported_systems(facts.get('supported_systems'))
     if reader_context is not None:
         # Use the same closed context contract as scoring; never forward labels.
         from .digest_selection import _check_reader_context

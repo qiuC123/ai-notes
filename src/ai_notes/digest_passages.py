@@ -128,7 +128,7 @@ def build_passages(contexts):
     return passages
 
 
-def bind_review(output, passages, record):
+def bind_review(output, passages, record, *, include_discovery=False):
     """Bind strict model evidence IDs to program-owned legacy facts/claims.
 
     Unknown IDs and extra/null fields fail; no old malformed quote is repaired.
@@ -146,13 +146,16 @@ def bind_review(output, passages, record):
     kind = record.get('kind') if isinstance(record, dict) else None
     if kind not in _KIND_FIELDS:
         raise ValueError('unsupported candidate kind')
-    fact_fields = _FACT_FIELDS + _KIND_FIELDS[kind]
+    fact_fields = _FACT_FIELDS + _KIND_FIELDS[kind] + (('supported_systems',) if include_discovery else ())
     facts = output['facts']
     if not isinstance(facts, dict) or set(facts) != set(fact_fields):
         raise ValueError('invalid passage review facts fields')
     for field in fact_fields:
+        if field == 'supported_systems' and facts[field] is None:
+            continue
         _text(facts[field], 'facts.' + field)
-    evidence_fields = _EVIDENCE_FIELDS + _KIND_FIELDS[kind] + (('change_note',) if kind == 'update' else ())
+    evidence_fields = (_EVIDENCE_FIELDS + _KIND_FIELDS[kind] + (('change_note',) if kind == 'update' else ())
+                       + (('supported_systems',) if include_discovery else ()))
     evidence = output['evidence']
     if not isinstance(evidence, dict) or set(evidence) != set(evidence_fields):
         raise ValueError('invalid passage review evidence fields')
@@ -175,8 +178,11 @@ def bind_review(output, passages, record):
     urls = []
     for field in evidence_fields:
         ids = evidence[field]
-        if not isinstance(ids, list) or (field != 'license' and not ids):
+        unknown_systems = field == 'supported_systems' and facts[field] is None
+        if not isinstance(ids, list) or (field != 'license' and not unknown_systems and not ids):
             raise ValueError('evidence.' + field + ' requires passage IDs')
+        if unknown_systems and ids:
+            raise ValueError('null supported_systems requires empty evidence')
         seen = set()
         for passage_id in ids:
             _text(passage_id, 'passage ID')

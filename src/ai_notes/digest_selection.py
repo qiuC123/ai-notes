@@ -27,6 +27,8 @@ READER_CONTEXT_CONTRACT = "digest-reader-context.v1"
 EDITORIAL_POSITION_CONTRACT = "digest-editorial-position.v1"
 UNDERSTANDING_CONTRACT = "project-reading.v1"
 UNDERSTANDING_PROMPT_MARKER = "<!-- understanding_contract: project-reading.v1 -->"
+INTRODUCTION_CONTRACT = "discovery.v1"
+INTRODUCTION_PROMPT_MARKER = "<!-- introduction_contract: discovery.v1 -->"
 FLAG_BASIS_KINDS = {
     "routine_update": "limited_increment", "unsupported_promotion": "unsupported_effect_claim",
     "unfulfilled_announcement": "availability_limit", "unclear_usage": "usage_path_gap",
@@ -92,7 +94,7 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
 def validate_policy(policy: dict) -> dict:
     """Validate an in-memory policy and return an independent, unmodified copy."""
     policy = copy.deepcopy(policy)
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract"))
     if "assessment_contract" in policy and policy["assessment_contract"] != SCOPED_CONTRACT:
         raise SelectionError("unsupported assessment contract")
     if "editorial_review_contract" in policy and policy["editorial_review_contract"] != "source-score.v1":
@@ -101,6 +103,7 @@ def validate_policy(policy: dict) -> dict:
     _check_reader_context(policy)
     _check_editorial_position(policy)
     _check_understanding_contract(policy)
+    _check_introduction_contract(policy)
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -190,12 +193,18 @@ def load_preparation(root: Path, prepare_id: str) -> dict:
 def load_prompt(root: Path, policy: dict) -> str:
     """Select optional instructions before freezing; never upgrade a snapshot."""
     _check_understanding_contract(policy)
+    _check_introduction_contract(policy)
     text = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8")
-    base, marker, _ = text.partition(UNDERSTANDING_PROMPT_MARKER)
+    existing, discovery_marker, discovery = text.partition(INTRODUCTION_PROMPT_MARKER)
+    base, marker, _ = existing.partition(UNDERSTANDING_PROMPT_MARKER)
     if policy.get("understanding_contract") == UNDERSTANDING_CONTRACT:
         if not marker:
             raise SelectionError("project-reading prompt supplement is unavailable")
-        return text
+        base = existing
+    if policy.get("introduction_contract") == INTRODUCTION_CONTRACT:
+        if not discovery_marker:
+            raise SelectionError("discovery prompt supplement is unavailable")
+        base += discovery_marker + discovery
     return base
 
 
@@ -261,6 +270,17 @@ def _check_editorial_position(policy: dict) -> None:
 def _check_understanding_contract(policy: dict) -> None:
     if "understanding_contract" in policy and policy["understanding_contract"] != UNDERSTANDING_CONTRACT:
         raise SelectionError("unsupported understanding contract")
+
+
+def _check_introduction_contract(policy: dict) -> None:
+    """Only an explicit policy marker enables the discovery introduction."""
+    if "introduction_contract" in policy and policy["introduction_contract"] != INTRODUCTION_CONTRACT:
+        raise SelectionError("unsupported introduction contract")
+
+
+def _supported_systems(value):
+    """Validate the optional fact, without extracting platforms from other prose."""
+    return None if value is None else _text(value, "supported_systems")
 
 
 def _validated_understanding(value: dict, contexts: list) -> dict:
@@ -337,14 +357,17 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     _check_reader_context(prepared["policy"])
     _check_editorial_position(prepared["policy"])
     _check_understanding_contract(prepared["policy"])
+    _check_introduction_contract(prepared["policy"])
     card = _card(prepared, candidate_id)
     fields = ("url", "title", "category", "kind", "summary", "source_urls", "evidence_urls", "published_at", "change_note")
     material = {key: copy.deepcopy(card["material"][key]) for key in fields if key in card["material"]}
+    if prepared["policy"].get("introduction_contract") == INTRODUCTION_CONTRACT:
+        material["supported_systems"] = _supported_systems(card["material"].get("supported_systems"))
     event = card["material"].get("event")
     if event:
         material["event"] = {key: copy.deepcopy(event[key]) for key in
                              ("url", "occurred_at", "occurred_on", "date_precision", "timezone", "type") if key in event}
-    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract")
+    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract")
     result = {
         "card": {"ranking_type": card.get("ranking_type", prepared["ranking_type"]), "profile": card["profile"],
                  "material": material,
@@ -442,6 +465,7 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
             evidence_context: list | None = None, policy_path: Path | None = None, offset: int = 0,
             candidate_ids: list[str] | None = None, source_claims: dict | None = None,
             source_understanding: dict | None = None, candidate_contexts: dict | None = None,
+            source_supported_systems: dict | None = None,
             policy_snapshot: dict | None = None, prompt_snapshot: str | None = None) -> dict:
     """Freeze candidate input and source text, without scoring.
 
@@ -449,6 +473,8 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
     (including policy_path) or prompt. Omitted snapshots retain the file path.
     The optional project-reading candidate_contexts mapping binds each candidate
     to its entire source set, avoiding cross-candidate joins on shared event URLs.
+    Discovery supported systems may be supplied by exact candidate ID because
+    this source fact need not be a field in the production candidate ledger.
     """
     root = Path(root)
     digest.period_window(ranking_type, period)
@@ -468,6 +494,15 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
     contexts = [] if evidence_context is None else evidence_context
     claims_by_id = {} if source_claims is None else source_claims
     understands = policy.get("understanding_contract") == UNDERSTANDING_CONTRACT
+    discovery = policy.get("introduction_contract") == INTRODUCTION_CONTRACT
+    if source_supported_systems is not None:
+        if not discovery:
+            raise SelectionError("source_supported_systems requires discovery introduction contract")
+        if not isinstance(source_supported_systems, dict) or any(
+                not isinstance(key, str) or not key.strip() for key in source_supported_systems):
+            raise SelectionError("source_supported_systems must map candidate IDs to string or null")
+        for value in source_supported_systems.values():
+            _supported_systems(value)
     if candidate_contexts is not None:
         if not understands:
             raise SelectionError("candidate_contexts requires project-reading understanding contract")
@@ -494,6 +529,8 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
         records = query["candidates"]
     else:
         query, records = _exact_candidates(root, ranking_type, period, candidate_ids)
+    if source_supported_systems is not None and set(source_supported_systems) != {candidate_id(record) for record in records}:
+        raise SelectionError("source_supported_systems keys must match exactly the prepared candidate IDs")
     if candidate_contexts is not None:
         if set(candidate_contexts) != {candidate_id(record) for record in records}:
             raise SelectionError("candidate_contexts keys must match exactly the prepared candidate IDs")
@@ -510,6 +547,9 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
             continue
         seen.add(cid)
         material = {key: record.get(key) for key in keys}
+        if discovery:
+            material["supported_systems"] = _supported_systems(
+                record.get("supported_systems") if source_supported_systems is None else source_supported_systems[cid])
         if candidate_contexts is not None:
             relevant = copy.deepcopy(candidate_contexts[cid])
         else:
@@ -529,6 +569,14 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
                 card["source_claims"] = validate_claims(claims_by_id[cid], relevant) if cid in claims_by_id else []
             except ValueError as exc:
                 raise SelectionError(str(exc)) from exc
+        if discovery:
+            claims = card.get("source_claims", [])
+            system_claims = [claim for claim in claims if claim["field"] == "supported_systems"]
+            systems = material["supported_systems"]
+            if systems is None and system_claims:
+                raise SelectionError("null supported_systems cannot have source claims")
+            if systems is not None and (not system_claims or any(claim["text"] != systems for claim in system_claims)):
+                raise SelectionError("known supported_systems requires matching original source claims")
         if understands:
             card["understanding"] = _validated_understanding(understanding_by_id.get(cid), relevant)
         card["input_hash"] = _hash(card)

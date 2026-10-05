@@ -64,7 +64,8 @@ def assessment_schema(*, policy: dict, card: dict) -> dict:
     return schema
 
 
-def source_review_schema(*, record: dict, passages: list[dict], include_understanding: bool = False) -> dict:
+def source_review_schema(*, record: dict, passages: list[dict], include_understanding: bool = False,
+                         include_discovery: bool = False) -> dict:
     """Guide a source review that cites program-owned passage IDs only.
 
     The caller binds IDs to original URLs, quotes and headings. This schema
@@ -85,6 +86,9 @@ def source_review_schema(*, record: dict, passages: list[dict], include_understa
     facts['category'] = {'type': 'string', 'enum': list(CATEGORIES)}
     facts['open_source_status'] = {'enum': ['confirmed', 'closed', 'unknown']}
     evidence_fields = ['category', 'summary', 'usage_conditions', 'license']
+    if include_discovery:
+        facts['supported_systems'] = {'anyOf': [dict(text), {'type': 'null'}]}
+        evidence_fields.append('supported_systems')
     if kind == 'reading':
         facts.update(author=dict(text), original_date={'type': 'string', 'pattern': r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'})
         evidence_fields.extend(('author', 'original_date'))
@@ -94,7 +98,7 @@ def source_review_schema(*, record: dict, passages: list[dict], include_understa
     elif kind == 'update':
         evidence_fields.append('change_note')
     evidence = {name: {'type': 'array', 'items': {'$ref': '#/$defs/passage_id'}, 'uniqueItems': True,
-                       'minItems': 0 if name == 'license' else 1} for name in evidence_fields}
+                       'minItems': 0 if name in ('license', 'supported_systems') else 1} for name in evidence_fields}
     schema = _object({'qualified': {'type': 'boolean'}, 'reason': dict(text),
                       'facts': {'anyOf': [{'$ref': '#/$defs/facts'}, {'type': 'null'}]},
                       'evidence': {'anyOf': [{'$ref': '#/$defs/evidence'}, {'type': 'null'}]}})
@@ -109,6 +113,13 @@ def source_review_schema(*, record: dict, passages: list[dict], include_understa
         'then': {'properties': {'facts': {'$ref': '#/$defs/facts'}, 'evidence': {'$ref': '#/$defs/evidence'}}},
         'else': {'properties': {'facts': {'type': 'null'}, 'evidence': {'type': 'null'}}},
     }]
+    if include_discovery:
+        schema['allOf'].append({
+            'if': {'properties': {'qualified': {'const': True},
+                                 'facts': {'properties': {'supported_systems': {'type': 'string'}}}}},
+            'then': {'properties': {'evidence': {'properties': {'supported_systems': {'minItems': 1}}}}},
+            'else': {'properties': {'evidence': {'properties': {'supported_systems': {'maxItems': 0}}}}},
+        })
     if include_understanding:
         from .digest_understanding import understanding_schema
 

@@ -1,0 +1,199 @@
+{
+  "schema_version": "digest-preview.v1",
+  "presentation": "discovery.v1",
+  "title": "介绍样式预览 · 2026-10-05",
+  "prepared_at": "2026-10-05T18:18:47.026021+08:00",
+  "shortfall_reason": "",
+  "verification_note": "这是一版离线手工编辑的格式预览，复用 2026 年 10 月 4 日至 5 日保存的原文，展示名称、用途、亮点、支持系统和官方链接。它不是新评分、重新核验、完整日榜或实时项目推荐；未联网、未调用模型，也未下载运行这些软件。历史核验时间与付费实验结果保留原样。",
+  "is_formal_ranking": false,
+  "editorial_provenance": "manual-offline-preview.v1",
+  "items": [
+    {
+      "url": "https://github.com/localsend/localsend",
+      "kind": "project",
+      "featured": true,
+      "title": "LocalSend：手机和电脑互传文件",
+      "category": "开源项目",
+      "summary": "手机照片要传到电脑，不一定要先发给聊天软件。LocalSend 能在同一局域网里的设备之间传文件和文字，不依赖互联网或第三方服务器。它支持手机和桌面系统，让不同设备也能直接互传。",
+      "reason": "本次用于展示发现式短介绍，不代表重新评分或入选正式榜单。",
+      "audience": "关注实用工具的读者。",
+      "usage_conditions": "Windows / macOS / Linux / Android / iOS / Fire OS",
+      "supported_systems": "Windows / macOS / Linux / Android / iOS / Fire OS",
+      "verification_level": "documented",
+      "verified_at": "2026-10-04T11:43:46.972171+08:00",
+      "evidence_urls": [
+        "https://github.com/localsend/localsend/blob/main/README.md"
+      ],
+      "change_note": "",
+      "first_discovered_at": "2026-10-04T03:35:55.162006+00:00",
+      "collected_at": "2026-10-04T03:35:55.162006+00:00",
+      "published_at": null,
+      "period_label": "既有资料",
+      "editorial_provenance": "manual-offline-preview.v1",
+      "saved_sources": [
+        {
+          "url": "https://github.com/localsend/localsend/blob/main/README.md",
+          "saved_at": "2026-10-04T03:35:55.162006+00:00"
+        }
+      ]
+    },
+    {
+      "url": "https://github.com/chidiwilliams/buzz",
+      "kind": "project",
+      "featured": false,
+      "title": "Buzz：把录音和视频变成文字、字幕",
+      "category": "AI 应用",
+      "summary": "录了一段采访或讲解视频，Buzz 可以在电脑上把语音转成文字，也能直接从麦克风实时转写。整理后的内容可以导出为 TXT 文本或 SRT、VTT 字幕；转写查看器还支持搜索、播放和调整速度，方便回听定位。",
+      "reason": "本次用于展示发现式短介绍，不代表重新评分或入选正式榜单。",
+      "audience": "关注实用工具的读者。",
+      "usage_conditions": "Windows / macOS（Apple silicon） / Linux",
+      "supported_systems": "Windows / macOS（Apple silicon） / Linux",
+      "verification_level": "documented",
+      "verified_at": "2026-10-04T11:43:46.972171+08:00",
+      "evidence_urls": [
+        "https://github.com/chidiwilliams/buzz/blob/main/README.md"
+      ],
+      "change_note": "",
+      "first_discovered_at": "2026-10-04T03:35:55.162006+00:00",
+      "collected_at": "2026-10-04T03:35:55.162006+00:00",
+      "published_at": null,
+      "period_label": "既有资料",
+      "editorial_provenance": "manual-offline-preview.v1",
+      "saved_sources": [
+        {
+          "url": "https://github.com/chidiwilliams/buzz/blob/main/README.md",
+          "saved_at": "2026-10-04T03:35:55.162006+00:00"
+        }
+      ]
+    },
+    {
+      "url": "https://github.com/upscayl/upscayl",
+      "kind": "project",
+      "featured": false,
+      "title": "Upscayl：用 AI 放大低分辨率图片",
+      "category": "AI 应用",
+      "summary": "手里只有一张尺寸偏小的图片，可以用 Upscayl 尝试 AI 放大。它提供桌面界面，支持批量处理图片，也能使用更多自定义模型，为同一张图尝试不同的放大效果。",
+      "reason": "本次用于展示发现式短介绍，不代表重新评分或入选正式榜单。",
+      "audience": "关注实用工具的读者。",
+      "usage_conditions": "Windows / macOS / Linux",
+      "supported_systems": "Windows / macOS / Linux",
+      "verification_level": "documented",
+      "verified_at": "2026-10-04T11:43:46.972171+08:00",
+      "evidence_urls": [
+        "https://github.com/upscayl/upscayl/blob/main/README.md"
+      ],
+      "change_note": "",
+      "first_discovered_at": "2026-10-04T03:35:55.163511+00:00",
+      "collected_at": "2026-10-04T03:35:55.163511+00:00",
+      "published_at": null,
+      "period_label": "既有资料",
+      "editorial_provenance": "manual-offline-preview.v1",
+      "saved_sources": [
+        {
+          "url": "https://github.com/upscayl/upscayl/blob/main/README.md",
+          "saved_at": "2026-10-04T03:35:55.163511+00:00"
+        }
+      ]
+    },
+    {
+      "url": "https://github.com/mifi/lossless-cut",
+      "kind": "project",
+      "featured": false,
+      "title": "LosslessCut：留下视频里想要的片段",
+      "category": "开源项目",
+      "summary": "一段长视频只想保留其中几分钟，LosslessCut 把重点放在无损剪切：截取或删掉片段时，不必把整段视频重新编码。它还支持调整片段顺序，以及把视频中的音轨、字幕等轨道分别提取出来，适合做素材整理。",
+      "reason": "本次用于展示发现式短介绍，不代表重新评分或入选正式榜单。",
+      "audience": "关注实用工具的读者。",
+      "usage_conditions": "Windows / macOS / Linux",
+      "supported_systems": "Windows / macOS / Linux",
+      "verification_level": "documented",
+      "verified_at": "2026-10-04T11:43:46.972171+08:00",
+      "evidence_urls": [
+        "https://github.com/mifi/lossless-cut/blob/master/README.md"
+      ],
+      "change_note": "",
+      "first_discovered_at": "2026-10-04T03:35:55.163511+00:00",
+      "collected_at": "2026-10-04T03:35:55.163511+00:00",
+      "published_at": null,
+      "period_label": "既有资料",
+      "editorial_provenance": "manual-offline-preview.v1",
+      "saved_sources": [
+        {
+          "url": "https://github.com/mifi/lossless-cut/blob/master/README.md",
+          "saved_at": "2026-10-04T03:35:55.163511+00:00"
+        }
+      ]
+    },
+    {
+      "url": "https://github.com/CherryHQ/cherry-studio",
+      "kind": "project",
+      "featured": false,
+      "title": "Cherry Studio：在一个窗口里使用多个 AI 模型",
+      "category": "AI 应用",
+      "summary": "想把常用 AI 模型集中起来，可以看看 Cherry Studio。这个桌面客户端支持 OpenAI、Gemini、Anthropic 等服务，也能连接 Ollama、LM Studio 的本地模型；支持多个模型同时对话、自定义助手，以及处理图片、Office 和 PDF 等文件。",
+      "reason": "本次用于展示发现式短介绍，不代表重新评分或入选正式榜单。",
+      "audience": "关注实用工具的读者。",
+      "usage_conditions": "Windows / macOS / Linux",
+      "supported_systems": "Windows / macOS / Linux",
+      "verification_level": "documented",
+      "verified_at": "2026-10-04T11:43:46.972171+08:00",
+      "evidence_urls": [
+        "https://github.com/CherryHQ/cherry-studio/blob/main/README.md"
+      ],
+      "change_note": "",
+      "first_discovered_at": "2026-10-04T03:35:55.164517+00:00",
+      "collected_at": "2026-10-04T03:35:55.164517+00:00",
+      "published_at": null,
+      "period_label": "既有资料",
+      "editorial_provenance": "manual-offline-preview.v1",
+      "saved_sources": [
+        {
+          "url": "https://github.com/CherryHQ/cherry-studio/blob/main/README.md",
+          "saved_at": "2026-10-04T03:35:55.164517+00:00"
+        }
+      ]
+    },
+    {
+      "url": "https://github.com/sumatrapdfreader/sumatrapdf",
+      "kind": "project",
+      "featured": false,
+      "title": "SumatraPDF：一个阅读器打开 PDF、电子书和漫画",
+      "category": "开源项目",
+      "summary": "除了 PDF，SumatraPDF 还能打开 EPUB、MOBI 电子书，以及 CBZ、CBR 漫画等格式。它提供安装版和便携版；便携版是一个可以放进 U 盘的 exe 文件，方便把阅读器带着走。",
+      "reason": "本次用于展示发现式短介绍，不代表重新评分或入选正式榜单。",
+      "audience": "关注实用工具的读者。",
+      "usage_conditions": "Windows",
+      "supported_systems": "Windows",
+      "verification_level": "documented",
+      "verified_at": "2026-10-05T03:44:54.096431+00:00",
+      "evidence_urls": [
+        "https://github.com/sumatrapdfreader/sumatrapdf/blob/master/readme.md",
+        "https://www.sumatrapdfreader.org/download-free-pdf-viewer"
+      ],
+      "change_note": "",
+      "first_discovered_at": null,
+      "collected_at": "2026-10-05T06:38:14.804371+08:00",
+      "published_at": null,
+      "period_label": "既有资料",
+      "editorial_provenance": "manual-offline-preview.v1",
+      "saved_sources": [
+        {
+          "url": "https://github.com/sumatrapdfreader/sumatrapdf/blob/master/readme.md",
+          "saved_at": "2026-10-05T06:38:14.804371+08:00"
+        },
+        {
+          "url": "https://www.sumatrapdfreader.org/download-free-pdf-viewer",
+          "saved_at": "2026-10-05T06:39:09.982723+08:00"
+        }
+      ]
+    }
+  ],
+  "opportunities": [],
+  "format_only": true,
+  "layout": "daily",
+  "source_date_range": {
+    "start": "2026-10-04",
+    "end": "2026-10-05"
+  },
+  "preview_note": "一页介绍样式预览，复用 10 月 4 日至 5 日已保存资料，未重新筛选、打分或核验。"
+}

@@ -649,6 +649,9 @@ def _validate_issue(issue: Any, *, final: bool = False) -> tuple[date, date, lis
     _object(issue, ("schema_version", "ranking_type", "period", "title", "prepared_at", "shortfall_reason", "verification_note", "items"), "issue")
     if issue["schema_version"] != "digest-issue.v2":
         raise DigestError("new issues require digest-issue.v2; legacy date-only archive is read-only")
+    if "presentation" in issue and issue["presentation"] != "discovery.v1":
+        raise DigestError("unsupported issue presentation")
+    discovery = issue.get("presentation") == "discovery.v1"
     start, end, _ = period_window(issue["ranking_type"], issue["period"])
     prepared = _timestamp(issue["prepared_at"], "prepared_at")
     if prepared > _now():
@@ -683,6 +686,10 @@ def _validate_issue(issue: Any, *, final: bool = False) -> tuple[date, date, lis
             raise DigestError("featured must be a boolean and reading cannot be featured")
         for field in ("title", "summary", "reason", "audience", "usage_conditions"):
             _text(item[field], "item." + field)
+        if discovery:
+            _object(item, ("supported_systems",), "discovery item")
+            if item["supported_systems"] is not None:
+                _text(item["supported_systems"], "item.supported_systems")
         _text(item["change_note"], "item.change_note", empty=True)
         _urls(item["evidence_urls"], "item.evidence_urls", nonempty=True)
         verified = _timestamp(item["verified_at"], "item.verified_at")
@@ -799,7 +806,89 @@ def _prepare(connection: sqlite3.Connection | None, issue: dict, *, final: bool 
     return result
 
 
+def _render_discovery(document: dict, *, draft: bool, preview: bool = False) -> str:
+    """Reader-facing discovery view; audit fields remain in the manifest."""
+    def day(value: str) -> str:
+        return _timestamp(value, "display timestamp").astimezone(BEIJING).date().isoformat()
+
+    items = document["items"]
+    if preview:
+        lines = [f"# 介绍样式预览 · 示例 {len(items)} 条", "",
+                 "复用已保存资料，未重新筛选、评分或核验。以下内容不构成任何自然周期的榜单。", ""]
+    else:
+        lines = [f"# {document['title']}", "",
+                 f"{'草稿 · ' if draft else ''}{RANKING_NAMES[document['ranking_type']]} {document['period']} · 北京时间 {document['window_start']} 至 {document['window_end']}",
+                 "", f"实际整理：{day(document['prepared_at'])}；精选 {len(items)} 条。", ""]
+    if not preview and document["shortfall_reason"]:
+        lines += ["数量说明：" + document["shortfall_reason"], ""]
+    featured = [item for item in items if item["featured"]]
+    if featured and not preview:
+        lines += ["重点推荐：" + "；".join(f"[{item['title']}]({item['url']})" for item in featured) + "。", ""]
+    categories = [category for category in CATEGORIES if any(item["category"] == category for item in items)]
+    if categories:
+        lines += [("示例栏目：" if preview else "本期栏目：") + " / ".join(categories), ""]
+    for category in categories:
+        lines += ["## " + category, ""]
+        for item in items:
+            if item["category"] != category:
+                continue
+            lines += [f"### {'★ ' if item['featured'] and not preview else ''}{item['title']}", "", item["summary"], ""]
+            if document["ranking_type"] == "weekly" and item["featured"]:
+                lines += [item["detail"], ""]
+            if document["ranking_type"] == "monthly":
+                lines += ["值得保留：" + item["retention_reason"], ""]
+            if item["kind"] == "update":
+                lines += ["重要更新：" + item["change_note"], ""]
+            if item["kind"] in ("project", "update") and item["supported_systems"] is not None:
+                lines += ["支持系统：" + item["supported_systems"], ""]
+            if item["kind"] == "reading":
+                lines += [f"作者／受访者：{item['author']}；原文日期：{item['original_date']}。", ""]
+            if item["kind"] == "news":
+                event_date = (item["event"]["occurred_on"] + "（原文仅日期，时区未知；未确认具体时刻）"
+                              if "occurred_on" in item["event"] else day(item["event"]["occurred_at"]))
+                lines += [f"新闻事件日期：{event_date}。", ""]
+            link_label = "原文" if item["kind"] in ("reading", "news") else "官方入口"
+            links = f"[{item['title']} {link_label}]({item['url']})"
+            if item.get("event") and item["event"]["url"] != item["url"]:
+                links += f" · [事件原文]({item['event']['url']})"
+            lines += [links, ""]
+            if not preview and item["period_label"] != "新发现":
+                lines += [f"{item['period_label']}；首次发现 {day(item['first_discovered_at'])}。", ""]
+    if document.get("opportunities") and not preview:
+        lines += ["## 开发机会观察（不计入精选条数）", ""]
+        for opportunity in document["opportunities"]:
+            lines += [opportunity["problem"], "", f"人群：{opportunity['audience']}；已有方案：{opportunity['existing_solutions']}。", "",
+                      "验证切口：" + opportunity["validation"], "", "用户问题资料（" + opportunity["evidence_date"] + "）：" +
+                      " / ".join(f"[原文 {index + 1}]({url})" for index, url in enumerate(opportunity["evidence_urls"])), ""]
+
+    if preview:
+        urls = dict.fromkeys(url for item in items for url in item["evidence_urls"])
+        source_dates = document.get("preview_source_dates", {})
+        lines += ["## 保存的来源资料", ""]
+        for index, url in enumerate(urls, 1):
+            recorded_date = source_dates.get(url)
+            suffix = "；资料日期：" + recorded_date if isinstance(recorded_date, str) and recorded_date.strip() else ""
+            lines += [f"- [保存的原文 {index}]({url}){suffix}"]
+        lines += [""]
+        return "\n".join(lines)
+
+    # Keep real collection gaps and failures visible without copying the audit log.
+    coverage = document["coverage"]
+    sources = coverage["source_status"] + [source for run in document["supplemental_runs"] for source in run["sources"]]
+    source_links = dict.fromkeys(f"[{source['name']}]({source['url']})（{source['status']}）" for source in sources)
+    failures = dict.fromkeys(f"{source['name']}：{source['detail']}" for source in sources if source["status"] == "failed")
+    lines += ["## 来源说明", "", "实际来源：" + (" / ".join(source_links) or "未记录可用来源") + "。", "",
+              "本期实际采集日期：" + ("、".join(sorted({run["collection_date"] for run in coverage["runs"]})) or "无") + "。", "",
+              "缺少采集的日期：" + ("、".join(coverage["missing_collection_dates"]) or "无") + f"（检查截至 {coverage['checked_through']}）。", ""]
+    if document["supplemental_runs"]:
+        lines += ["期后核验／补采实际日期：" + "、".join(sorted({run["collection_date"] for run in document["supplemental_runs"]})) + "。不改写原期采集覆盖。", ""]
+    lines += ["来源失败：" + ("；".join(failures) or "本次记录中无失败；不代表未访问来源可用") + "。", ""]
+    return "\n".join(lines)
+
+
 def _render(document: dict, *, draft: bool) -> str:
+    if document.get("presentation") == "discovery.v1":
+        return _render_discovery(document, draft=draft)
     def day(value: str) -> str:
         return _timestamp(value, "display timestamp").astimezone(BEIJING).date().isoformat()
     name = RANKING_NAMES[document["ranking_type"]]

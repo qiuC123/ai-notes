@@ -1,6 +1,7 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v10-project-reading-uncalibrated",
+  "version": "v11-discovery-introduction-uncalibrated",
+  "introduction_contract": "discovery.v1",
   "understanding_contract": "project-reading.v1",
   "assessment_contract": "scoped-source.v1",
   "editorial_review_contract": "source-score.v1",
@@ -9,13 +10,14 @@
     "schema_version": "digest-editorial-position.v1",
     "audience": [
       "关注 AI 实际变化、实用工具和方法的普通使用者。",
-      "非程序员也能理解用途、收益与使用条件。"
+      "非程序员也能通俗理解用途、亮点与支持系统，不要求讲全限制或步骤。"
     ],
     "priorities": [
       "按栏目读者的具体用途、选择、理解和趣味价值精选，不以个人当前急需或马上实践为通用门槛。",
       "有清晰用途的成熟开源软件仍有价值，非 AI 项目不因缺少 AI 关联扣分。",
       "新闻可提供认知和决策价值，阅读可提供理解与可迁移方法，游戏保留体验与趣味价值。",
-      "个人背景只用于已确认的明确排除、必需条件冲突及条件式关联，不因未知个人当前任务降低公共价值判断。"
+      "个人背景只用于已确认的明确排除、必需条件冲突及条件式关联，不因未知个人当前任务降低公共价值判断。",
+      "重点发现有价值的项目，正文介绍名称、用途、亮点、已知支持系统和链接，配图按需；不要求讲全限制或步骤。"
     ]
   },
   "reader_context": {
@@ -23,7 +25,7 @@
     "background": [
       "用户自述不太会代码，需要用通俗语言理解用途。",
       "偏好实用开源项目，也关注 AI 动态与开发机会。",
-      "重视清楚的使用条件与可操作路径。",
+      "用户在 2026-10-05 明确确认重点发现有价值项目，通俗介绍用途、亮点与支持系统，不要求讲全限制或步骤。",
       "用户在 2026-10-05 明确确认没有树莓派硬件，也不需要树莓派专用项目；支持普通电脑的工具不因此排除。"
     ],
     "exploration_interests": [
@@ -32,7 +34,7 @@
       "信息收集、筛选，以及日榜、周榜、月榜汇总。"
     ]
   },
-  "calibration_status": "Uncalibrated project-reading policy. Source-bound purpose, input, operations, output, conditions and exact supplied-document coverage are carried into scoring and review. Public column value remains primary. Weights, caps and thresholds unchanged; frozen older inputs retain their rules. Valid bindings and development regression results do not prove semantic correctness or calibrated selection quality.",
+  "calibration_status": "Uncalibrated discovery-introduction policy. Public items cover name, purpose, highlights, known supported systems and links; internal source cards are not user manuals. Review checks material factual errors in actual claims, without requiring exhaustive conditions or steps. No new real-model quality regression has been run for discovery.v1. Weights, caps, thresholds, flags and source grades remain unchanged; frozen older inputs retain their rules. Offline contract tests do not prove semantic correctness or calibrated selection quality.",
   "dimensions": ["value", "novelty", "evidence", "usability", "interest"],
   "profiles": {
     "practical": {"value": 4, "novelty": 1, "evidence": 1, "usability": 3, "interest": 1},

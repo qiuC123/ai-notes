@@ -16,6 +16,7 @@ class AssessmentContractTests(unittest.TestCase):
         self.policy = selection.load_policy(self.root)
         # These shape/projection fixtures represent the pre-reading contract.
         self.policy.pop('understanding_contract', None)
+        self.policy.pop('introduction_contract', None)
         self.url = "https://example.com/source"
         self.source = ("Acme announced reusable instructions and a migration for saved instructions. "
                        "Acme claims tasks are twice as fast, without offering measurements. "

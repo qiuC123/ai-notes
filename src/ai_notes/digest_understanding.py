@@ -405,13 +405,13 @@ def validate_understanding(card):
     return copy.deepcopy(card)
 
 
-def bind_understanding_review(output, passages, record, documents):
+def bind_understanding_review(output, passages, record, documents, *, include_discovery=False):
     """Use the old binder, then attach a frozen evidence-linked fact card."""
     if not isinstance(output, dict) or set(output) != {'qualified', 'reason', 'facts', 'evidence', 'understanding'}:
         raise ValueError('understood review requires exactly qualified, reason, facts, evidence, understanding')
     documents = _documents(documents)
     legacy = {key: output[key] for key in ('qualified', 'reason', 'facts', 'evidence')}
-    bound = bind_review(legacy, passages, record)
+    bound = bind_review(legacy, passages, record, include_discovery=include_discovery)
     if not bound['qualified']:
         if output['understanding'] is not None:
             raise ValueError('unqualified review requires null understanding')
