@@ -1,0 +1,99 @@
+{
+  "schema_version": "digest-discovery-preview.v1",
+  "generated_at": "2026-10-06T13:01:12.833392+08:00",
+  "formal_ranking": false,
+  "software_tested": false,
+  "source_origin": "unchanged saved v13 verification; not a new capture",
+  "raw_summary_sha256": "2fea385daab742361e6da9b1f25cdee265bb1b4b484442d23f056707ff1308f0",
+  "content_audit_sha256": "117f728f2978ddc64dfeb5cf128809e3c029fd05c007086a2303f2807a4ffcd5",
+  "items": [
+    {
+      "candidate_id": "d8e1141cbbb2fb69ad1be635",
+      "public_fields": {
+        "title": "Basic Memory：把项目经验存成 AI 可检索的 Markdown 知识库",
+        "category": "MCP 服务与连接器",
+        "summary": "Basic Memory 是一个本地优先的 AI 记忆工具：知识以普通 Markdown 文件存在你自己的磁盘上，AI（Claude、Codex、Cursor、ChatGPT 等支持 MCP 的客户端）和人可以共同读写与检索，跨会话记住项目上下文。亮点包括本地纯文本存储不锁定、双向同步、语义搜索，以及可选的云端跨设备同步。",
+        "detail": "工作方式是把笔记存为带观察记录和 wikilink 的 Markdown，形成知识图谱；在 Claude Code 插件中，对话里的决策会被写成 decision 笔记，长会话压缩前自动写入检查点，新会话开始时 SessionStart 简报直接呈现活跃任务和未决事项，实现'记录 → 检查点 → 简报'的循环。每个工具带有 read-only/destructive 等行为标签，帮助代理按需选对工具。云端版提供多设备同步、快照备份和随时导出回本地 Markdown 的能力；Teams 版支持团队共享知识库。用户评价（如 TrainerDay、Caleb Picker Consulting 的引述）说明有实际使用反馈，但均为官方页面选登的证言，不代表独立评测。",
+        "url": "https://github.com/basicmachines-co/basic-memory",
+        "supported_systems": null
+      },
+      "program_score": 68,
+      "program_decision": "select",
+      "machine_editorial_verdict": "accept",
+      "independent_public_introduction_verdict": "pass",
+      "independent_full_scored_recommendation_verdict": "defer",
+      "raw_editorial_request": "work/digest-v14-score-input-live-20261006/requests/75365af9436d6ee812563a0ddb76b14a0207c19fc12048f5f84e3483f2ae4b06/request.json",
+      "raw_editorial_request_sha256": "a3c906d24d144977390c743901d59448c9487d9ef0e99bada6bd76aa51496b7d"
+    },
+    {
+      "candidate_id": "726921c61c58fafda45a6173",
+      "public_fields": {
+        "title": "PAL MCP：在 AI 助手之间委派任务与传递上下文",
+        "category": "MCP 服务与连接器",
+        "summary": "PAL MCP（原名 Zen MCP）是一个 MCP 服务器，把 Claude Code、Gemini CLI、Codex CLI 等命令行 AI 工具连接到 Gemini、OpenAI、Anthropic、Ollama 等多种模型，进行多模型协作与上下文延续。亮点包括：clink 工具可在当前 CLI 内启动隔离的子 CLI 实例执行代码审查等重任务，只回传最终结果；跨工具的对话上下文延续；可指定或自动选择模型完成不同子任务。",
+        "url": "https://github.com/BeehiveInnovations/pal-mcp-server",
+        "supported_systems": null
+      },
+      "program_score": 55,
+      "program_decision": "defer",
+      "machine_editorial_verdict": "accept",
+      "independent_public_introduction_verdict": "pass",
+      "independent_full_scored_recommendation_verdict": "not_program_selected",
+      "raw_editorial_request": "work/digest-v14-score-input-live-20261006/requests/35d151678b57d4780e760a9b0ff369e73a2fec11c18153e8d98fd00de1dbfc7c/request.json",
+      "raw_editorial_request_sha256": "e82e7171d5a8d04e5cc48a9879ae03e81520bd2bc2949e27ce4d629ea250abaf"
+    },
+    {
+      "candidate_id": "4278f054e241cfc458a94c05",
+      "public_fields": {
+        "title": "rclone：在本地与云盘之间复制和同步项目资料",
+        "category": "开源项目",
+        "summary": "命令行文件工具，可在本地文件系统与大量云存储之间复制、同步文件和目录，被称为“云存储版的 rsync”。代表亮点：支持 Google Drive、OneDrive、S3、Dropbox 等几十种存储后端；copy/sync 等命令对所有远程存储都可用；可配置后把配置复制到其他机器。",
+        "detail": "README 列出的存储后端包括 Google Drive、Microsoft OneDrive、Amazon S3 及大量 S3 兼容服务（阿里云 OSS、腾讯云 COS、Cloudflare R2、华为云 OBS 等）、Dropbox、MEGA、Box、iCloud Drive、Proton Drive、WebDAV、FTP、SFTP、SMB，以及本地文件系统。FAQ 说明所有 rclone 命令（如 sync、copy）对所有远程存储系统均可用；可在两个云存储之间直接同步（如 rclone sync --interactive drive:Folder s3:bucket），同步按文件增量进行；传输以原生对象形式存储，与本地文件保持 1:1 映射，不支持类似 rsync 的部分传输/二进制差异；自 v1.58.0 起支持双向同步（摘录截止处）。读者可用 AI 助手根据自己要用的云盘生成配置和复制/同步命令。",
+        "url": "https://github.com/rclone/rclone",
+        "supported_systems": null
+      },
+      "program_score": 73,
+      "program_decision": "select",
+      "machine_editorial_verdict": "accept",
+      "independent_public_introduction_verdict": "pass",
+      "independent_full_scored_recommendation_verdict": "defer",
+      "raw_editorial_request": "work/digest-v14-score-input-live-20261006/requests/de0c7f8c69f961069e84295726233fb90264e50804abcf813a52887a67f494fe/request.json",
+      "raw_editorial_request_sha256": "9577d022b5b935ec9fe5560ca5ea5dafeb67f530e1682dacbf232cb77c6830d3"
+    },
+    {
+      "candidate_id": "8da1ed30ccc8cb596fba8221",
+      "public_fields": {
+        "title": "Czkawka / Krokiet：查找重复文件、相似图片和空文件夹的本地清理工具",
+        "category": "开源项目",
+        "summary": "一套用 Rust 编写的本地文件清理工具，可按名称、大小或哈希查找重复文件，找出空文件夹、空文件、临时文件、最大文件，以及相似图片、相似视频和重复音乐等。仓库现在主推新 GUI 前端 Krokiet（支持 Linux、macOS、Windows），另提供命令行 CLI、核心库和安卓触屏前端 Cedinia；旧的 Czkawka GTK 前端 12.0 是最后发布的版本，不再提供新安装包。",
+        "url": "https://github.com/qarmin/czkawka",
+        "supported_systems": "Krokiet 图形界面支持 Linux / macOS / Windows；另有 Android 应用 Cedinia（视频工具在安卓上不可用）"
+      },
+      "program_score": 67,
+      "program_decision": "select",
+      "machine_editorial_verdict": "accept",
+      "independent_public_introduction_verdict": "pass",
+      "independent_full_scored_recommendation_verdict": "defer",
+      "raw_editorial_request": "work/digest-v14-score-input-live-20261006/requests/0de5d61938749d310221f02eccb191b7e75ee0115b343c181134208b4274e330/request.json",
+      "raw_editorial_request_sha256": "2a71daf0cb8519cf4dfddbbf9cb2c3aed30d96a78725d109ab1132813552a6ae"
+    },
+    {
+      "candidate_id": "180554eaff51f614101385f3",
+      "public_fields": {
+        "title": "Joplin：收集、标记与同步项目笔记和附件",
+        "category": "开源项目",
+        "summary": "免费开源的离线优先笔记与待办应用：笔记可按笔记本组织、打标签、全文搜索，支持 Evernote 与纯 Markdown 导入，并可经 Nextcloud、Dropbox、OneDrive、Joplin Cloud 等服务端到端加密同步；另有 Firefox/Chrome 网页剪藏扩展。",
+        "detail": "笔记以 Markdown 格式保存，可搜索、复制、打标签，并可在应用内或自己的文本编辑器中修改；Evernote 导出内容（含格式、图片附件与元数据）可完整导入。所有平台支持全文搜索，应用可通过插件和主题自定义。",
+        "url": "https://github.com/laurent22/joplin",
+        "supported_systems": "Windows / macOS / Linux / Android / iOS"
+      },
+      "program_score": 67,
+      "program_decision": "select",
+      "machine_editorial_verdict": "accept",
+      "independent_public_introduction_verdict": "pass",
+      "independent_full_scored_recommendation_verdict": "defer",
+      "raw_editorial_request": "work/digest-v14-score-input-live-20261006/requests/3223aebefa01d352cd58c602aa2c7870bc6d00dbdfc2866c0dda69f1d371658c/request.json",
+      "raw_editorial_request_sha256": "a3a7a891cab7fa212b7c5f568e5110e62b4a9b8d64a874b70f2daf152154e835"
+    }
+  ]
+}
