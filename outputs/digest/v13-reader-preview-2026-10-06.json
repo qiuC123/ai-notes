@@ -1,0 +1,1006 @@
+{
+  "schema_version": "digest-reader-preview.v1",
+  "generated_at": "2026-10-06T11:15:20.790273+08:00",
+  "origin": "human_edited_discovery_summary_from_saved_originals",
+  "acceptance_scope": "reader_feedback_cards_only_not_automatic_publication_acceptance_or_selection_counts",
+  "formal_ranking": false,
+  "software_tested": false,
+  "code_commit": "5c1ada2",
+  "automation_status": "PAUSED",
+  "items": [
+    {
+      "name": "AionUI",
+      "url": "https://github.com/iOfficeAI/AionUi",
+      "direction": "多 Agent 分工与交接",
+      "purpose": "在图形工作区里给多个 AI Agent 分工，让它们围绕同一份项目资料一起做事。",
+      "highlights": [
+        "Leader 拆分任务，Teammate 并行处理，负责人跟踪并汇总结果。",
+        "队友共享文件夹、任务板和消息邮箱；官方列出的后端包含 Codex。"
+      ],
+      "supported_systems": "Windows 10+ / macOS 10.15+ / Linux（Ubuntu 18.04+、Debian 10+、Fedora 32+）",
+      "source_refs": [
+        {
+          "fields": [
+            "purpose",
+            "highlights[0]",
+            "highlights[1]"
+          ],
+          "url": "https://github.com/iofficeai/aionui/blob/6744099b279b991c17e31c243f0920477bd31cb6/readme.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/focused/aionui.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 4212,
+            "end": 4504
+          },
+          "document_sha256": "60d3fd42401729f2faa8673631e4461fc5a60bff4a37095d730487ad40399283",
+          "quote_sha256": "168e91099756492679762d27a2d2cd7431f44ab2978a180cab69353b39fd4202"
+        },
+        {
+          "fields": [
+            "highlights[0]",
+            "highlights[1]"
+          ],
+          "url": "https://github.com/iofficeai/aionui/blob/6744099b279b991c17e31c243f0920477bd31cb6/readme.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/focused/aionui.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 4895,
+            "end": 5063
+          },
+          "document_sha256": "60d3fd42401729f2faa8673631e4461fc5a60bff4a37095d730487ad40399283",
+          "quote_sha256": "601d1ae24f33225fe6e9506293e27c266ca73f3859a73ab534e52da0ae9c2d01"
+        },
+        {
+          "fields": [
+            "highlights[1]"
+          ],
+          "url": "https://github.com/iofficeai/aionui/blob/6744099b279b991c17e31c243f0920477bd31cb6/readme.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/focused/aionui.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 5288,
+            "end": 5391
+          },
+          "document_sha256": "60d3fd42401729f2faa8673631e4461fc5a60bff4a37095d730487ad40399283",
+          "quote_sha256": "d3aa3f1717edf9f7e3002b22c5f8b7197ca0d9c93a75610644bb835d59e9f375"
+        },
+        {
+          "fields": [
+            "supported_systems"
+          ],
+          "url": "https://github.com/iofficeai/aionui/blob/6744099b279b991c17e31c243f0920477bd31cb6/readme.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/focused/aionui.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 5931,
+            "end": 5959
+          },
+          "document_sha256": "60d3fd42401729f2faa8673631e4461fc5a60bff4a37095d730487ad40399283",
+          "quote_sha256": "145dcff6da7051925e25edf8413be6cc60eeda84911027af1469ab5d49ca30c1"
+        },
+        {
+          "fields": [
+            "supported_systems"
+          ],
+          "url": "https://github.com/iofficeai/aionui/blob/6744099b279b991c17e31c243f0920477bd31cb6/readme.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/focused/aionui.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 5960,
+            "end": 5995
+          },
+          "document_sha256": "60d3fd42401729f2faa8673631e4461fc5a60bff4a37095d730487ad40399283",
+          "quote_sha256": "046d8451f7f68b7093c2220ab046ff4064675dd8548c22ed54ea6b57f3a21051"
+        },
+        {
+          "fields": [
+            "supported_systems"
+          ],
+          "url": "https://github.com/iofficeai/aionui/blob/6744099b279b991c17e31c243f0920477bd31cb6/readme.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/focused/aionui.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 5996,
+            "end": 6048
+          },
+          "document_sha256": "60d3fd42401729f2faa8673631e4461fc5a60bff4a37095d730487ad40399283",
+          "quote_sha256": "0b718c89e55cef3cbe3ab0ee9475140eb39f2b179d7b4fdfb70da03345ac5038"
+        }
+      ],
+      "metadata": {
+        "github_stars_observed": 33330,
+        "observed_at": "2026-10-06T02:52:32Z",
+        "first_project_publication_at": null,
+        "metadata_evidence": "work/digest-v13-feedback-pilot-20261006/discovery/evidence.json"
+      },
+      "reader_feedback": null
+    },
+    {
+      "name": "PAL MCP",
+      "url": "https://github.com/BeehiveInnovations/pal-mcp-server",
+      "direction": "多 Agent 分工与交接",
+      "purpose": "让当前 AI 助手把任务交给 Codex、Claude Code 或 Gemini CLI 等子 Agent，再收回结果。",
+      "highlights": [
+        "子 Agent 用独立上下文处理任务，主会话只接收最终结果。",
+        "可按规划、审查等角色分工，并在工具之间延续子任务的对话上下文。"
+      ],
+      "supported_systems": "Windows（通过 WSL）",
+      "source_refs": [
+        {
+          "fields": [
+            "purpose"
+          ],
+          "url": "https://github.com/beehiveinnovations/pal-mcp-server/blob/7afc7c1cc96e23992c8f105f960132c657883bb1/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/pal-mcp.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1004,
+            "end": 1226
+          },
+          "document_sha256": "b5b8c602a79dd1c0df5dc397368d2603766915b09224e892c94e5cfa4e5ac3c8",
+          "quote_sha256": "998da33b4f1090152f4d7b9d6adb13bb8d208c4efb99c16e644260fe557126c8"
+        },
+        {
+          "fields": [
+            "purpose",
+            "highlights[0]"
+          ],
+          "url": "https://github.com/beehiveinnovations/pal-mcp-server/blob/7afc7c1cc96e23992c8f105f960132c657883bb1/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/pal-mcp.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1227,
+            "end": 1561
+          },
+          "document_sha256": "b5b8c602a79dd1c0df5dc397368d2603766915b09224e892c94e5cfa4e5ac3c8",
+          "quote_sha256": "c451cc1ec15dbf2ad2a20ff7ebc94e26d5643e9853d35534d5f81f211f8ef4d9"
+        },
+        {
+          "fields": [
+            "highlights[1]"
+          ],
+          "url": "https://github.com/beehiveinnovations/pal-mcp-server/blob/7afc7c1cc96e23992c8f105f960132c657883bb1/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/pal-mcp.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1657,
+            "end": 1771
+          },
+          "document_sha256": "b5b8c602a79dd1c0df5dc397368d2603766915b09224e892c94e5cfa4e5ac3c8",
+          "quote_sha256": "7aee32f38fe66178e5ef7b9fd9a5f0f10ecf9b1120bca22a61bc66f88472f41a"
+        },
+        {
+          "fields": [
+            "highlights[1]"
+          ],
+          "url": "https://github.com/beehiveinnovations/pal-mcp-server/blob/7afc7c1cc96e23992c8f105f960132c657883bb1/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/pal-mcp.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1877,
+            "end": 1993
+          },
+          "document_sha256": "b5b8c602a79dd1c0df5dc397368d2603766915b09224e892c94e5cfa4e5ac3c8",
+          "quote_sha256": "e2f10bde5a60c3ea5103fc6cba5973e7366e22cd640e4f482e1192346482a481"
+        },
+        {
+          "fields": [
+            "supported_systems"
+          ],
+          "url": "https://raw.githubusercontent.com/BeehiveInnovations/pal-mcp-server/7afc7c1cc96e23992c8f105f960132c657883bb1/docs/wsl-setup.md",
+          "material_scope": "discovery_separate",
+          "model_material": false,
+          "local_path": "work/digest-v13-feedback-pilot-20261006/discovery/wsl-setup.md",
+          "metadata_path": "work/digest-v13-feedback-pilot-20261006/discovery/wsl-source.json",
+          "source_span": {
+            "start": 49,
+            "end": 142
+          },
+          "text_sha256": "ed0a1d9a1e2545b8eae1ff4188f9e890947c1c6c05dc0c19c6044c5242ee1873",
+          "saved_file_sha256": "ed0a1d9a1e2545b8eae1ff4188f9e890947c1c6c05dc0c19c6044c5242ee1873",
+          "captured_at": "2026-10-06T11:04:58.918985+08:00",
+          "quote_sha256": "9e3d8d7ffaa4c90cf2836f46e485183b1e13e61e369c1315bd324e3a6c3b87f9"
+        }
+      ],
+      "metadata": {
+        "github_stars_observed": 11768,
+        "observed_at": "2026-10-06T02:52:32Z",
+        "first_project_publication_at": null,
+        "metadata_evidence": "work/digest-v13-feedback-pilot-20261006/discovery/evidence.json"
+      },
+      "reader_feedback": null
+    },
+    {
+      "name": "Czkawka",
+      "url": "https://github.com/qarmin/czkawka",
+      "direction": "文件去重与整理",
+      "purpose": "扫描积累的项目文件与图片，找出重复文件、相似图片和空文件夹，帮助清理目录。",
+      "highlights": [
+        "可按文件名、大小或哈希找重复，也能发现相似图片、大文件和临时文件。",
+        "同时提供图形界面与命令行，适合手动整理或重复扫描。"
+      ],
+      "supported_systems": "Windows / macOS / Linux",
+      "source_refs": [
+        {
+          "fields": [
+            "supported_systems"
+          ],
+          "url": "https://github.com/qarmin/czkawka/blob/eb8b91dbb4d25dff416202674ee0de84ee4b5e5c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/czkawka.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1191,
+            "end": 1286
+          },
+          "document_sha256": "00612ae2bbca76da9b0c3e98d4c30c93b6f39ccfd4fd854a3c403b28d3ce29d7",
+          "quote_sha256": "7ec66e172a6e904a679e7f76ba31209fdcf76ebe5ec067c9998ff1f1bc0cfa35"
+        },
+        {
+          "fields": [
+            "highlights[1]"
+          ],
+          "url": "https://github.com/qarmin/czkawka/blob/eb8b91dbb4d25dff416202674ee0de84ee4b5e5c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/czkawka.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1479,
+            "end": 1519
+          },
+          "document_sha256": "00612ae2bbca76da9b0c3e98d4c30c93b6f39ccfd4fd854a3c403b28d3ce29d7",
+          "quote_sha256": "918ee9edd91590de6781d1c24d825169576e7ee601f4bc9b4a468af0e9f2bf0e"
+        },
+        {
+          "fields": [
+            "highlights[1]"
+          ],
+          "url": "https://github.com/qarmin/czkawka/blob/eb8b91dbb4d25dff416202674ee0de84ee4b5e5c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/czkawka.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1520,
+            "end": 1571
+          },
+          "document_sha256": "00612ae2bbca76da9b0c3e98d4c30c93b6f39ccfd4fd854a3c403b28d3ce29d7",
+          "quote_sha256": "f895c2d00393cc1152dbd2298401e33189f67d43e46a191ffcdbea64fb145fd7"
+        },
+        {
+          "fields": [
+            "purpose",
+            "highlights[0]"
+          ],
+          "url": "https://github.com/qarmin/czkawka/blob/eb8b91dbb4d25dff416202674ee0de84ee4b5e5c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/czkawka.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1929,
+            "end": 2001
+          },
+          "document_sha256": "00612ae2bbca76da9b0c3e98d4c30c93b6f39ccfd4fd854a3c403b28d3ce29d7",
+          "quote_sha256": "5f17ac06aff3b40cbeeed66d16b7eef6eab056670e0fe7b9d8feb09d6c216d77"
+        },
+        {
+          "fields": [
+            "purpose"
+          ],
+          "url": "https://github.com/qarmin/czkawka/blob/eb8b91dbb4d25dff416202674ee0de84ee4b5e5c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/czkawka.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 2002,
+            "end": 2086
+          },
+          "document_sha256": "00612ae2bbca76da9b0c3e98d4c30c93b6f39ccfd4fd854a3c403b28d3ce29d7",
+          "quote_sha256": "2686f925e6af53006e5be00d7cf6cb89f70f6fdd3fc73684e27a60bcfe523290"
+        },
+        {
+          "fields": [
+            "highlights[0]"
+          ],
+          "url": "https://github.com/qarmin/czkawka/blob/eb8b91dbb4d25dff416202674ee0de84ee4b5e5c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/czkawka.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 2087,
+            "end": 2173
+          },
+          "document_sha256": "00612ae2bbca76da9b0c3e98d4c30c93b6f39ccfd4fd854a3c403b28d3ce29d7",
+          "quote_sha256": "93c29025b2cb1f8273c7647edc4902bb6f9a7841b5feac86362ef721a79eaced"
+        },
+        {
+          "fields": [
+            "highlights[0]"
+          ],
+          "url": "https://github.com/qarmin/czkawka/blob/eb8b91dbb4d25dff416202674ee0de84ee4b5e5c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/czkawka.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 2237,
+            "end": 2286
+          },
+          "document_sha256": "00612ae2bbca76da9b0c3e98d4c30c93b6f39ccfd4fd854a3c403b28d3ce29d7",
+          "quote_sha256": "27ceb61f2e34e25e222fa01f2f89e55a4eb91b51a22c8051d3470df1ee214bd1"
+        },
+        {
+          "fields": [
+            "purpose",
+            "highlights[0]"
+          ],
+          "url": "https://github.com/qarmin/czkawka/blob/eb8b91dbb4d25dff416202674ee0de84ee4b5e5c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/czkawka.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 2287,
+            "end": 2392
+          },
+          "document_sha256": "00612ae2bbca76da9b0c3e98d4c30c93b6f39ccfd4fd854a3c403b28d3ce29d7",
+          "quote_sha256": "e7091d8685469c68c44740e41367282a98760db80fec355c9a7b717eac8cb11d"
+        }
+      ],
+      "metadata": {
+        "github_stars_observed": 33922,
+        "observed_at": "2026-10-06T02:52:32Z",
+        "first_project_publication_at": null,
+        "metadata_evidence": "work/digest-v13-feedback-pilot-20261006/discovery/evidence.json"
+      },
+      "reader_feedback": null
+    },
+    {
+      "name": "PeaZip",
+      "url": "https://github.com/peazip/PeaZip",
+      "direction": "文件打包与压缩",
+      "purpose": "用图形界面把项目资料打包、加密和分卷，方便存档或传给别人。",
+      "highlights": [
+        "支持 200 多种归档格式，可转换压缩包、拆分和合并文件。",
+        "图形任务能导出为命令行脚本，反复打包同类材料时可以复用。"
+      ],
+      "supported_systems": "Windows / macOS / Linux / BSD",
+      "source_refs": [
+        {
+          "fields": [
+            "purpose",
+            "supported_systems"
+          ],
+          "url": "https://github.com/peazip/peazip/blob/9b35d466f30bfc9fae01aa7cab41c29053995ccb/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/peazip.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 534,
+            "end": 775
+          },
+          "document_sha256": "6f717f74f71b149d54b508137b6ce55c5540e213bc1559d5742c43682bb42b94",
+          "quote_sha256": "63204eed4d1e4f60b6cc57dcca3451196768c2641ff88f3facf66c951ccb36dd"
+        },
+        {
+          "fields": [
+            "purpose",
+            "highlights[0]"
+          ],
+          "url": "https://github.com/peazip/peazip/blob/9b35d466f30bfc9fae01aa7cab41c29053995ccb/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/peazip.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 777,
+            "end": 958
+          },
+          "document_sha256": "6f717f74f71b149d54b508137b6ce55c5540e213bc1559d5742c43682bb42b94",
+          "quote_sha256": "89acf90abd495d786feed4eb742b61602da48b77f5b74e91d176af44883d0fd7"
+        },
+        {
+          "fields": [
+            "highlights[0]"
+          ],
+          "url": "https://github.com/peazip/peazip/blob/9b35d466f30bfc9fae01aa7cab41c29053995ccb/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/peazip.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 960,
+            "end": 1075
+          },
+          "document_sha256": "6f717f74f71b149d54b508137b6ce55c5540e213bc1559d5742c43682bb42b94",
+          "quote_sha256": "a9272e8b94f432a7fdf51bc436254c042017e1377535822151200ebe15ff86ae"
+        },
+        {
+          "fields": [
+            "purpose",
+            "highlights[1]"
+          ],
+          "url": "https://github.com/peazip/peazip/blob/9b35d466f30bfc9fae01aa7cab41c29053995ccb/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/peazip.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1077,
+            "end": 1194
+          },
+          "document_sha256": "6f717f74f71b149d54b508137b6ce55c5540e213bc1559d5742c43682bb42b94",
+          "quote_sha256": "3af991230042949c955d08827f02ca3f7ec89b315216d118e4ffa6060c63abde"
+        }
+      ],
+      "metadata": {
+        "github_stars_observed": 7933,
+        "observed_at": "2026-10-06T02:52:32Z",
+        "first_project_publication_at": null,
+        "metadata_evidence": "work/digest-v13-feedback-pilot-20261006/discovery/evidence.json"
+      },
+      "reader_feedback": null
+    },
+    {
+      "name": "rclone",
+      "url": "https://github.com/rclone/rclone",
+      "direction": "项目文件搬运与同步",
+      "purpose": "用命令行在本地和云盘间复制、同步项目资料，把散落的文件集中到指定位置。",
+      "highlights": [
+        "支持本地文件夹及 Google Drive、OneDrive、S3 等多种存储服务。",
+        "也能在两个云存储之间同步，便于迁移已经放到云盘的项目资料。"
+      ],
+      "supported_systems": "Windows / macOS / Linux",
+      "source_refs": [
+        {
+          "fields": [
+            "purpose"
+          ],
+          "url": "https://github.com/rclone/rclone/blob/3b9f0a05b55fc12e824eeaec4f71bb6a1498388c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/rclone.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1203,
+            "end": 1342
+          },
+          "document_sha256": "635cd9b26984cf48b088afc160dd45d73060efa6826058aa7ec6214831586a2d",
+          "quote_sha256": "71ef0937b088bb5cd754ea9f8e6c8ba412d1cb042c0561525de598387e071905"
+        },
+        {
+          "fields": [
+            "purpose"
+          ],
+          "url": "https://github.com/rclone/rclone/blob/3b9f0a05b55fc12e824eeaec4f71bb6a1498388c/docs/content/faq.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/rclone.packet.json",
+          "context_index": 3,
+          "context_span": {
+            "start": 211,
+            "end": 321
+          },
+          "document_sha256": "33bd3f82021814a8048ff0b9fe72acdd436b568f4a50a560a49ec0185d864f76",
+          "quote_sha256": "e0208791c7d6e69ee33aa8919290e6c51fb585cf892b6b98bf6ae8656d4ef121"
+        },
+        {
+          "fields": [
+            "highlights[0]"
+          ],
+          "url": "https://github.com/rclone/rclone/blob/3b9f0a05b55fc12e824eeaec4f71bb6a1498388c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/rclone.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 3466,
+            "end": 3526
+          },
+          "document_sha256": "635cd9b26984cf48b088afc160dd45d73060efa6826058aa7ec6214831586a2d",
+          "quote_sha256": "fdb4e5775808ab5e3f8bf13f16b7d345f6ffaa2927b9da2f4ab4870f66ef306a"
+        },
+        {
+          "fields": [
+            "highlights[0]"
+          ],
+          "url": "https://github.com/rclone/rclone/blob/3b9f0a05b55fc12e824eeaec4f71bb6a1498388c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/rclone.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 5704,
+            "end": 5773
+          },
+          "document_sha256": "635cd9b26984cf48b088afc160dd45d73060efa6826058aa7ec6214831586a2d",
+          "quote_sha256": "6513447eb1dd84786aebe44a2cdd77e38a21aeb4afbc23a14455e5dc0b237c40"
+        },
+        {
+          "fields": [
+            "highlights[0]"
+          ],
+          "url": "https://github.com/rclone/rclone/blob/3b9f0a05b55fc12e824eeaec4f71bb6a1498388c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/rclone.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1604,
+            "end": 1658
+          },
+          "document_sha256": "635cd9b26984cf48b088afc160dd45d73060efa6826058aa7ec6214831586a2d",
+          "quote_sha256": "dd38e176e47737c9755e2cbd7bd3b3dea59947d48c3991cd97cd6833e02d88fe"
+        },
+        {
+          "fields": [
+            "purpose",
+            "highlights[0]"
+          ],
+          "url": "https://github.com/rclone/rclone/blob/3b9f0a05b55fc12e824eeaec4f71bb6a1498388c/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/rclone.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 9062,
+            "end": 9130
+          },
+          "document_sha256": "635cd9b26984cf48b088afc160dd45d73060efa6826058aa7ec6214831586a2d",
+          "quote_sha256": "4e04c6e1ec04d75a073b4dedda4ea700aa9518f56cd49f3099f845538f05dddd"
+        },
+        {
+          "fields": [
+            "highlights[1]"
+          ],
+          "url": "https://github.com/rclone/rclone/blob/3b9f0a05b55fc12e824eeaec4f71bb6a1498388c/docs/content/faq.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/rclone.packet.json",
+          "context_index": 3,
+          "context_span": {
+            "start": 1252,
+            "end": 1319
+          },
+          "document_sha256": "33bd3f82021814a8048ff0b9fe72acdd436b568f4a50a560a49ec0185d864f76",
+          "quote_sha256": "d4ff64166775a13c2d48939cb400deb3bcedc21983060782fa6bc4cd4d6f7a42"
+        },
+        {
+          "fields": [
+            "supported_systems"
+          ],
+          "url": "https://rclone.org/install/",
+          "material_scope": "discovery_separate",
+          "model_material": false,
+          "local_path": "work/digest-v13-feedback-pilot-20261006/discovery/rclone-install.txt",
+          "metadata_path": "work/digest-v13-feedback-pilot-20261006/discovery/rclone-install.source.json",
+          "source_span": {
+            "start": 3097,
+            "end": 3162
+          },
+          "text_sha256": "9a296537ee63a9fb1f8903eb91379cff2150453846a1299159082a68af44600b",
+          "saved_file_sha256": "2d1f762f92447f36a08e16dd75be2edf860d76c8168883ca3026afa610e822ec",
+          "captured_at": "2026-10-06T11:06:48.223876+08:00",
+          "quote_sha256": "d7c601ac922d2fd3756292a34f419931bf1f1076e2e337cbbeba0650ac69d5b0"
+        },
+        {
+          "fields": [
+            "supported_systems"
+          ],
+          "url": "https://rclone.org/install/",
+          "material_scope": "discovery_separate",
+          "model_material": false,
+          "local_path": "work/digest-v13-feedback-pilot-20261006/discovery/rclone-install.txt",
+          "metadata_path": "work/digest-v13-feedback-pilot-20261006/discovery/rclone-install.source.json",
+          "source_span": {
+            "start": 6368,
+            "end": 6498
+          },
+          "text_sha256": "9a296537ee63a9fb1f8903eb91379cff2150453846a1299159082a68af44600b",
+          "saved_file_sha256": "2d1f762f92447f36a08e16dd75be2edf860d76c8168883ca3026afa610e822ec",
+          "captured_at": "2026-10-06T11:06:48.223876+08:00",
+          "quote_sha256": "4d8c6f98bf4c73936b6fc5d998142ad0a4d9b0a35baf7642dd3798ac12ed16d4"
+        }
+      ],
+      "metadata": {
+        "github_stars_observed": 60122,
+        "observed_at": "2026-10-06T02:52:32Z",
+        "first_project_publication_at": null,
+        "metadata_evidence": "work/digest-v13-feedback-pilot-20261006/discovery/evidence.json"
+      },
+      "reader_feedback": null
+    },
+    {
+      "name": "Basic Memory",
+      "url": "https://github.com/basicmachines-co/basic-memory",
+      "direction": "项目知识复用",
+      "purpose": "把做过项目的过程与成果写成 Markdown 知识库，让后续 AI 接手时读取和检索已有资料。",
+      "highlights": [
+        "笔记是留在本地的普通文本，人与 AI 可以读写同一批文件。",
+        "通过 MCP 连接 Codex 等助手，支持按含义搜索，并用关联链接组织知识。"
+      ],
+      "supported_systems": "Windows / macOS",
+      "source_refs": [
+        {
+          "fields": [
+            "purpose",
+            "highlights[0]",
+            "highlights[1]"
+          ],
+          "url": "https://github.com/basicmachines-co/basic-memory/blob/dcbf55d7297b9f07666c18f2a65bedc64dda08d0/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/basic-memory.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 2049,
+            "end": 2276
+          },
+          "document_sha256": "f17c69dbb796108638d4da27fc7929aef8f6cd99d2c66ec4b22b01a8ca40dc52",
+          "quote_sha256": "fd6be3cb68d8670c5c70f4b9224317b504b0248b1c644cf1e0007d746cbe8a95"
+        },
+        {
+          "fields": [
+            "highlights[0]"
+          ],
+          "url": "https://github.com/basicmachines-co/basic-memory/blob/dcbf55d7297b9f07666c18f2a65bedc64dda08d0/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/basic-memory.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 2278,
+            "end": 2330
+          },
+          "document_sha256": "f17c69dbb796108638d4da27fc7929aef8f6cd99d2c66ec4b22b01a8ca40dc52",
+          "quote_sha256": "0ce85c1df2c6b44c0500ab92e2f3ade0d6eb2210fdc840c885f9f8e908a72fd4"
+        },
+        {
+          "fields": [
+            "highlights[0]"
+          ],
+          "url": "https://github.com/basicmachines-co/basic-memory/blob/dcbf55d7297b9f07666c18f2a65bedc64dda08d0/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/basic-memory.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 2331,
+            "end": 2409
+          },
+          "document_sha256": "f17c69dbb796108638d4da27fc7929aef8f6cd99d2c66ec4b22b01a8ca40dc52",
+          "quote_sha256": "0bfd6695c166f5c3991028d010716cc7fed1b5c007c5ec64f5402a94d795a4b9"
+        },
+        {
+          "fields": [
+            "highlights[1]"
+          ],
+          "url": "https://github.com/basicmachines-co/basic-memory/blob/dcbf55d7297b9f07666c18f2a65bedc64dda08d0/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/basic-memory.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 2410,
+            "end": 2489
+          },
+          "document_sha256": "f17c69dbb796108638d4da27fc7929aef8f6cd99d2c66ec4b22b01a8ca40dc52",
+          "quote_sha256": "9c38ad0e642f8d7958e7f5839cd18782ce4038d1970c8301d7303de5be3626d5"
+        },
+        {
+          "fields": [
+            "highlights[1]"
+          ],
+          "url": "https://github.com/basicmachines-co/basic-memory/blob/dcbf55d7297b9f07666c18f2a65bedc64dda08d0/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/basic-memory.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 2278,
+            "end": 2986
+          },
+          "document_sha256": "f17c69dbb796108638d4da27fc7929aef8f6cd99d2c66ec4b22b01a8ca40dc52",
+          "quote_sha256": "de62b2b09bc1c5a94d737807e23b3f9ce3fb9e47c6ad358692ec800dc11bf159"
+        },
+        {
+          "fields": [
+            "supported_systems"
+          ],
+          "url": "https://docs.basicmemory.com/start-here/quickstart-local",
+          "material_scope": "discovery_separate",
+          "model_material": false,
+          "local_path": "work/digest-v13-feedback-pilot-20261006/discovery/basic-memory-local.txt",
+          "metadata_path": "work/digest-v13-feedback-pilot-20261006/discovery/basic-memory-local.source.json",
+          "source_span": {
+            "start": 2176,
+            "end": 2210
+          },
+          "text_sha256": "64525664483227205f04fb96889398c049fd186b115c8e8d440902b3c2ce5db8",
+          "saved_file_sha256": "93babb410d66f14a12520fd463b9b49697f7e8ab068af53bbfe5eb885a58ca18",
+          "captured_at": "2026-10-06T11:06:43.654732+08:00",
+          "quote_sha256": "27f30ff3a8c543ca6b03193504f8e550582ba13612e91f9e8a81ff1fa7f44a0a"
+        },
+        {
+          "fields": [
+            "supported_systems"
+          ],
+          "url": "https://docs.basicmemory.com/start-here/quickstart-local",
+          "material_scope": "discovery_separate",
+          "model_material": false,
+          "local_path": "work/digest-v13-feedback-pilot-20261006/discovery/basic-memory-local.txt",
+          "metadata_path": "work/digest-v13-feedback-pilot-20261006/discovery/basic-memory-local.source.json",
+          "source_span": {
+            "start": 4261,
+            "end": 4288
+          },
+          "text_sha256": "64525664483227205f04fb96889398c049fd186b115c8e8d440902b3c2ce5db8",
+          "saved_file_sha256": "93babb410d66f14a12520fd463b9b49697f7e8ab068af53bbfe5eb885a58ca18",
+          "captured_at": "2026-10-06T11:06:43.654732+08:00",
+          "quote_sha256": "bef131510a05c05a0cc137b4b5734ea290d34d5596ade3459b2feda2d074f464"
+        },
+        {
+          "fields": [
+            "supported_systems"
+          ],
+          "url": "https://docs.basicmemory.com/start-here/quickstart-local",
+          "material_scope": "discovery_separate",
+          "model_material": false,
+          "local_path": "work/digest-v13-feedback-pilot-20261006/discovery/basic-memory-local.txt",
+          "metadata_path": "work/digest-v13-feedback-pilot-20261006/discovery/basic-memory-local.source.json",
+          "source_span": {
+            "start": 4289,
+            "end": 4322
+          },
+          "text_sha256": "64525664483227205f04fb96889398c049fd186b115c8e8d440902b3c2ce5db8",
+          "saved_file_sha256": "93babb410d66f14a12520fd463b9b49697f7e8ab068af53bbfe5eb885a58ca18",
+          "captured_at": "2026-10-06T11:06:43.654732+08:00",
+          "quote_sha256": "a6683aaacb20056593b19c46f7bfec256bab120f23c375008630a5a7e701bfe2"
+        }
+      ],
+      "metadata": {
+        "github_stars_observed": 4101,
+        "observed_at": "2026-10-06T02:52:32Z",
+        "first_project_publication_at": null,
+        "metadata_evidence": "work/digest-v13-feedback-pilot-20261006/discovery/evidence.json"
+      },
+      "reader_feedback": null
+    },
+    {
+      "name": "Joplin",
+      "url": "https://github.com/laurent22/joplin",
+      "direction": "项目笔记与资料整理",
+      "purpose": "按项目整理笔记、打标签并搜索，方便以后回看目标、过程和材料线索。",
+      "highlights": [
+        "笔记本、标签和全文搜索帮助找回历史项目资料，也支持导入 Markdown 文件。",
+        "离线也能查看笔记；网页剪藏可保存页面和截图。"
+      ],
+      "supported_systems": "Windows / macOS / Linux / Android / iOS",
+      "source_refs": [
+        {
+          "fields": [
+            "purpose",
+            "highlights[0]"
+          ],
+          "url": "https://github.com/laurent22/joplin/blob/aaa6f8e3ae206555fc5de7dbd82a8bcfe0d2d5cc/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/joplin.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 899,
+            "end": 1269
+          },
+          "document_sha256": "b9444e9a16aa4d8b87124a368605847ce9ad368e603e5f6116c34f3121a86f69",
+          "quote_sha256": "8fb726e9664e3e67392bfef378b903dc11ea97d81ff5d9e9b4fc1b04abdad5dd"
+        },
+        {
+          "fields": [
+            "highlights[0]"
+          ],
+          "url": "https://github.com/laurent22/joplin/blob/aaa6f8e3ae206555fc5de7dbd82a8bcfe0d2d5cc/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/joplin.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1271,
+            "end": 1623
+          },
+          "document_sha256": "b9444e9a16aa4d8b87124a368605847ce9ad368e603e5f6116c34f3121a86f69",
+          "quote_sha256": "574d950e542fe39dd3033604f3f9eedec98e8767ec7982d76eed34f953e1e245"
+        },
+        {
+          "fields": [
+            "highlights[0]"
+          ],
+          "url": "https://github.com/laurent22/joplin/blob/aaa6f8e3ae206555fc5de7dbd82a8bcfe0d2d5cc/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/joplin.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 2154,
+            "end": 2335
+          },
+          "document_sha256": "b9444e9a16aa4d8b87124a368605847ce9ad368e603e5f6116c34f3121a86f69",
+          "quote_sha256": "b3510dc41ba80fcd9e0c4dfdda3181f3a7896ddcc473d7ce432e9e580c7bb73a"
+        },
+        {
+          "fields": [
+            "highlights[1]"
+          ],
+          "url": "https://github.com/laurent22/joplin/blob/aaa6f8e3ae206555fc5de7dbd82a8bcfe0d2d5cc/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/joplin.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 1625,
+            "end": 1820
+          },
+          "document_sha256": "b9444e9a16aa4d8b87124a368605847ce9ad368e603e5f6116c34f3121a86f69",
+          "quote_sha256": "e25593a2c2246f5b39a2e178fa5318fa070014d8295310eb4abba14e9425e73a"
+        },
+        {
+          "fields": [
+            "supported_systems",
+            "highlights[1]"
+          ],
+          "url": "https://github.com/laurent22/joplin/blob/aaa6f8e3ae206555fc5de7dbd82a8bcfe0d2d5cc/README.md",
+          "material_scope": "model_supplied",
+          "model_material": true,
+          "packet_path": "work/digest-v13-feedback-pilot-20261006/fresh/joplin.packet.json",
+          "context_index": 0,
+          "context_span": {
+            "start": 2337,
+            "end": 2760
+          },
+          "document_sha256": "b9444e9a16aa4d8b87124a368605847ce9ad368e603e5f6116c34f3121a86f69",
+          "quote_sha256": "e7eb5fb6582b9cf1be16feed97dfef4fac66d7f4ae15262ee01e075bb30f9c26"
+        }
+      ],
+      "metadata": {
+        "github_stars_observed": 56606,
+        "observed_at": "2026-10-06T02:52:32Z",
+        "first_project_publication_at": null,
+        "metadata_evidence": "work/digest-v13-feedback-pilot-20261006/discovery/evidence.json"
+      },
+      "reader_feedback": null
+    }
+  ],
+  "machine_trial": {
+    "source": "work/digest-v13-feedback-pilot-20261006/summary.json",
+    "source_sha256": "4a56d3d56487e67cbd3bd73d297cdd37e562944f42a944c1f5d04fc5a4ec32b5",
+    "summary_audit_pending_flag_retained": true,
+    "screened": 7,
+    "source_reviews_structurally_valid": 7,
+    "actual_http_requests": 13,
+    "paid_retries": 0,
+    "model": "glm-5.3-flash",
+    "reasoning": "low",
+    "provider_usage": {
+      "prompt_tokens": 196066,
+      "completion_tokens": 19245,
+      "total_tokens": 215311
+    },
+    "actual_billing_amount": null,
+    "machine_selected": [
+      {
+        "candidate_id": "1059f5c76747038fb900d400",
+        "url": "https://github.com/iOfficeAI/AionUi",
+        "score": 68,
+        "machine_decision": "select",
+        "machine_editorial_verdict": "accept"
+      },
+      {
+        "candidate_id": "3ab22c48b31fda3f6440bb35",
+        "url": "https://github.com/peazip/PeaZip",
+        "score": 65,
+        "machine_decision": "select",
+        "machine_editorial_verdict": "accept"
+      }
+    ],
+    "errors": [
+      {
+        "candidate_id": "d8e1141cbbb2fb69ad1be635",
+        "stage": "score_or_editorial",
+        "error_type": "InputBudgetExceeded"
+      },
+      {
+        "candidate_id": "726921c61c58fafda45a6173",
+        "stage": "score_or_editorial",
+        "error_type": "InputBudgetExceeded"
+      },
+      {
+        "candidate_id": "180554eaff51f614101385f3",
+        "stage": "score",
+        "reason": "assessment requires exactly flags, precheck, reason, scores"
+      },
+      {
+        "candidate_id": "8da1ed30ccc8cb596fba8221",
+        "stage": "score_or_editorial",
+        "error_type": "InputBudgetExceeded"
+      },
+      {
+        "candidate_id": "4278f054e241cfc458a94c05",
+        "stage": "score_or_editorial",
+        "error_type": "InputBudgetExceeded"
+      }
+    ],
+    "local_score_input_limit_chars": 60000,
+    "local_score_input_refusals": {
+      "Basic Memory": 65474,
+      "PAL MCP": 60641,
+      "Czkawka": 61980,
+      "rclone": 60677
+    },
+    "refusal_http_calls": 0,
+    "invalid_score_response": {
+      "project": "Joplin",
+      "unexpected_field": "reason_note",
+      "recommendation_decision": null
+    }
+  },
+  "independent_review": {
+    "pending": false,
+    "runtime": "work/digest-v13-feedback-pilot-20261006/runtime-audit.json",
+    "runtime_sha256": "1ffbbf9145929268947c8b0552c220d772bf47d07045033487328feccb25fa1b",
+    "content": "work/digest-v13-feedback-pilot-20261006/content-audit.json",
+    "content_sha256": "03f86814de0aed1f3eb57621123b0d7ac0f87e893690ea3c41fad8da631f9ca5",
+    "counts": {
+      "candidates": 7,
+      "verified": 7,
+      "limited_original_model_summaries_pass": 7,
+      "full_recommendations_pass": 2,
+      "full_recommendations_defer": 5,
+      "actual_scoring_http_outputs": 3,
+      "local_score_input_budget_failures_zero_http": 4,
+      "accepted_scores": 2,
+      "machine_editorial_accepts": 2,
+      "independent_public_introduction_pass": 2,
+      "per_dimension_provenance_failure_candidates": 1,
+      "output_contract_failure_candidates": 1,
+      "actual_trial_http_calls": 13
+    },
+    "full_recommendations_pass": [
+      {
+        "url": "https://github.com/iOfficeAI/AionUi",
+        "candidate_id": "1059f5c76747038fb900d400"
+      },
+      {
+        "url": "https://github.com/peazip/PeaZip",
+        "candidate_id": "3ab22c48b31fda3f6440bb35"
+      }
+    ],
+    "human_edited_card_references_checked": 45,
+    "extra_platform_sources_supplied_to_model": false,
+    "new_human_interest_labels": 0
+  }
+}
