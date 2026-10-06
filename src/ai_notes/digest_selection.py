@@ -490,7 +490,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
         result["source_navigation"] = [{
             "url": context["url"],
             "source_claim_indexes": [index for index, claim in enumerate(claims) if claim["evidence_url"] == context["url"]],
-            "understanding_passage_ids": [pid for pid, proof in proofs.items() if proof["evidence_url"] == context["url"]],
+            "understanding_passage_ids": sorted(pid for pid, proof in proofs.items() if proof["evidence_url"] == context["url"]),
         } for context in card["evidence_context"]]
     return result
 

@@ -139,6 +139,13 @@ class CompactScoringSchemaTests(unittest.TestCase):
             return value
         return resolve(compact)
 
+    def canonical_flag_order(self, legacy):
+        expected = copy.deepcopy(legacy)
+        items = expected['properties']['flags']['items']
+        if items is not False:
+            items['oneOf'].sort(key=lambda branch: branch['properties']['code']['const'])
+        return expected
+
     def test_unmarked_schema_is_exactly_the_pre_compaction_value(self):
         legacy, _ = self.schemas()
         encoded = json.dumps(legacy, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
@@ -159,8 +166,46 @@ class CompactScoringSchemaTests(unittest.TestCase):
                             'material': {'kind': kind}, 'evidence_context': contexts}
                     with self.subTest(kind=kind, ranking_type=ranking_type, contexts=len(contexts)):
                         legacy, compact = self.schemas(card)
-                        self.assertEqual(legacy, self.expand(compact))
+                        self.assertEqual(self.canonical_flag_order(legacy), self.expand(compact))
         self.assertEqual(before, (self.policy, self.card))
+
+    def test_compact_schema_is_exact_after_canonical_json_snapshot_restore(self):
+        policy = copy.deepcopy(self.policy)
+        policy['score_input_contract'] = output_schema.COMPACT_SCHEMA_CONTRACT
+        restored_policy = json.loads(selection._json(policy))
+        self.assertNotEqual(list(policy['flag_caps']), list(restored_policy['flag_caps']))
+        before = copy.deepcopy(policy)
+        for kind in ('project', 'update', 'news', 'reading'):
+            for ranking_type in ('daily', 'weekly', 'monthly'):
+                card = {**self.card, 'ranking_type': ranking_type, 'material': {'kind': kind}}
+                restored_card = json.loads(selection._json(card))
+                fresh = output_schema.assessment_schema(policy=policy, card=card)
+                restored = output_schema.assessment_schema(policy=restored_policy, card=restored_card)
+                with self.subTest(kind=kind, ranking_type=ranking_type):
+                    self.assertEqual(fresh, restored)
+                    self.assertEqual(selection._json(fresh), selection._json(restored))
+                    self.assertEqual(selection._hash(fresh), selection._hash(restored))
+                    flags = fresh['properties']['flags']['items']
+                    if flags is not False:
+                        codes = [branch['properties']['code']['const'] for branch in flags['oneOf']]
+                        self.assertEqual(sorted(codes), codes)
+        self.assertEqual(before, policy)
+
+    def test_unmarked_flag_alternative_order_is_not_retroactively_canonicalized(self):
+        original = copy.deepcopy(self.policy)
+        restored = json.loads(selection._json(original))
+        fresh_schema = output_schema.assessment_schema(policy=original, card=self.card)
+        restored_schema = output_schema.assessment_schema(policy=restored, card=self.card)
+        fresh_codes = [branch['properties']['code']['const']
+                       for branch in fresh_schema['properties']['flags']['items']['oneOf']]
+        restored_codes = [branch['properties']['code']['const']
+                          for branch in restored_schema['properties']['flags']['items']['oneOf']]
+        expected = [code for code in original['flag_caps']
+                    if not original.get('flag_kinds', {}).get(code)
+                    or self.card['material']['kind'] in original['flag_kinds'][code]]
+        self.assertEqual(expected, fresh_codes)
+        self.assertEqual(sorted(expected), restored_codes)
+        self.assertNotEqual(fresh_codes, restored_codes)
 
     def test_shared_definitions_reduce_wire_without_changing_sources(self):
         before = copy.deepcopy(self.card)
@@ -244,7 +289,7 @@ class CompactScoringSchemaTests(unittest.TestCase):
     def test_no_source_policy_preserves_the_false_reference_and_null_scores_branch(self):
         card = {**self.card, 'evidence_context': []}
         legacy, compact = self.schemas(card)
-        self.assertEqual(legacy, self.expand(compact))
+        self.assertEqual(self.canonical_flag_order(legacy), self.expand(compact))
         self.assertEqual(False, compact['properties']['precheck']['properties']['evidence_refs']['items'])
         self.assertEqual({'type': 'null'}, compact['properties']['scores'])
         value = copy.deepcopy(self.good)

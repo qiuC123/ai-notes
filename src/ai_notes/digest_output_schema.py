@@ -25,7 +25,9 @@ def _compact_assessment_schema(schema: dict, *, reference, score: dict) -> dict:
     These local references belong to the output schema, not source evidence.
     Full original text, source spans and binding metadata are untouched. Only
     nodes exactly equal to the builder's URL enum or score object are replaced;
-    expanding the local references reproduces the legacy schema value.
+    expanding the local references reproduces the builder's schema value. The
+    opted-in builder separately canonicalizes flag alternative order so JSON
+    persistence cannot change the request fingerprint.
     """
     used = set()
 
@@ -56,6 +58,7 @@ def _compact_assessment_schema(schema: dict, *, reference, score: dict) -> dict:
 
 def assessment_schema(*, policy: dict, card: dict) -> dict:
     """Describe only allowed model judgments for this frozen policy and card."""
+    compact_contract = policy.get("score_input_contract") == COMPACT_SCHEMA_CONTRACT
     text = {"type": "string", "minLength": 1, "pattern": r"\S"}
     urls = sorted({item["url"] for item in card["evidence_context"]})
     reference = {"type": "string", "enum": urls} if urls else False
@@ -68,7 +71,11 @@ def assessment_schema(*, policy: dict, card: dict) -> dict:
     scores = _object({name: copy.deepcopy(score) for name in policy["dimensions"]})
     flags = []
     kind = card["material"]["kind"]
-    for code in policy["flag_caps"]:
+    # JSON snapshots sort object keys. Under the new contract, sort only this
+    # otherwise unordered set of disjoint code alternatives; legacy requests
+    # retain their original flag_caps iteration order.
+    codes = sorted(policy["flag_caps"]) if compact_contract else policy["flag_caps"]
+    for code in codes:
         kinds = policy.get("flag_kinds", {}).get(code)
         if kinds is not None and kind not in kinds:
             continue
@@ -99,7 +106,7 @@ def assessment_schema(*, policy: dict, card: dict) -> dict:
         {"if": {"properties": {"precheck": {"properties": {"status": {"enum": ["PASS", "BLOCK"]}}}}},
          "then": {"properties": {"precheck": {"properties": {"evidence_refs": refs()}}}}},
     ]
-    if policy.get("score_input_contract") == COMPACT_SCHEMA_CONTRACT:
+    if compact_contract:
         return _compact_assessment_schema(schema, reference=reference, score=score)
     return schema
 

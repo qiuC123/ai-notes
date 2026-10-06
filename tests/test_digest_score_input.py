@@ -408,6 +408,20 @@ class ScoreInputTests(unittest.TestCase):
         self.assertEqual({"screen-v13-evidence-focus", "verify-facts-v13-evidence-focus",
                           "value-score-v14-compact-schema", "editorial-v14-reason-navigation"}, stages)
 
+    def test_score_and_review_navigation_are_stable_after_sorted_json_recovery(self):
+        # Persisted dictionaries are key-sorted. Their insertion order must not
+        # become a different navigation array or create another paid request.
+        prepared = copy.deepcopy(self.prepared)
+        proofs = prepared['cards'][0]['understanding']['proof_map']
+        prepared['cards'][0]['understanding']['proof_map'] = dict(reversed(list(proofs.items())))
+        before = selection.build_scoring_input(prepared, 'fixture')
+        recovered = selection.build_scoring_input(json.loads(runtime._json(prepared)), 'fixture')
+        self.assertEqual(runtime._json(before), runtime._json(recovered))
+        assessment = self.assessment()
+        fresh = self.public_review(assessment, score_input_contract=MARKER)
+        restored = self.public_review(json.loads(runtime._json(assessment)), score_input_contract=MARKER)
+        self.assertEqual(runtime._json(fresh), runtime._json(restored))
+
 
 if __name__ == "__main__":
     unittest.main()

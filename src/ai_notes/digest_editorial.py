@@ -255,8 +255,8 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type, rea
             # Navigation preserves each reason's original URL set. Other
             # passages remain available to find conflicts, never to repair it.
             entries = [('selection_basis.precheck.reasons', assessment.get('precheck'))]
-            entries += [('selection_basis.scores.' + name + '.reason', value)
-                        for name, value in (assessment.get('scores') or {}).items()]
+            entries += [('selection_basis.scores.' + name + '.reason', assessment['scores'][name])
+                        for name in _SCORE_FIELDS if name in (assessment.get('scores') or {})]
             entries += [('selection_basis.flags.' + str(index) + '.reason', value)
                         for index, value in enumerate(assessment.get('flags', []))]
             result['reason_source_navigation'] = [{
