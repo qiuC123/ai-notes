@@ -1,0 +1,107 @@
+{
+  "schema_version": "digest-reader-preference-feedback.v1",
+  "recorded_at": "2026-10-06T12:18:37.126952+08:00",
+  "user_feedback_date": "2026-10-06",
+  "source_quote": "我说的跨agent协作一般肯定是使用外置agent，因为大部分aegnt使用官方的订阅比api更便宜，这些项目还可以",
+  "scope": "最近展示的七项发现清单，整体回应，未逐项评价差异",
+  "source_preview": "outputs/digest/v13-reader-preview-2026-10-06.json",
+  "source_preview_sha256": "d012b2c1b85cb6f8c86e0e72fe20251b5c9c3b82223365be25b44ec657a6e697",
+  "agent_collaboration_preference": {
+    "primary_mode": "external_agents",
+    "preferred_auth_and_cost_route": "reuse_existing_official_subscriptions_and_logins",
+    "existing_subscriptions_user_asserted": [
+      "WorkBuddy",
+      "Codex"
+    ],
+    "price_comparison_status": "user_cost_preference_not_independently_verified_prices",
+    "external_agent_compatibility": "must_verify_actual_supported_connection"
+  },
+  "cohort_feedback": "还可以",
+  "cohort_feedback_provenance": "human_asserted_for_cohort",
+  "per_item_ratings": null,
+  "immediate_practice_intent": null,
+  "preference_labels": 0,
+  "selection_gold_added": 0,
+  "model_calls": 0,
+  "reader_context_clarified": true,
+  "weights_thresholds_caps_tuned": false,
+  "items": [
+    {
+      "name": "AionUI",
+      "canonical_url": "https://github.com/iOfficeAI/AionUi",
+      "candidate_id": "1059f5c76747038fb900d400",
+      "kind": "project",
+      "included_in_cohort_feedback": true,
+      "individual_feedback": null,
+      "preference_label": null,
+      "immediate_practice_intent": null,
+      "selection_gold": null
+    },
+    {
+      "name": "PAL MCP",
+      "canonical_url": "https://github.com/BeehiveInnovations/pal-mcp-server",
+      "candidate_id": "726921c61c58fafda45a6173",
+      "kind": "project",
+      "included_in_cohort_feedback": true,
+      "individual_feedback": null,
+      "preference_label": null,
+      "immediate_practice_intent": null,
+      "selection_gold": null
+    },
+    {
+      "name": "Czkawka",
+      "canonical_url": "https://github.com/qarmin/czkawka",
+      "candidate_id": "8da1ed30ccc8cb596fba8221",
+      "kind": "project",
+      "included_in_cohort_feedback": true,
+      "individual_feedback": null,
+      "preference_label": null,
+      "immediate_practice_intent": null,
+      "selection_gold": null
+    },
+    {
+      "name": "PeaZip",
+      "canonical_url": "https://github.com/peazip/PeaZip",
+      "candidate_id": "3ab22c48b31fda3f6440bb35",
+      "kind": "project",
+      "included_in_cohort_feedback": true,
+      "individual_feedback": null,
+      "preference_label": null,
+      "immediate_practice_intent": null,
+      "selection_gold": null
+    },
+    {
+      "name": "rclone",
+      "canonical_url": "https://github.com/rclone/rclone",
+      "candidate_id": "4278f054e241cfc458a94c05",
+      "kind": "project",
+      "included_in_cohort_feedback": true,
+      "individual_feedback": null,
+      "preference_label": null,
+      "immediate_practice_intent": null,
+      "selection_gold": null
+    },
+    {
+      "name": "Basic Memory",
+      "canonical_url": "https://github.com/basicmachines-co/basic-memory",
+      "candidate_id": "d8e1141cbbb2fb69ad1be635",
+      "kind": "project",
+      "included_in_cohort_feedback": true,
+      "individual_feedback": null,
+      "preference_label": null,
+      "immediate_practice_intent": null,
+      "selection_gold": null
+    },
+    {
+      "name": "Joplin",
+      "canonical_url": "https://github.com/laurent22/joplin",
+      "candidate_id": "180554eaff51f614101385f3",
+      "kind": "project",
+      "included_in_cohort_feedback": true,
+      "individual_feedback": null,
+      "preference_label": null,
+      "immediate_practice_intent": null,
+      "selection_gold": null
+    }
+  ]
+}
