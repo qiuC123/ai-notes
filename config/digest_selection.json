@@ -28,12 +28,17 @@
       "用户自述不太会代码，需要用通俗语言理解用途。",
       "偏好实用开源项目，也关注 AI 动态与开发机会。",
       "用户在 2026-10-05 明确确认重点发现有价值项目，通俗介绍用途、亮点与支持系统，不要求讲全限制或步骤。",
-      "用户在 2026-10-05 明确确认没有树莓派硬件，也不需要树莓派专用项目；支持普通电脑的工具不因此排除。"
+      "用户在 2026-10-05 明确确认没有树莓派硬件，也不需要树莓派专用项目；支持普通电脑的工具不因此排除。",
+      "用户在 2026-10-06 自述已有 WorkBuddy 和 Codex 订阅，明确喜欢多 Agent 协作，希望复用现有助手。",
+      "用户在 2026-10-06 自述不太擅长文件整理，希望借助工具整理、压缩文件，并把做过的项目整理成知识库，方便后续 AI 使用。"
     ],
     "exploration_interests": [
       "视频录屏、语音转文字与字幕提取。",
       "机器人、项目管理与飞书自动化。",
-      "信息收集、筛选，以及日榜、周榜、月榜汇总。"
+      "信息收集、筛选，以及日榜、周榜、月榜汇总。",
+      "多 Agent 分工、协作与任务交接，尤其是能配合现有 WorkBuddy / Codex 工作流的工具和用法。",
+      "文件分类、标签整理、同步、压缩与备份，关注能辅助完成实际整理任务的工具。",
+      "项目知识库与归档：把做过的项目资料整理为可查找、可供后续 AI 读取和复用的内容。"
     ]
   },
   "calibration_status": "Uncalibrated discovery-selection policy. v11 real trial found source routing, citation provenance and unpublished-field review defects. Explicit discovery-reading.v1 exposes captured repository metadata and bounded user-facing originals; public-introduction.v1 reviews planned public fields plus selection reasons, with exact weekly featured scope. New passage-ID guidance does not guarantee model compliance. No paid v12 semantic trial has run. Weights, caps, thresholds, flags and source grades remain unchanged; frozen older inputs and verdicts retain their rules. Offline tests and saved-response projections do not prove calibrated selection quality.",
