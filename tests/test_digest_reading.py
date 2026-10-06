@@ -40,7 +40,7 @@ class ProjectReadingTests(unittest.TestCase):
 
     def client(self, files=None, *, readme='# Demo\nA file organizer.\n', tree_truncated=False,
                failed=(), tree_extra=(), redirect=None, expected_ref='main', metadata=None,
-               homepage=None):
+               homepage=None, homepage_type='text/html; charset=utf-8'):
         files = files or {}
         def handle(request):
             url = str(request.url)
@@ -52,7 +52,8 @@ class ProjectReadingTests(unittest.TestCase):
             if url == API:
                 return httpx.Response(200, json={'default_branch': 'main', **(metadata or {})})
             if homepage and url == homepage[0]:
-                return httpx.Response(200, text=homepage[1], headers={'content-type': 'text/html; charset=utf-8'})
+                raw = homepage[1] if isinstance(homepage[1], bytes) else homepage[1].encode('utf-8')
+                return httpx.Response(200, content=raw, headers={'content-type': homepage_type})
             if '/commits/' in request.url.path:
                 self.assertEqual(expected_ref, request.url.path.split('/commits/', 1)[1])
                 return httpx.Response(200, json={'sha': SHA})
@@ -355,6 +356,100 @@ class ProjectReadingTests(unittest.TestCase):
         self.assertIn('Collect, cite, and share research.', context['text'])
         self.assertEqual('read', packet['coverage']['questions']['license'])
         source_documents(packet['contexts'])
+
+    def test_declared_legacy_html_retains_original_bytes_and_precise_text_scope(self):
+        path = 'Help/DittoGettingStarted.htm'
+        original = ('<html><head><meta http-equiv=Content-Type '
+                    'content="text/html; charset=windows-1252"></head><body>'
+                    '<p>Copy “clips” — then search them. ' + 'Reuse clipboard history. ' * 30 +
+                    '</p><script>Hidden text.</script></body></html>').encode('cp1252')
+        packet = reading.read_project(self.root, ROOT_URL, max_chars=160,
+            reading_contract=reading.DISCOVERY_READING_CONTRACT,
+            client=self.client({path: original}, readme='AppWizard has created this application.',
+                metadata={'description': 'Clipboard manager.'}))
+        document = next(row for row in packet['documents'] if row['file_path'] == path)
+        context = next(row for row in packet['contexts'] if row['source_scope']['file_path'] == path)
+        self.assertEqual('ok', packet['status'])
+        self.assertEqual('cp1252', document['decoding']['encoding'])
+        self.assertEqual('html-meta', document['decoding']['encoding_source'])
+        self.assertEqual('windows-1252', document['decoding']['declared_charset'])
+        self.assertEqual('python-codecs-strict', document['decoding']['decoder'])
+        self.assertEqual(original, (self.root / document['raw_document_path']).read_bytes())
+        self.assertEqual(hashlib.sha256(original).hexdigest(), document['raw_document_sha256'])
+        full_text = (self.root / document['document_path']).read_text(encoding='utf-8')
+        scope = context['source_scope']
+        self.assertEqual(hashlib.sha256(full_text.encode()).hexdigest(), scope['document_sha256'])
+        self.assertEqual(len(full_text), scope['document_chars'])
+        self.assertEqual('excerpt', scope['coverage'])
+        self.assertEqual(context['text'], ''.join(full_text[row['start']:row['end']] for row in scope['ranges']))
+        self.assertIn('Copy “clips” — then search them.', full_text)
+        self.assertNotIn('Hidden text.', full_text)
+        self.assertEqual(160, packet['coverage']['supplied_chars'])
+        self.assertEqual(2, packet['coverage']['supplemental_requests'])
+        self.assertEqual(1, self.requests.count(RAW + path))
+        source_documents(packet['contexts'])
+
+    def test_undeclared_non_utf8_html_records_failure_and_keeps_original(self):
+        path = 'Help/GettingStarted.htm'
+        original = b'<html><p>Copy \x93clips\x94.</p></html>'
+        packet = reading.read_project(self.root, ROOT_URL,
+            reading_contract=reading.DISCOVERY_READING_CONTRACT,
+            client=self.client({path: original}, readme='AppWizard has created this application.'))
+        document = next(row for row in packet['documents'] if row['file_path'] == path)
+        self.assertEqual('failed', document['status'])
+        self.assertEqual('unknown', document['coverage'])
+        self.assertEqual('utf-8-default', document['decoding']['encoding_source'])
+        self.assertIn('strict utf-8 decoding failed', document['error'])
+        self.assertEqual(original, (self.root / document['raw_document_path']).read_bytes())
+        self.assertEqual(hashlib.sha256(original).hexdigest(), document['raw_document_sha256'])
+        self.assertFalse(any(row['source_scope']['file_path'] == path for row in packet['contexts']))
+        self.assertEqual(1, self.requests.count(RAW + path))
+
+    def test_declared_homepage_uses_header_charset_and_preserves_raw_hash(self):
+        homepage = 'https://example.org/tool'
+        original = '<html><p>Collect “references”.</p></html>'.encode('cp1252')
+        packet = reading.read_project(self.root, ROOT_URL,
+            reading_contract=reading.DISCOVERY_READING_CONTRACT,
+            client=self.client(readme='Build this source code.', metadata={'homepage': homepage},
+                homepage=(homepage, original), homepage_type='text/html; charset="windows-1252"'))
+        document = next(row for row in packet['documents'] if row['original_url'] == homepage)
+        context = next(row for row in packet['contexts'] if row['url'] == homepage)
+        self.assertEqual('Collect “references”.', context['text'])
+        self.assertEqual('cp1252', document['decoding']['encoding'])
+        self.assertEqual('http-header', document['decoding']['encoding_source'])
+        self.assertEqual(original, (self.root / document['raw_document_path']).read_bytes())
+        self.assertEqual(hashlib.sha256(original).hexdigest(), document['raw_document_sha256'])
+        self.assertEqual(1, self.requests.count(homepage))
+        source_documents(packet['contexts'])
+
+    def test_declared_homepage_rejects_ascii_pdf_and_binary_even_if_utf8_decodes(self):
+        homepage = 'https://example.org/tool'
+        for raw, content_type in ((b'%PDF-1.4\nASCII body', 'application/pdf'),
+                                  (b'%PDF-1.4\nASCII body', 'text/html'),
+                                  (b'%PDF-1.4\nASCII body', 'text/plain'),
+                                  (b'%PDF-1.4\nASCII body', ''),
+                                  (b'GIF89a\x00binary', 'application/octet-stream')):
+            with self.subTest(content_type=content_type):
+                packet = reading.read_project(self.root, ROOT_URL,
+                    reading_contract=reading.DISCOVERY_READING_CONTRACT,
+                    client=self.client(readme='Build this source code.', metadata={'homepage': homepage},
+                        homepage=(homepage, raw), homepage_type=content_type))
+                document = next(row for row in packet['documents'] if row['original_url'] == homepage)
+                self.assertEqual('failed', document['status'])
+                self.assertEqual('unknown', document['coverage'])
+                self.assertEqual(hashlib.sha256(raw).hexdigest(), document['raw_document_sha256'])
+                self.assertFalse(any(row['url'] == homepage for row in packet['contexts']))
+
+    def test_missing_reading_contract_preserves_legacy_utf8_only_files(self):
+        raw = b'Use \x93clipboard\x94 history.'
+        packet = reading.read_project(self.root, ROOT_URL,
+            client=self.client({'docs/usage.md': raw, 'Help/GettingStarted.htm': b'<p>Old help.</p>'}))
+        document = next(row for row in packet['documents'] if row['file_path'] == 'docs/usage.md')
+        self.assertIn("'utf-8' codec can't decode", document['error'])
+        self.assertNotIn('decoding', document)
+        self.assertNotIn('raw_document_path', document)
+        self.assertFalse(any(url.endswith('.htm') for url in self.requests))
+        self.assertNotIn('reading_contract', packet)
 
     def test_discovery_remaining_slot_prefers_root_license_over_homepage(self):
         homepage_url = 'https://example.org/tool'

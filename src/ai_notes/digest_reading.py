@@ -7,7 +7,9 @@ original files in an isolated local directory. Its output is never evidence.
 from __future__ import annotations
 
 import argparse
+import codecs
 from contextlib import contextmanager
+from email.message import Message
 import hashlib
 import importlib.util
 from importlib import metadata
@@ -31,6 +33,14 @@ MAX_SUPPLEMENTAL_REQUESTS = 6
 MAX_DOCUMENT_BYTES = 512 * 1024
 MAX_CONTEXT_CHARS = 100_000
 DISCOVERY_READING_CONTRACT = 'discovery-reading.v1'
+HTML_CHARSET_SCAN_BYTES = 8192
+_HTML_MEDIA_TYPES = {'text/html', 'application/xhtml+xml'}
+_HTML_RAW_MEDIA_TYPES = _HTML_MEDIA_TYPES | {'', 'text/plain', 'application/octet-stream'}
+_HTML_ENCODINGS = {'utf-8', 'ascii', 'utf-16-le', 'utf-16-be', 'utf-32-le', 'utf-32-be',
+                   'cp1250', 'cp1251', 'cp1252', 'cp1253', 'cp1254', 'cp1255', 'cp1256',
+                   'cp1257', 'cp1258', 'iso8859-1', 'iso8859-2', 'iso8859-5', 'iso8859-7',
+                   'iso8859-9', 'iso8859-15', 'gb18030', 'gbk', 'gb2312', 'big5',
+                   'shift_jis', 'cp932', 'euc_jp', 'euc_kr', 'cp949', 'koi8-r', 'koi8-u'}
 _QUESTIONS = {
     'overview': 'What does the project do and who can use it?',
     'license': 'What does the original license text permit and require?',
@@ -292,9 +302,109 @@ class _ProductText(HTMLParser):
         return re.sub(r'\n(?: *\n){2,}', '\n\n', text).strip()
 
 
-def _page_text(raw: bytes) -> str:
+class _HTMLCharsets(HTMLParser):
+    """Read ASCII charset declarations only in a bounded HTML header sample."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.labels = []
+        self.finished = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'body':
+            self.finished = True
+        if tag != 'meta' or self.finished:
+            return
+        attrs = dict(attrs)
+        if attrs.get('charset'):
+            self.labels.append(attrs['charset'])
+        elif str(attrs.get('http-equiv', '')).lower() == 'content-type':
+            label = _header_charset(attrs.get('content', ''))
+            if label:
+                self.labels.append(label)
+
+    def handle_endtag(self, tag):
+        if tag == 'head':
+            self.finished = True
+
+
+def _header_charset(content_type: str) -> str | None:
+    message = Message()
+    message['content-type'] = content_type
+    return message.get_content_charset()
+
+
+def _html_encoding(label: str) -> str:
+    if len(label) > 64 or not re.fullmatch(r'[A-Za-z0-9._-]+', label):
+        raise sources.SourceError('invalid declared HTML charset')
+    try:
+        encoding = codecs.lookup(label).name
+    except LookupError as exc:
+        raise sources.SourceError('unsupported declared HTML charset: ' + label) from exc
+    if encoding not in _HTML_ENCODINGS:
+        raise sources.SourceError('unsupported declared HTML charset: ' + label)
+    return encoding
+
+
+def _html_prefix(text: str) -> bool:
+    return bool(re.match(r'\s*(?:<\?xml\b[^>]*>\s*)?(?:<!doctype\s+html\b|<!--|'
+                         r'<(?:html|head|body|meta|title|h[1-6]|p|div|section|article|'
+                         r'li|ul|ol|a|table|script|style|template)\b)', text, re.I))
+
+
+def _strict_text(raw: bytes, encoding: str) -> str:
+    if raw.startswith((b'%PDF-', b'\x89PNG', b'GIF87a', b'GIF89a', b'PK\x03\x04', b'\xff\xd8\xff', b'\x7fELF', b'MZ')):
+        raise sources.SourceError('binary document is not supported source text')
+    try:
+        text = raw.decode(encoding, errors='strict')
+    except UnicodeError as exc:
+        raise sources.SourceError('strict ' + encoding + ' decoding failed: ' + str(exc)) from exc
+    if re.search(r'[\x00-\x08\x0b\x0e-\x1f\x7f-\x9f]', text):
+        raise sources.SourceError('decoded document contains non-text control characters')
+    return text
+
+
+def _page_text(raw: bytes, content_type: str = '', *, decoding: dict | None = None) -> str:
+    """Extract bounded HTML with explicit charset provenance and strict decoding.
+
+    BOM takes priority over HTTP charset and then a header meta declaration.
+    Without a declaration only strict UTF-8 is accepted; no legacy guess or
+    replacement decoding can turn binary/unknown bytes into source evidence.
+    """
+    if not isinstance(raw, bytes) or len(raw) > MAX_DOCUMENT_BYTES:
+        raise sources.SourceError('HTML exceeds original document byte budget')
+    media_type = content_type.partition(';')[0].strip().lower()
+    if media_type not in _HTML_RAW_MEDIA_TYPES:
+        raise sources.SourceError('unsupported HTML media type: ' + media_type)
+    encoding, origin, label, payload = 'utf-8', 'utf-8-default', None, raw
+    for bom, codec in ((codecs.BOM_UTF32_LE, 'utf-32-le'), (codecs.BOM_UTF32_BE, 'utf-32-be'),
+                       (codecs.BOM_UTF8, 'utf-8'), (codecs.BOM_UTF16_LE, 'utf-16-le'),
+                       (codecs.BOM_UTF16_BE, 'utf-16-be')):
+        if raw.startswith(bom):
+            encoding, origin, payload = codec, 'bom', raw[len(bom):]
+            break
+    if origin != 'bom':
+        label = _header_charset(content_type)
+        if label:
+            encoding, origin = _html_encoding(label), 'http-header'
+        else:
+            declarations = _HTMLCharsets()
+            # Latin-1 preserves every sampled byte while exposing only ASCII
+            # markup; it is never used to decode the supplied document text.
+            declarations.feed(raw[:HTML_CHARSET_SCAN_BYTES].decode('latin-1'))
+            if declarations.labels:
+                encodings = {_html_encoding(value) for value in declarations.labels}
+                if len(encodings) != 1:
+                    raise sources.SourceError('conflicting HTML meta charset declarations')
+                label = declarations.labels[0]
+                encoding, origin = encodings.pop(), 'html-meta'
+    if decoding is not None:
+        decoding.update(encoding=encoding, encoding_source=origin, declared_charset=label,
+                        decoder='python-codecs-strict', text_extractor='html.parser.HTMLParser')
+    text = _strict_text(payload, encoding)
+    if not _html_prefix(text):
+        raise sources.SourceError('document does not start with recognizable HTML markup')
     parser = _ProductText()
-    parser.feed(raw.decode('utf-8'))
+    parser.feed(text)
     return parser.text()
 
 
@@ -598,15 +708,17 @@ def read_project(root: Path, url: str, *, client: httpx.Client | None = None,
             if receipt['final_url'] != raw_url:
                 raise sources.SourceError('pinned original redirected to a different document URL')
             raw = sources._payload(root, receipt)
-            decoded = raw.decode('utf-8')
             original_raw = raw
             if discovery and PurePosixPath(path).suffix.lower() in ('.html', '.htm'):
-                decoded = _page_text(raw)
+                row.update(raw_document_sha256=receipt['sha256'], raw_document_path=receipt['body_path'],
+                           decoding={})
+                decoded = _page_text(raw, receipt.get('content_type', ''), decoding=row['decoding'])
                 if not decoded.strip():
                     raise sources.SourceError('static user document contains no readable text')
                 raw = decoded.encode('utf-8')
-                row.update(reader='github-static-user-text', raw_document_sha256=sources._sha(original_raw),
-                           raw_document_path=receipt['body_path'])
+                row.update(reader='github-static-user-text')
+            else:
+                decoded = raw.decode('utf-8')
             document_path = root / sources.SOURCE_DIR / 'documents' / (sources._sha(raw) + '.original')
             if not document_path.exists():
                 sources._atomic(document_path, raw)
@@ -638,8 +750,20 @@ def read_project(root: Path, url: str, *, client: httpx.Client | None = None,
                 if receipt['final_url'] != homepage:
                     raise sources.SourceError('declared homepage redirected to a different URL')
                 raw = sources._payload(root, receipt)
-                is_html = 'html' in receipt.get('content_type', '').lower()
-                decoded = _page_text(raw) if is_html else raw.decode('utf-8')
+                content_type = receipt.get('content_type', '')
+                media_type = content_type.partition(';')[0].strip().lower()
+                homepage_row.update(raw_document_path=receipt['body_path'],
+                                    raw_document_sha256=receipt['sha256'], decoding={})
+                is_html = (media_type in _HTML_MEDIA_TYPES or
+                           _html_prefix(raw.removeprefix(codecs.BOM_UTF8)[:HTML_CHARSET_SCAN_BYTES].decode('latin-1')))
+                if is_html:
+                    decoded = _page_text(raw, content_type, decoding=homepage_row['decoding'])
+                else:
+                    if media_type not in ('', 'text/plain'):
+                        raise sources.SourceError('declared homepage is not supported HTML or plain text')
+                    decoded = _strict_text(raw, 'utf-8')
+                    homepage_row['decoding'].update(encoding='utf-8', encoding_source='utf-8-default',
+                                                   declared_charset=None, decoder='python-codecs-strict')
                 if not decoded.strip():
                     route.update(status='empty', reason='declared_homepage_contains_no_readable_text')
                     raise sources.SourceError('declared homepage contains no readable text')

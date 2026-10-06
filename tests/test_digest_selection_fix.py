@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class SelectionFixContractTests(unittest.TestCase):
     def setUp(self):
         self.current = selection.load_policy(ROOT)
+        self.current.pop('selection_refinement_contract', None)
         self.legacy = copy.deepcopy(self.current)
         self.legacy.pop('source_reading_contract')
         self.legacy.pop('editorial_scope')
@@ -57,7 +58,8 @@ class SelectionFixContractTests(unittest.TestCase):
         older.pop('understanding_contract')
         base = v10.partition(selection.UNDERSTANDING_PROMPT_MARKER)[0]
         self.assertEqual(base, selection.load_prompt(ROOT, older))
-        self.assertEqual(current_text, selection.load_prompt(ROOT, self.current))
+        v12 = current_text.partition(selection.SELECTION_REFINEMENT_PROMPT_MARKER)[0]
+        self.assertEqual(v12, selection.load_prompt(ROOT, self.current))
         frozen = {'policy': self.legacy, 'prompt_text': v11,
                   'prompt_hash': hashlib.sha256(v11.encode('utf-8')).hexdigest()}
         with tempfile.TemporaryDirectory() as folder:

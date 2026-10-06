@@ -59,6 +59,12 @@ source_documents records captured coverage only, not independent product evidenc
 Use editorial_position for the publication audience and reader_context only for explicitly confirmed exclusions or mandatory-condition conflicts and conditional personal explanations. Ordinary non-AI tools, news, reading and games may offer task, decision, learning or play value. An unknown individual interest or inability to install immediately is not a factual defect. Check source consistency, not taste, agreement with a number, or predicted personal preference.
 Return exactly verdict, reason, issues as the supplied unchanged schema requires. accept requires no concrete material error in the public claims or selection basis; it is not a reliability certificate. defer requires one or more evidence-linked issues, naming the actual public_fields or selection_basis field, an existing issue code, known passage IDs and the concrete mismatch. Use condition_scope, source_conflict, optionality, version_or_path, evidence_strength, reader_policy, unsupported_assertion or cross_field_conflict. Do not return corrected facts, adjusted scores, patches, a new sample request or a verdict about unpublished internal completeness.'''
 
+EVIDENCE_FOCUS_REVIEW_SUPPLEMENT = '''
+Only when selection_refinement_contract is evidence-focus.v1, perform these focused comparisons before returning the unchanged review JSON.
+For each substantive selection_basis reason, identify every product fact it relies on and read the passages at that reason's own evidence_refs URLs. Each cited set must support the facts used in that reason. A fact appearing elsewhere in the packet does not repair a citation to a README or other source that lacks it. The overall reason must not add unsupported facts absent from the correctly cited component reasons. Distinguish documented facts from an explicitly bounded editorial inference; outside product knowledge and another model's understanding are not supplied evidence. If a reason relies on an unsupported architecture or capability, report the actual selection_basis field and the relevant supplied passages; do not conclude that the product lacks that feature everywhere.
+For every public_fields or selection_basis statement that depends on a condition, compare its subject, action, quantifier, channel/version and exceptions with the original words and heading context. Keep the named party attached to the condition: a rule directed at vendors or resellers does not establish a rule for all commercial users. This is a synthetic scope contrast, not a claim about this candidate; do not assume either wording occurs here. Likewise, a capability stated only in supplied API metadata requires that API source when used in a score reason. These examples illustrate the comparison, not a keyword blacklist: judge the actual supplied wording and meaning, including other subjects or qualifications.
+An issue must describe the actual written claim versus its source support or scope, using literal source words when they determine the mismatch and known passage IDs. Inspect both the reason's cited set and the whole packet for relevant conflicting or limiting text. Citation existence or all-packet support alone is insufficient. Do not invent a defect based on these examples or require an exhaustive manual, unpublished conditions or a new platform claim. Return exactly verdict, reason, issues; missing keys remain invalid and no corrected response or retry is requested.'''
+
 
 def _object(properties):
     return {'type': 'object', 'properties': properties, 'required': list(properties),
@@ -207,7 +213,8 @@ def _public_review_input(*, record, facts, assessment, contexts, passages, ranki
 
 
 def build_review_input(*, record, facts, assessment, contexts, ranking_type, reader_context=None, editorial_position=None,
-                       understanding_contract=None, introduction_contract=None, review_scope=None, featured=False):
+                       understanding_contract=None, introduction_contract=None, review_scope=None, featured=False,
+                       selection_refinement_contract=None):
     """Project current prose and score reasoning, never ledger history/labels.
 
     Source text occurs once as passages rather than also duplicating long legacy
@@ -218,16 +225,26 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type, rea
         raise ValueError('invalid editorial ranking type')
     if not all(isinstance(value, dict) for value in (record, facts, assessment)):
         raise ValueError('editorial record, facts and assessment must be objects')
+    if selection_refinement_contract is not None:
+        from .digest_selection import SELECTION_REFINEMENT_CONTRACT
+        if selection_refinement_contract != SELECTION_REFINEMENT_CONTRACT:
+            raise ValueError('unsupported selection refinement contract')
+        if (review_scope != PUBLIC_INTRODUCTION_SCOPE or introduction_contract != 'discovery.v1'
+                or understanding_contract != 'project-reading.v1'):
+            raise ValueError('evidence focus review requires public discovery and project-reading contracts')
     passages = build_passages(contexts)
     if not passages:
         raise ValueError('editorial review requires supplied original text')
     if review_scope is not None:
         if review_scope != PUBLIC_INTRODUCTION_SCOPE:
             raise ValueError('unsupported editorial review scope')
-        return _public_review_input(record=record, facts=facts, assessment=assessment, contexts=contexts,
+        result = _public_review_input(record=record, facts=facts, assessment=assessment, contexts=contexts,
             passages=passages, ranking_type=ranking_type, featured=featured, reader_context=reader_context,
             editorial_position=editorial_position, understanding_contract=understanding_contract,
             introduction_contract=introduction_contract)
+        if selection_refinement_contract is not None:
+            result['selection_refinement_contract'] = selection_refinement_contract
+        return result
     candidate = _project(record, _CANDIDATE_FIELDS)
     if record.get('event'):
         candidate['event'] = _project(record['event'], ('url', 'type', 'occurred_at', 'occurred_on', 'date_precision', 'timezone'))

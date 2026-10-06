@@ -30,6 +30,7 @@ class PipelineTests(unittest.TestCase):
         policy = json.loads(policy_path.read_text(encoding='utf-8'))
         policy.pop('source_reading_contract', None)
         policy.pop('editorial_scope', None)
+        policy.pop('selection_refinement_contract', None)
         policy['version'] = 'v11-discovery-introduction-uncalibrated'
         policy_path.write_text(json.dumps(policy), encoding='utf-8')
         self.now = digest._now()
@@ -177,6 +178,7 @@ class PipelineTests(unittest.TestCase):
         policy.pop('introduction_contract',None)
         policy.pop('source_reading_contract', None)
         policy.pop('editorial_scope', None)
+        policy.pop('selection_refinement_contract', None)
         policy_path.write_text(json.dumps(policy),encoding='utf-8')
 
     def test_reading_card_and_document_scope_reach_score_and_editorial(self):

@@ -32,6 +32,8 @@ INTRODUCTION_PROMPT_MARKER = "<!-- introduction_contract: discovery.v1 -->"
 SOURCE_READING_CONTRACT = "discovery-reading.v1"
 PUBLIC_REVIEW_SCOPE = "public-introduction.v1"
 SELECTION_FIX_PROMPT_MARKER = "<!-- editorial_scope: public-introduction.v1 -->"
+SELECTION_REFINEMENT_CONTRACT = "evidence-focus.v1"
+SELECTION_REFINEMENT_PROMPT_MARKER = "<!-- selection_refinement_contract: evidence-focus.v1 -->"
 FLAG_BASIS_KINDS = {
     "routine_update": "limited_increment", "unsupported_promotion": "unsupported_effect_claim",
     "unfulfilled_announcement": "availability_limit", "unclear_usage": "usage_path_gap",
@@ -97,7 +99,7 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
 def validate_policy(policy: dict) -> dict:
     """Validate an in-memory policy and return an independent, unmodified copy."""
     policy = copy.deepcopy(policy)
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract"))
     if "assessment_contract" in policy and policy["assessment_contract"] != SCOPED_CONTRACT:
         raise SelectionError("unsupported assessment contract")
     if "editorial_review_contract" in policy and policy["editorial_review_contract"] != "source-score.v1":
@@ -108,6 +110,7 @@ def validate_policy(policy: dict) -> dict:
     _check_understanding_contract(policy)
     _check_introduction_contract(policy)
     _check_discovery_selection_contracts(policy)
+    _check_selection_refinement(policy)
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -199,7 +202,9 @@ def load_prompt(root: Path, policy: dict) -> str:
     _check_understanding_contract(policy)
     _check_introduction_contract(policy)
     _check_discovery_selection_contracts(policy)
-    text, fix_marker, fix = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8").partition(SELECTION_FIX_PROMPT_MARKER)
+    _check_selection_refinement(policy)
+    legacy_text, refinement_marker, refinement = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8").partition(SELECTION_REFINEMENT_PROMPT_MARKER)
+    text, fix_marker, fix = legacy_text.partition(SELECTION_FIX_PROMPT_MARKER)
     existing, discovery_marker, discovery = text.partition(INTRODUCTION_PROMPT_MARKER)
     base, marker, _ = existing.partition(UNDERSTANDING_PROMPT_MARKER)
     if policy.get("understanding_contract") == UNDERSTANDING_CONTRACT:
@@ -214,6 +219,10 @@ def load_prompt(root: Path, policy: dict) -> str:
         if not fix_marker:
             raise SelectionError("public-introduction prompt supplement is unavailable")
         base += fix_marker + fix
+    if policy.get("selection_refinement_contract") == SELECTION_REFINEMENT_CONTRACT:
+        if not refinement_marker:
+            raise SelectionError("evidence-focus prompt supplement is unavailable")
+        base += refinement_marker + refinement
     return base
 
 
@@ -306,6 +315,24 @@ def _check_discovery_selection_contracts(policy: dict) -> None:
         raise SelectionError("public introduction review requires source-score contract")
 
 
+def _check_selection_refinement(policy: dict) -> None:
+    """Opt in to new guidance without altering frozen, unmarked inputs."""
+    if "selection_refinement_contract" not in policy:
+        return
+    if policy["selection_refinement_contract"] != SELECTION_REFINEMENT_CONTRACT:
+        raise SelectionError("unsupported selection refinement contract")
+    required = {
+        "understanding_contract": UNDERSTANDING_CONTRACT,
+        "introduction_contract": INTRODUCTION_CONTRACT,
+        "source_reading_contract": SOURCE_READING_CONTRACT,
+        "editorial_scope": PUBLIC_REVIEW_SCOPE,
+        "assessment_contract": SCOPED_CONTRACT,
+        "editorial_review_contract": "source-score.v1",
+    }
+    if any(policy.get(key) != value for key, value in required.items()):
+        raise SelectionError("evidence-focus requires explicit discovery reading and public review contracts")
+
+
 def _validated_understanding(value: dict, contexts: list) -> dict:
     """Check frozen bindings against these sources, without claiming entailment."""
     from .digest_passages import build_passages
@@ -382,6 +409,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     _check_understanding_contract(prepared["policy"])
     _check_introduction_contract(prepared["policy"])
     _check_discovery_selection_contracts(prepared["policy"])
+    _check_selection_refinement(prepared["policy"])
     card = _card(prepared, candidate_id)
     fields = ("url", "title", "category", "kind", "summary", "source_urls", "evidence_urls", "published_at", "change_note")
     material = {key: copy.deepcopy(card["material"][key]) for key in fields if key in card["material"]}
@@ -391,7 +419,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     if event:
         material["event"] = {key: copy.deepcopy(event[key]) for key in
                              ("url", "occurred_at", "occurred_on", "date_precision", "timezone", "type") if key in event}
-    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope")
+    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract")
     result = {
         "card": {"ranking_type": card.get("ranking_type", prepared["ranking_type"]), "profile": card["profile"],
                  "material": material,
@@ -408,6 +436,14 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
         from .digest_understanding import source_documents
         result["card"]["understanding"] = _understanding_projection(card.get("understanding"), card["evidence_context"], source_spans=True)
         result["card"]["source_documents"] = source_documents(card["evidence_context"])
+    if prepared["policy"].get("selection_refinement_contract") == SELECTION_REFINEMENT_CONTRACT:
+        result["output_example"] = {
+            "purpose": "Output structure only; this is not a judgment or evidence about the candidate. PASS requires all five score dimensions with their own source-supported reasons and evidence_refs.",
+            "unknown_example": {
+                "precheck": {"status": "UNKNOWN", "reasons": ["结构示例：此处应写本候选实际缺少的原文依据。"], "evidence_refs": []},
+                "scores": None, "flags": [], "reason": "结构示例，不是对本候选的判断。",
+            },
+        }
     return result
 
 

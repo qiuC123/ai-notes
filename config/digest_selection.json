@@ -1,6 +1,7 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v12-discovery-selection-uncalibrated",
+  "version": "v13-evidence-focus-uncalibrated",
+  "selection_refinement_contract": "evidence-focus.v1",
   "introduction_contract": "discovery.v1",
   "source_reading_contract": "discovery-reading.v1",
   "editorial_scope": "public-introduction.v1",
@@ -41,7 +42,7 @@
       "项目知识库与归档：把做过的项目资料整理为可查找、可供后续 AI 读取和复用的内容。"
     ]
   },
-  "calibration_status": "Uncalibrated discovery-selection policy. v11 real trial found source routing, citation provenance and unpublished-field review defects. Explicit discovery-reading.v1 exposes captured repository metadata and bounded user-facing originals; public-introduction.v1 reviews planned public fields plus selection reasons, with exact weekly featured scope. New passage-ID guidance does not guarantee model compliance. No paid v12 semantic trial has run. Weights, caps, thresholds, flags and source grades remain unchanged; frozen older inputs and verdicts retain their rules. Offline tests and saved-response projections do not prove calibrated selection quality.",
+  "calibration_status": "Uncalibrated evidence-focus policy. The v12 live trial completed: valid passage IDs and model accept verdicts still missed qualifier scope and scoring provenance errors; one source review omitted a required output field. evidence-focus.v1 adds explicit output guidance and checks of each stated basis against its own source and scope. Confirmed collaboration, file-management and project-knowledge interests are context, not human selection labels or guaranteed current tasks. Weights, caps, thresholds, flags and source grades remain unchanged; frozen older inputs and verdicts retain their rules. Offline checks do not establish semantic correctness or calibrated preference quality; a new bounded pilot is required.",
   "dimensions": ["value", "novelty", "evidence", "usability", "interest"],
   "profiles": {
     "practical": {"value": 4, "novelty": 1, "evidence": 1, "usability": 3, "interest": 1},
