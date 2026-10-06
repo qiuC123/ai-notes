@@ -21,6 +21,7 @@ from .digest_output_schema import assessment_schema, source_review_schema
 from .digest_passages import build_passages, bind_review
 from . import digest_editorial as editorial
 from . import digest_reason_review as reason_review
+from . import digest_reason_statements as reason_statements
 from . import digest_reading as reading, digest_understanding as understanding
 
 BUDGETS = {'daily': (30, 12, 8), 'weekly': (80, 35, 25), 'monthly': (150, 60, 30)}
@@ -39,8 +40,13 @@ READER_FOCUS = ('读者不太会代码。优先直接使用的成品、明确操
 
 def _request_budget(policy, deep_limit):
     """Use the job's frozen opt-in, never a later canonical policy upgrade."""
-    reasons = reason_review.MAX_REASON_UNITS if policy.get('reason_review_contract') == reason_review.CONTRACT else 0
+    contract = _reason_contract(policy.get('reason_review_contract'))
+    reasons = contract.MAX_REASON_UNITS if contract else 0
     return 1 + deep_limit * (3 + reasons)
+
+
+def _reason_contract(value):
+    return {reason_review.CONTRACT: reason_review, reason_statements.CONTRACT: reason_statements}.get(value)
 
 
 class _Text(HTMLParser):
@@ -855,14 +861,17 @@ def _issue_notice(root, kind, period, issue, failures, outcome):
                               'shortfall':max(0,minimum-len(issue['items'])),'failures':failures,'action_required':False,'outcome':outcome})
 
 
-def _review_reason_unit(root, job, owner, model, card, entry, score_receipt, unit, budget):
+def _review_reason_unit(root, job, owner, model, card, entry, score_receipt, unit, budget, *, reason_review_contract=None):
     """Freeze and check one unchanged reason against only its own source set."""
+    contract = _reason_contract(reason_review.CONTRACT if reason_review_contract is None else reason_review_contract)
+    if contract is None:
+        raise ValueError('unsupported reason review contract')
     cid=card['candidate_id']; field=unit['field']
     result_stage='reason-result:'+cid+':'+field
     input_stage='reason-input:'+cid+':'+field
     response_stage='reason-response:'+cid+':'+field
     identity={'card':card['input_hash'],'source':entry['request_id'],
-              'score':score_receipt['request_id'],'contract':reason_review.CONTRACT,'unit':unit}
+              'score':score_receipt['request_id'],'contract':contract.CONTRACT,'unit':unit}
     base_signature=runtime._hash(identity)
     frozen=job['checkpoints'].get(input_stage)
     if not frozen or frozen.get('base_signature')!=base_signature:
@@ -872,11 +881,12 @@ def _review_reason_unit(root, job, owner, model, card, entry, score_receipt, uni
                 signature=runtime._hash({'identity':identity,'missing_refs':missing}),unit=copy.deepcopy(unit),
                 missing_refs=missing,request=None))
         else:
-            request=dict(stage='reason-review-v15-own-refs',system=reason_review.REASON_REVIEW_PROMPT,
-                material={'reason_review_contract':reason_review.CONTRACT,'candidate_id':cid,'unit':copy.deepcopy(unit),
+            request=dict(stage='reason-review-v15-own-refs' if contract is reason_review else 'reason-review-v16-statements',
+                system=contract.REASON_REVIEW_PROMPT,
+                material={'reason_review_contract':contract.CONTRACT,'candidate_id':cid,'unit':copy.deepcopy(unit),
                     'input_identity':{'card_input_hash':card['input_hash'],'source_request_id':entry['request_id'],
                                       'score_request_id':score_receipt['request_id']}},
-                output_schema=reason_review.review_schema(unit),max_output_tokens=2048)
+                output_schema=contract.review_schema(unit),max_output_tokens=2048)
             signature=runtime._hash({'identity':identity,'request':request})
             frozen=_save(root,job,owner,input_stage,dict(base_signature=base_signature,signature=signature,
                                                       unit=copy.deepcopy(unit),request=request))
@@ -905,7 +915,7 @@ def _review_reason_unit(root, job, owner, model, card, entry, score_receipt, uni
                 reason='逐理由复核请求预算已耗尽，保留已完成结果待处理。',checks=[],budget_exhausted=True))
         _save(root,job,owner,response_stage,dict(signature=signature,receipt=receipt))
     try:
-        result=reason_review.validate_review(receipt['output'],frozen['unit'])
+        result=contract.validate_review(receipt['output'],frozen['unit'])
     except (ValueError,TypeError,KeyError) as exc:
         return _save(root,job,owner,result_stage,dict(signature=signature,request_id=receipt['request_id'],
             verdict='defer',reason='逐理由复核响应无效：'+str(exc),checks=[],invalid_response=True))
@@ -940,17 +950,19 @@ def _select_public_items(root, job, owner, model, preparation, materials, ranked
         if checked['verdict']!='accept':
             failures.append(cid+':内容复核暂缓：'+checked['reason'])
             continue
-        if eligible and policy.get('reason_review_contract')==reason_review.CONTRACT:
+        contract = _reason_contract(policy.get('reason_review_contract'))
+        if eligible and contract:
             # Review precisely the already frozen publication basis. The older
             # whole-packet verdict remains untouched as a separate receipt.
             public_material=job['checkpoints']['editorial-input:'+cid]['request']['material']
-            units=reason_review.build_reason_units(public_material)
+            units=contract.build_reason_units(public_material)
             if not units:
                 failures.append(cid+':逐理由复核暂缓：没有可核对的评分理由')
                 continue
             blocked=False
             for unit in units:
-                reason_checked=_review_reason_unit(root,job,owner,model,card,entry,receipt,unit,budget)
+                reason_checked=_review_reason_unit(root,job,owner,model,card,entry,receipt,unit,budget,
+                    **({'reason_review_contract': contract.CONTRACT} if contract is reason_statements else {}))
                 if reason_checked['verdict']!='accept':
                     failures.append(cid+':逐理由复核暂缓：'+unit['field']+'：'+reason_checked['reason'])
                     blocked=True

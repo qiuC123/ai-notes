@@ -296,7 +296,7 @@ class ReasonReviewPolicyTests(unittest.TestCase):
                     selection.build_scoring_input(bad, 'fixture')
 
     def test_unknown_marker_in_current_or_frozen_policy_is_rejected(self):
-        for marker in (None, '', {}, 'own-refs.v2'):
+        for marker in (None, '', {}, 'own-refs.v3'):
             bad = copy.deepcopy(self.prepared)
             bad['policy']['reason_review_contract'] = marker
             before = copy.deepcopy(bad)
@@ -309,12 +309,13 @@ class ReasonReviewPolicyTests(unittest.TestCase):
 
     def test_new_post_score_marker_does_not_enter_or_change_scoring_material(self):
         old = selection.build_scoring_input(self.prepared, 'fixture')
-        marked = copy.deepcopy(self.prepared)
-        marked['policy']['reason_review_contract'] = review.CONTRACT
-        new = selection.build_scoring_input(marked, 'fixture')
-        self.assertEqual(old, new)
-        self.assertNotIn('reason_review_contract', set(keys_recursive(new)))
-        self.assertNotIn(review.CONTRACT, json.dumps(new, ensure_ascii=False))
+        for contract in (review.CONTRACT, 'own-refs.v2'):
+            marked = copy.deepcopy(self.prepared)
+            marked['policy']['reason_review_contract'] = contract
+            new = selection.build_scoring_input(marked, 'fixture')
+            self.assertEqual(old, new)
+            self.assertNotIn('reason_review_contract', set(keys_recursive(new)))
+            self.assertNotIn(contract, json.dumps(new, ensure_ascii=False))
 
 
 if __name__ == '__main__':

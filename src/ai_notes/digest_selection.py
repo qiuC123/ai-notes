@@ -360,7 +360,8 @@ def _check_reason_review(policy: dict) -> None:
     if "reason_review_contract" not in policy:
         return
     from .digest_reason_review import CONTRACT
-    if policy["reason_review_contract"] != CONTRACT:
+    from .digest_reason_statements import CONTRACT as STATEMENTS_CONTRACT
+    if policy["reason_review_contract"] not in (CONTRACT, STATEMENTS_CONTRACT):
         raise SelectionError("unsupported reason review contract")
     if policy.get("score_input_contract") != SCORE_INPUT_CONTRACT:
         raise SelectionError("own-refs requires compact-schema and its dependencies")

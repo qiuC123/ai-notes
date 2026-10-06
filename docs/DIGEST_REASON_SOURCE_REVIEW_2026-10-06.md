@@ -1,33 +1,50 @@
 # 单条评分理由的来源隔离复核（2026-10-06）
 
-本轮按用户“继续下一步”实施：让评分理由只对照自身引用的原文，验证上一轮全包复核漏报的五处问题。发现式简介仍以用途、亮点、已知系统和链接为主，不增加使用说明书要求。生产自动化保持 PAUSED。
+已实现逐理由原引用隔离，七次实际模型检查识别了五个旧问题中的三个，但两个范围误判仍遗漏；原文复制合同还误拦了一个正确理由。因此新增程序绑定句子 ID 的可选合同，继续进行三个针对性检查。默认配置仍未开启此门禁，自动化保持 PAUSED。正文仍采用用途、亮点、已知系统和链接的发现式介绍。
 
-## 实现
+## 可选合同与恢复
 
-- 显式可选 `reason_review_contract=own-refs.v1`，只允许与现有 v14 证据、公开介绍和 compact-schema 合同一起启用。默认配置当前没有启用，旧冻结任务、提示词、评分输入和回执不升级。
-- 每次模型只收到一条原始理由、其原始 `evidence_refs` 对应的全部已捕获段落和来源范围，不带其他字段的分数、简介、理解卡或审计结论。缺少自身 URL 对应原文时零调用暂缓；flag 的外部 basis 引文也不能补入。
-- precheck 共享引用的原句作为一组；五个维度与各 flag 分开。总理由原来没有自己的 refs，明确标为组件原引用的派生支撑，最后核对；任一组件失败先阻断，不能由总理由反向补证。
-- 新结果要求覆盖原理由全部实质文字，引用只能来自本条段落。`accept` 只能含 `supported` 或 `editorial_judgment`；`defer` 必须有 `not_supported` 或 `scope_conflict`。无效形状、错 ID、改写原句、漏覆盖或矛盾判决均保留为无效响应，不修补、不重新抽样。合法 ID 和结构仍不证明语义正确。
-- 新门禁在原公开复核通过、程序原生判为 select 后、正式记录前执行；第一条失败即停止本候选。卡片、原文、原评分收据与单条 unit 绑定请求指纹；输入、原响应、结果分别保存，已付成功请求恢复复用，未知请求不重发。
+- `own-refs.v1` 保持独立：一条原始理由及其原始引用对应的全部已捕获段落；原文片段复制必须完整覆盖。旧提示词、形状和已冻结请求保持。
+- `own-refs.v2` 复用同一来源隔离，只由程序预先分句并给出稳定 `statement_id`。完整句子串接等于原理由，标点、空白、引用不变；模型按 ID 返回，每句必须且仅核对一次，不要求复制原文。
+- 每条只收到自身来源；其他字段的分数、简介、理解卡、审计期望均不作为产品证据。缺少自身引用的资料时零调用暂缓。precheck 共享引用的原句作为一组，五个维度与各 flag 分开。
+- 总理由原来没有自己的 refs，明确标为组件原引用的派生支撑，最后核对；任一组件失败先阻断，不能由总理由反向补证。
+- `supported` 与 `scope_conflict` 需要本条段落 ID；`accept` 只能含支持或合理编辑判断，`defer` 必须有具体不支持／范围冲突。错 ID、遗漏、额外字段或矛盾判决均保存无效响应，不修补、不重新抽样。结构通过仍不证明理解正确。
+- 新门禁只在原公开复核通过、程序原生判为 select 后、正式记录前执行；第一条失败即停止本候选。卡片、原文、原评分回执、合同和单条 unit 绑定请求指纹。输入、原响应、结果分开保存；已付成功请求恢复复用，未知请求不重发。
+- 两个合同均显式可选，并要求现有 v14 完整依赖。没有 marker 的流程保留原预算与评分输入；门禁 marker 不进入模型评分材料。新合同提示按来源的主体、量词和许可文件名限定范围，不加入真实项目名或审计答案。
 
-## 调用范围
+## 请求预算
 
-隔离复核需要额外调用，不能把一次全包请求改称多个隔离检查。最大为 precheck 一组＋五维＋最多六个 flag＋总理由，共十三条；实际首个失败后停止。
+每项最多十三条：precheck 一组、五维、最多六个 flag、总理由，遇首个失败停止。仅显式 marker 使用 `1 + deep_limit × (3 + 13)` 作业硬上限，日／周／月 193／561／961；旧合同 37／106／181 保持。数字为最坏上限，来自冻结政策，非每期实际调用量。60,000 字符输入限制保持。
 
-只有显式新合同使用 `1 + deep_limit × (3 + 13)` 的作业硬上限，日／周／月分别 193／561／961。旧合同保留 37／106／181。数字是最坏上限，不是每期承诺调用量；来自该任务冻结政策，不随当前配置变动。60,000 字符输入上限保持。本轮本地实测上限单独锁定七次，不运行完整榜单、初筛或评分。
+本轮实验各自冻结上限：v1 七次，v2 三次。均复用保存的 v14 原理由、分数及原文，不重新评分、重新抓取或运行正式榜单。期望保存在模型输入之外。
 
-## 验证与有界实测
+## 第一阶段：七次实际模型检查
 
-最终完整三榜回归 526 项通过；包含 37 项新机制测试。五份真实 v14 评分材料与原请求逐值一致。只读代码复核未发现阻断问题；这些检查证明来源隔离与恢复机制，不代替语义判断。七次真实模型检查完成后更新本节。
+模型：智谱官方普通 API，`glm-5.3-flash`，reasoning `low`。
 
-七例来自保存的 v14 原资料：Basic Memory interest、rclone usability、rclone interest、Joplin usability、Czkawka 总理由为已知问题；Basic Memory value、Joplin interest 为已有原文支持的正例。期望与独立审计保存在模型输入之外，不改原分数、文案或引用。
+| 检查 | 原模型判断／程序结果 | 独立内容结论 |
+| --- | --- | --- |
+| Basic Memory interest | defer／合法 defer | 识别自身引用缺用途支撑；部分附带判断仍不够准确 |
+| rclone usability | defer／合法 defer | 识别 MIT 许可不在自己的引用资料中 |
+| rclone interest | accept／漏覆盖导致无效 defer | 云盘覆盖范围仍误判，不能将格式拦截算理解正确 |
+| Joplin usability | defer／片段改写导致无效 defer | 识别同步／云端内容不由该安装引用支持 |
+| Czkawka 总理由 | defer／用了组件文字导致无效 defer | 整体 MIT 范围仍未正确判断，负项混入另一组件文字 |
+| Basic Memory value（正例） | accept／漏覆盖导致无效 defer | 内容可接受，被复制格式误拦 |
+| Joplin interest（正例） | accept／合法 accept | 内容与原文相符 |
 
-这是已见错例的开发回归，不是盲测准确率、用户偏好金标、软件亲测或评分代表性校准。可选门禁实现、旧流程兼容和真实模型效果分别记录。
+七次真实 HTTP，零重试；prompt 36,081、completion 6,615，共 42,696 tokens，实际账单金额未知。机械运行审计确认原始 HTTP、receipt、SQLite、checkpoint 一致；4,481 个保护文件及冻结资料未改变。输出结构合法 3/7；旧问题实质识别 3/5，两个正例内容均可接受但只有一个原生通过。这些是已见错例的开发回归，不是盲测准确率、用户金标或整体质量验收。
 
-## 证据
+最初 recorder 在保存请求路径时触发本地断言，发生在底层 HTTP 前，真实请求为零；原失败目录及七条 pending 行完整保留。它的原 summary 中 `actual_requests=7` 是 ledger 数量，不能作为真实网络数。修复后的 recorder 在新目录先以 MockTransport 验证，再进行上述七次实际调用。
 
-- `work/digest-v15-own-refs-20261006/case-manifest.json`：七条精确原理由、引用、捕获范围与离线期望，期望不送模型。
-- `tests/test_digest_reason_review.py`、`tests/test_digest_reason_pipeline.py`：隔离、闭合合同、覆盖／ID／判决、冻结恢复、早停阻断及预算兼容测试。
-- `work/digest-v15-own-refs-20261006/offline-tests.log`：本轮完整三榜回归。
-- `work/digest-v15-own-refs-20261006/trial.py`：原生单理由 helper 的七请求隔离实验，保存 HTTP 原始字节、用量与失败，零重试。
-- 旧错误和短介绍保持在 [v14 实测报告](DIGEST_SCORE_INPUT_FIX_2026-10-06.md) 所列原路径。
+## 第二阶段：句子 ID 修正
+
+v2 实现已完成；549 项完整三榜回归通过，新增 17 项句子绑定与 6 项 pipeline 接入检查。接下来固定三个新合同输入：仍遗漏的 rclone interest、Czkawka 总理由，以及被误拦的 Basic Memory value 正例。最多三个真实 HTTP、零重试；七份既有响应和审计不改写，不把三例开发检查称为代表性校准。模型结果与独立内容结论待检查完成后补入。
+
+## 可审查证据
+
+- 实现：`src/ai_notes/digest_reason_review.py`（v1）、`src/ai_notes/digest_reason_statements.py`（v2）、pipeline／selection 可选接入。
+- 测试：`tests/test_digest_reason_review.py`、`tests/test_digest_reason_statements.py`、`tests/test_digest_reason_pipeline.py`。
+- v1 本地及 recorder 原失败：`work/digest-v15-own-refs-20261006/`；526 项完整三榜回归通过。
+- v1 七次真实调用：`work/digest-v15-own-refs-live-20261006/`，含原始字节、summary、runtime-audit、content-audit。
+- v2 三例：`work/digest-v16-statement-ids-20261006/`，独立冻结 manifest、runner、MockTransport preflight，后续结果保存于此。
+- 旧原评分和短介绍见 [v14 实测报告](DIGEST_SCORE_INPUT_FIX_2026-10-06.md)。

@@ -11,6 +11,7 @@ import httpx
 
 from ai_notes import digest_pipeline as pipeline, digest_runtime as runtime
 from ai_notes import digest_reason_review as reason_review
+from ai_notes import digest_reason_statements as reason_statements
 from ai_notes.digest_passages import build_passages
 from ai_notes.digest_understanding import source_documents
 
@@ -285,6 +286,97 @@ class ReasonSelectionRoutingTests(ReasonFixture):
             with patch.object(pipeline.selection, 'load_policy', side_effect=AssertionError('no upgrade')):
                 pipeline._run_screen(self.root, self.job, 'owner', model, frozen)
             self.assertEqual(budget, model.request.call_args.kwargs['max_requests'])
+
+
+class StatementReasonPipelineTests(ReasonFixture):
+    def prepare_statement(self):
+        self.unit['statements'] = [{'id': 's0', 'text': self.unit['text']}]
+        self.response = {'verdict': 'accept', 'reason': 'Original purpose is supported.',
+            'checks': [{'statement_id': 's0', 'status': 'supported',
+                'passage_ids': [self.unit['passages'][0]['id']], 'reason': 'Direct source purpose.'}]}
+
+    def run_statement(self):
+        return pipeline._review_reason_unit(self.root, self.job, 'owner', self.model,
+            self.card, self.entry, self.score, self.unit, 3,
+            reason_review_contract=reason_statements.CONTRACT)
+
+    def test_v2_request_binds_statement_ids_and_uses_separate_frozen_contract(self):
+        self.prepare_statement()
+        result = self.run_statement()
+        self.assertEqual('accept', result['verdict'])
+        frozen = self.job['checkpoints']['reason-input:fixture:' + self.unit['field']]
+        self.assertEqual('reason-review-v16-statements', frozen['request']['stage'])
+        self.assertEqual(self.unit, frozen['request']['material']['unit'])
+        self.assertEqual('own-refs.v2', frozen['request']['material']['reason_review_contract'])
+        self.assertEqual(self.response, self.job['checkpoints'][
+            'reason-response:fixture:' + self.unit['field']]['receipt']['output'])
+        self.assertNotIn('text', result['checks'][0])
+
+    def test_wrong_statement_id_preserves_invalid_raw_and_never_retries(self):
+        self.prepare_statement()
+        self.response['checks'][0]['statement_id'] = 'invented-id'
+        first = self.run_statement()
+        self.assertTrue(first['invalid_response'])
+        self.assertEqual('defer', first['verdict'])
+        self.restore_job()
+        self.assertEqual(first, self.run_statement())
+        self.assertEqual(1, len(self.calls))
+        self.assertEqual(self.response, self.job['checkpoints'][
+            'reason-response:fixture:' + self.unit['field']]['receipt']['output'])
+
+    def test_v2_paid_response_recovers_without_upgrading_frozen_prompt(self):
+        self.prepare_statement()
+        original = runtime.checkpoint
+        def crash(root, job_id, owner, stage, value):
+            if stage.startswith('reason-response:'):
+                raise OSError('interrupted after successful request')
+            return original(root, job_id, owner, stage, value)
+        with patch.object(runtime, 'checkpoint', side_effect=crash):
+            with self.assertRaises(OSError):
+                self.run_statement()
+        self.restore_job()
+        frozen = copy.deepcopy(self.job['checkpoints']['reason-input:fixture:' + self.unit['field']])
+        with patch.object(reason_statements, 'REASON_REVIEW_PROMPT', 'Later prompt'):
+            recovered = self.run_statement()
+        self.assertEqual('accept', recovered['verdict'])
+        self.assertEqual(1, len(self.calls))
+        self.assertEqual(frozen, self.job['checkpoints']['reason-input:fixture:' + self.unit['field']])
+
+    def test_v2_inherits_frozen_budget_and_policy_dependencies(self):
+        from ai_notes import digest_selection as selection
+        policy = selection.load_policy(Path(__file__).resolve().parents[1])
+        policy['reason_review_contract'] = reason_statements.CONTRACT
+        selection.validate_policy(policy)
+        for deep, expected in ((12, 193), (35, 561), (60, 961)):
+            self.assertEqual(expected, pipeline._request_budget(policy, deep))
+        del policy['score_input_contract']
+        with self.assertRaises(selection.SelectionError):
+            selection.validate_policy(policy)
+
+    def test_v2_selection_gate_routes_own_statements_and_stops_before_record(self):
+        self.prepare_statement()
+        cid = self.card['candidate_id']
+        entry = dict(self.entry, observation={'kind': 'project'})
+        self.job['checkpoints']['editorial-input:' + cid] = {'request': {'material': {'own': True}}}
+        policy = {'editorial_scope': 'public-introduction.v1', 'reason_review_contract': reason_statements.CONTRACT}
+        failures = []
+        with patch.object(pipeline, '_review_editorial', return_value={'verdict': 'accept'}), \
+             patch.object(reason_statements, 'build_reason_units', return_value=[self.unit]) as build, \
+             patch.object(pipeline, '_review_reason_unit', return_value={'verdict': 'defer', 'reason': 'Scope mismatch'}) as review, \
+             patch.object(pipeline.selection, 'record', side_effect=AssertionError('must not record')):
+            selected, _ = pipeline._select_public_items(self.root, self.job, 'owner', self.model,
+                {'policy': policy, 'ranking_type': 'daily'}, {cid: entry},
+                [(80, self.card, {}, self.score, {'decision': 'select'})], 193, 8, failures, [])
+        self.assertEqual([], selected)
+        build.assert_called_once_with({'own': True})
+        self.assertEqual(reason_statements.CONTRACT, review.call_args.kwargs['reason_review_contract'])
+        self.assertIn('Scope mismatch', failures[0])
+
+    def test_unknown_direct_contract_stops_before_http(self):
+        with self.assertRaisesRegex(ValueError, 'unsupported reason review contract'):
+            pipeline._review_reason_unit(self.root, self.job, 'owner', self.model,
+                self.card, self.entry, self.score, self.unit, 3, reason_review_contract='unknown')
+        self.assertEqual([], self.calls)
 
 
 if __name__ == '__main__':
