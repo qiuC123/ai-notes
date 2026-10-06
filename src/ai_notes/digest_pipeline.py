@@ -751,7 +751,7 @@ def _review_original(root, job, owner, model, record, cid, budget):
     return evidence
 
 
-def _review_editorial(root, job, owner, model, card, entry, assessment, score_receipt, budget, *, reader_context=None, editorial_position=None, understanding_contract=None, introduction_contract=None, editorial_scope=None, featured=False, selection_refinement_contract=None):
+def _review_editorial(root, job, owner, model, card, entry, assessment, score_receipt, budget, *, reader_context=None, editorial_position=None, understanding_contract=None, introduction_contract=None, editorial_scope=None, featured=False, selection_refinement_contract=None, score_input_contract=None):
     """One source-linked consistency review, retaining every raw judgment.
 
     This does not amend facts/scores or assert human accuracy. A rejected review
@@ -772,6 +772,8 @@ def _review_editorial(root, job, owner, model, card, entry, assessment, score_re
         identity.update(editorial_scope=editorial_scope,featured=featured)
     if selection_refinement_contract is not None:
         identity['selection_refinement_contract'] = selection_refinement_contract
+    if score_input_contract is not None:
+        identity['score_input_contract'] = score_input_contract
     signature=runtime._hash(identity)
     saved=job['checkpoints'].get(stage)
     if saved and saved['signature']==signature and editorial_scope != selection.PUBLIC_REVIEW_SCOPE:
@@ -784,8 +786,10 @@ def _review_editorial(root, job, owner, model, card, entry, assessment, score_re
             assessment=assessment,contexts=entry['contexts'],ranking_type=card['ranking_type'],reader_context=reader_context,
             editorial_position=editorial_position,understanding_contract=understanding_contract,introduction_contract=introduction_contract,
             **({'review_scope':editorial_scope,'featured':featured} if editorial_scope is not None else {}),
-            **({'selection_refinement_contract': selection_refinement_contract} if selection_refinement_contract is not None else {}))
-        request=dict(stage='editorial-v13-evidence-focus' if selection_refinement_contract is not None else
+            **({'selection_refinement_contract': selection_refinement_contract} if selection_refinement_contract is not None else {}),
+            **({'score_input_contract': score_input_contract} if score_input_contract is not None else {}))
+        request=dict(stage='editorial-v14-reason-navigation' if score_input_contract is not None else
+                          'editorial-v13-evidence-focus' if selection_refinement_contract is not None else
                           'editorial-v12-public-introduction' if editorial_scope == selection.PUBLIC_REVIEW_SCOPE else
                           'editorial-v11-discovery' if introduction_contract == 'discovery.v1' else
                           'editorial-v10-project-reading' if understanding_contract is not None else
@@ -800,6 +804,11 @@ def _review_editorial(root, job, owner, model, card, entry, assessment, score_re
                      max_output_tokens=4096)
         if selection_refinement_contract is not None:
             request['system'] += '\n' + editorial.EVIDENCE_FOCUS_REVIEW_SUPPLEMENT
+        if score_input_contract is not None:
+            request['system'] += ('\nreason_source_navigation maps each actual selection_basis reason to its own '
+                'unchanged evidence_refs and their passages. Read those passages for that reason; a fact elsewhere '
+                'cannot repair missing support in its cited set. Navigation is not proof of entailment. '
+                'Report concrete mismatches without changing refs, scores or prose; do not demand unrelated setup details.')
         frozen=_save(root,job,owner,input_stage,dict(signature=signature,request=request))
     if editorial_scope == selection.PUBLIC_REVIEW_SCOPE:
         # Check the frozen prose that will actually be printed, including a
@@ -861,7 +870,8 @@ def _select_public_items(root, job, owner, model, preparation, materials, ranked
             understanding_contract=policy.get('understanding_contract'),introduction_contract=policy.get('introduction_contract'),
             editorial_scope=policy['editorial_scope'],featured=planned_featured,
             **({'selection_refinement_contract': policy['selection_refinement_contract']}
-               if 'selection_refinement_contract' in policy else {}))
+               if 'selection_refinement_contract' in policy else {}),
+            **({'score_input_contract': policy['score_input_contract']} if 'score_input_contract' in policy else {}))
         if checked['verdict']!='accept':
             failures.append(cid+':内容复核暂缓：'+checked['reason'])
             continue
@@ -937,7 +947,8 @@ def generate(root, job, owner):
     # Keep the stage used before this upgrade for frozen older preparations:
     # stage is part of the request fingerprint, including saved bad responses.
     scoped_scoring = preparation['policy'].get('assessment_contract') == 'scoped-source.v1'
-    score_stage = ('value-score-v13-evidence-focus' if preparation['policy'].get('selection_refinement_contract') is not None else
+    score_stage = ('value-score-v14-compact-schema' if preparation['policy'].get('score_input_contract') == selection.SCORE_INPUT_CONTRACT else
+                   'value-score-v13-evidence-focus' if preparation['policy'].get('selection_refinement_contract') is not None else
                    'value-score-v5-scoped-source' if scoped_scoring else
                    'value-score-v4-evidence-scope' if preparation['policy']['version'].startswith('v4-evidence-scope')
                    else 'value-score-v3-news-contract')

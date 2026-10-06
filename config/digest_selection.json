@@ -1,6 +1,7 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v13-evidence-focus-uncalibrated",
+  "version": "v14-score-input-uncalibrated",
+  "score_input_contract": "compact-schema.v1",
   "selection_refinement_contract": "evidence-focus.v1",
   "introduction_contract": "discovery.v1",
   "source_reading_contract": "discovery-reading.v1",

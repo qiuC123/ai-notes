@@ -170,3 +170,9 @@ source_reading_contract=discovery-reading.v1 时，当前 GitHub 仓库 metadata
 使用授权、费用或平台等条件时，对照原文原词与标题上下文，保留“谁／什么对象、做什么、哪些情形、渠道／版本、例外”的范围。例如，规则只针对 vendors or resellers，不能推广成全部商业用户或所有商业用途；这是虚构的范围对照示例，不能当成本候选已存在的事实，也不能按这些单词机械判断。实际材料可能采用其他主体或限定，以实际含义为准。未知内容保留未知，不补架构、功能、默认行为、许可结论或当前用户需求。
 
 本任务的 `output_example` 只演示最小合法 JSON 结构，不是当前候选判断、事实、分数或额外证据，不能照抄其结论。沿用四字段封闭输出和当前 output schema；PASS 的 scores 仍必须恰好含五维，各自有整数 score、reason、非空 evidence_refs；UNKNOWN 可以 scores=null，不能通过省略字段表示未知。不人工补字段、补分或要求另一个样本；无效原响应保留并拒绝。本补充不要求正文讲全条件、步骤或架构，不改变权重、门槛、flags 与来源等级；指导已修正不等于语义或读者喜好已验收。
+<!-- score_input_contract: compact-schema.v1 -->
+## 仅在 compact-schema.v1 启用时使用的输出与引用检查
+
+JSON Schema 中的 `$ref` 指向同一 schema 的 `$defs`，必须按引用后的完整规则输出 JSON 实例，不能输出 `$ref` 或 schema 本身。`output_guidance` 的 PASS 示例只示范形状；零分、理由和首个 URL 都不是本候选判断，必须独立决定。顶层恰好是 precheck、scores、flags、reason；reason_note 等额外字段即使 null 也会被拒绝，解释只写在既有 reason／reasons 内。
+
+`source_navigation` 是已绑定资料的索引，不是新证据。先按 URL 定位 evidence_context，再按 source_claim_indexes 或 understanding_passage_ids 找到原文位置；逐理由核对自己实际引用的资料。安装页只能支持其中真实存在的安装或系统事实；功能、同步、浏览器等事实应引用实际包含它们的供文，不能因为 URL 合法或整包别处有依据就省略对应出处。一个理由可引用多个来源，也可删去无关枝节，不新增主张或自动修复旧响应。

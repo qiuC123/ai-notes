@@ -214,7 +214,7 @@ def _public_review_input(*, record, facts, assessment, contexts, passages, ranki
 
 def build_review_input(*, record, facts, assessment, contexts, ranking_type, reader_context=None, editorial_position=None,
                        understanding_contract=None, introduction_contract=None, review_scope=None, featured=False,
-                       selection_refinement_contract=None):
+                       selection_refinement_contract=None, score_input_contract=None):
     """Project current prose and score reasoning, never ledger history/labels.
 
     Source text occurs once as passages rather than also duplicating long legacy
@@ -232,6 +232,12 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type, rea
         if (review_scope != PUBLIC_INTRODUCTION_SCOPE or introduction_contract != 'discovery.v1'
                 or understanding_contract != 'project-reading.v1'):
             raise ValueError('evidence focus review requires public discovery and project-reading contracts')
+    if score_input_contract is not None:
+        from .digest_selection import SCORE_INPUT_CONTRACT, SELECTION_REFINEMENT_CONTRACT
+        if score_input_contract != SCORE_INPUT_CONTRACT:
+            raise ValueError('unsupported score input contract')
+        if review_scope != PUBLIC_INTRODUCTION_SCOPE or selection_refinement_contract != SELECTION_REFINEMENT_CONTRACT:
+            raise ValueError('score input navigation requires public introduction and evidence-focus review')
     passages = build_passages(contexts)
     if not passages:
         raise ValueError('editorial review requires supplied original text')
@@ -244,6 +250,20 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type, rea
             introduction_contract=introduction_contract)
         if selection_refinement_contract is not None:
             result['selection_refinement_contract'] = selection_refinement_contract
+        if score_input_contract is not None:
+            result['score_input_contract'] = score_input_contract
+            # Navigation preserves each reason's original URL set. Other
+            # passages remain available to find conflicts, never to repair it.
+            entries = [('selection_basis.precheck.reasons', assessment.get('precheck'))]
+            entries += [('selection_basis.scores.' + name + '.reason', value)
+                        for name, value in (assessment.get('scores') or {}).items()]
+            entries += [('selection_basis.flags.' + str(index) + '.reason', value)
+                        for index, value in enumerate(assessment.get('flags', []))]
+            result['reason_source_navigation'] = [{
+                'field': field,
+                'sources': [{'url': url, 'passage_ids': [p['id'] for p in passages if p['evidence_url'] == url]}
+                            for url in value['evidence_refs']],
+            } for field, value in entries if value is not None]
         return result
     candidate = _project(record, _CANDIDATE_FIELDS)
     if record.get('event'):

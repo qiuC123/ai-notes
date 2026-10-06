@@ -34,6 +34,8 @@ PUBLIC_REVIEW_SCOPE = "public-introduction.v1"
 SELECTION_FIX_PROMPT_MARKER = "<!-- editorial_scope: public-introduction.v1 -->"
 SELECTION_REFINEMENT_CONTRACT = "evidence-focus.v1"
 SELECTION_REFINEMENT_PROMPT_MARKER = "<!-- selection_refinement_contract: evidence-focus.v1 -->"
+SCORE_INPUT_CONTRACT = "compact-schema.v1"
+SCORE_INPUT_PROMPT_MARKER = "<!-- score_input_contract: compact-schema.v1 -->"
 FLAG_BASIS_KINDS = {
     "routine_update": "limited_increment", "unsupported_promotion": "unsupported_effect_claim",
     "unfulfilled_announcement": "availability_limit", "unclear_usage": "usage_path_gap",
@@ -99,7 +101,7 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
 def validate_policy(policy: dict) -> dict:
     """Validate an in-memory policy and return an independent, unmodified copy."""
     policy = copy.deepcopy(policy)
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract", "score_input_contract"))
     if "assessment_contract" in policy and policy["assessment_contract"] != SCOPED_CONTRACT:
         raise SelectionError("unsupported assessment contract")
     if "editorial_review_contract" in policy and policy["editorial_review_contract"] != "source-score.v1":
@@ -111,6 +113,7 @@ def validate_policy(policy: dict) -> dict:
     _check_introduction_contract(policy)
     _check_discovery_selection_contracts(policy)
     _check_selection_refinement(policy)
+    _check_score_input(policy)
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -203,7 +206,9 @@ def load_prompt(root: Path, policy: dict) -> str:
     _check_introduction_contract(policy)
     _check_discovery_selection_contracts(policy)
     _check_selection_refinement(policy)
-    legacy_text, refinement_marker, refinement = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8").partition(SELECTION_REFINEMENT_PROMPT_MARKER)
+    _check_score_input(policy)
+    prior_text, score_marker, score_guidance = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8").partition(SCORE_INPUT_PROMPT_MARKER)
+    legacy_text, refinement_marker, refinement = prior_text.partition(SELECTION_REFINEMENT_PROMPT_MARKER)
     text, fix_marker, fix = legacy_text.partition(SELECTION_FIX_PROMPT_MARKER)
     existing, discovery_marker, discovery = text.partition(INTRODUCTION_PROMPT_MARKER)
     base, marker, _ = existing.partition(UNDERSTANDING_PROMPT_MARKER)
@@ -223,6 +228,10 @@ def load_prompt(root: Path, policy: dict) -> str:
         if not refinement_marker:
             raise SelectionError("evidence-focus prompt supplement is unavailable")
         base += refinement_marker + refinement
+    if policy.get("score_input_contract") == SCORE_INPUT_CONTRACT:
+        if not score_marker:
+            raise SelectionError("compact-schema prompt supplement is unavailable")
+        base += score_marker + score_guidance
     return base
 
 
@@ -333,6 +342,18 @@ def _check_selection_refinement(policy: dict) -> None:
         raise SelectionError("evidence-focus requires explicit discovery reading and public review contracts")
 
 
+def _check_score_input(policy: dict) -> None:
+    if "score_input_contract" not in policy:
+        return
+    if policy["score_input_contract"] != SCORE_INPUT_CONTRACT:
+        raise SelectionError("unsupported score input contract")
+    if (policy.get("assessment_contract") != SCOPED_CONTRACT
+            or policy.get("scoring_projection") != SOURCE_REFS_PROJECTION
+            or policy.get("selection_refinement_contract") != SELECTION_REFINEMENT_CONTRACT):
+        raise SelectionError("compact-schema requires scoped-source, source-refs and evidence-focus contracts")
+    _check_selection_refinement(policy)
+
+
 def _validated_understanding(value: dict, contexts: list) -> dict:
     """Check frozen bindings against these sources, without claiming entailment."""
     from .digest_passages import build_passages
@@ -410,6 +431,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     _check_introduction_contract(prepared["policy"])
     _check_discovery_selection_contracts(prepared["policy"])
     _check_selection_refinement(prepared["policy"])
+    _check_score_input(prepared["policy"])
     card = _card(prepared, candidate_id)
     fields = ("url", "title", "category", "kind", "summary", "source_urls", "evidence_urls", "published_at", "change_note")
     material = {key: copy.deepcopy(card["material"][key]) for key in fields if key in card["material"]}
@@ -419,7 +441,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     if event:
         material["event"] = {key: copy.deepcopy(event[key]) for key in
                              ("url", "occurred_at", "occurred_on", "date_precision", "timezone", "type") if key in event}
-    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract")
+    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract", "score_input_contract")
     result = {
         "card": {"ranking_type": card.get("ranking_type", prepared["ranking_type"]), "profile": card["profile"],
                  "material": material,
@@ -444,6 +466,32 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
                 "scores": None, "flags": [], "reason": "结构示例，不是对本候选的判断。",
             },
         }
+    if prepared["policy"].get("score_input_contract") == SCORE_INPUT_CONTRACT:
+        result["output_guidance"] = {
+            "structure_only_not_candidate_evidence": True,
+            "required_fields": {"top_level": list(ASSESSMENT_FIELDS),
+                                "precheck": ["status", "reasons", "evidence_refs"],
+                                "scores": list(DIMENSIONS), "each_score": ["score", "reason", "evidence_refs"]},
+            "pass_shape_example": {
+                "precheck": {"status": "PASS", "reasons": ["结构示例，须替换为本候选实际依据。"],
+                             "evidence_refs": [card["evidence_context"][0]["url"]] if card["evidence_context"] else []},
+                "scores": {dimension: {"score": 0, "reason": "结构示例，分数与理由须独立判断。",
+                                       "evidence_refs": [card["evidence_context"][0]["url"]] if card["evidence_context"] else []}
+                           for dimension in DIMENSIONS},
+                "flags": [], "reason": "仅展示四字段结构，不表示本候选应 PASS 或得零分。",
+            } if card["evidence_context"] else None,
+            "citation_check": ["每个理由只引用支持其中全部实质事实的 URL；可使用多个 URL。",
+                               "来源导航仅用于定位；仍须读对应 evidence_context 原文，不把合法 URL 等同事实有据。",
+                               "删除无关且缺据的枝节；不要自动补引用或把包内别处支持当成当前引用支持。"],
+            "forbidden_extra_fields": ["reason_note", "decision", "total_score"],
+        }
+        claims = result["card"].get("source_claims", [])
+        proofs = result["card"].get("understanding", {}).get("proof_map", {})
+        result["source_navigation"] = [{
+            "url": context["url"],
+            "source_claim_indexes": [index for index, claim in enumerate(claims) if claim["evidence_url"] == context["url"]],
+            "understanding_passage_ids": [pid for pid, proof in proofs.items() if proof["evidence_url"] == context["url"]],
+        } for context in card["evidence_context"]]
     return result
 
 

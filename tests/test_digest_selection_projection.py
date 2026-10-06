@@ -20,6 +20,7 @@ class SourceReferenceProjectionTests(unittest.TestCase):
         self.policy.pop('source_reading_contract', None)
         self.policy.pop('editorial_scope', None)
         self.policy.pop('selection_refinement_contract', None)
+        self.policy.pop('score_input_contract', None)
         self.url = "https://example.com/guide"
         self.other = "https://example.com/license"
         self.quote = "中文🙂 Windows 10 or later."

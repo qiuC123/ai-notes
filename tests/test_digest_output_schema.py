@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 import unittest
@@ -13,6 +14,7 @@ from ai_notes import digest_output_schema as output_schema, digest_selection as 
 class ScoringOutputSchemaTests(unittest.TestCase):
     def setUp(self):
         self.policy = selection.load_policy(Path(__file__).resolve().parents[1])
+        self.policy.pop('score_input_contract', None)
         self.url = 'https://example.com/manual'
         self.card = {'ranking_type': 'daily', 'profile': 'practical', 'eligibility': {'state': 'available'},
             'material': {'kind': 'project'}, 'evidence_context': [{'url': self.url,
@@ -106,6 +108,150 @@ class ScoringOutputSchemaTests(unittest.TestCase):
         adapted = selection.adapt_assessment(value, policy=self.policy, card=self.card)
         self.assertEqual('rejected', adapted['status'])
         self.assertIn('quote not found', adapted['error'])
+
+
+class CompactScoringSchemaTests(unittest.TestCase):
+    def setUp(self):
+        fixture = ScoringOutputSchemaTests()
+        fixture.setUp()
+        self.policy, self.card, self.good, self.url = fixture.policy, fixture.card, fixture.good, fixture.url
+
+    def schemas(self, card=None, policy=None):
+        policy = copy.deepcopy(policy or self.policy)
+        policy.pop('score_input_contract', None)
+        legacy = output_schema.assessment_schema(policy=policy, card=card or self.card)
+        policy['score_input_contract'] = output_schema.COMPACT_SCHEMA_CONTRACT
+        compact = output_schema.assessment_schema(policy=policy, card=card or self.card)
+        Draft202012Validator.check_schema(legacy)
+        Draft202012Validator.check_schema(compact)
+        return legacy, compact
+
+    def expand(self, compact):
+        def resolve(value):
+            if isinstance(value, dict):
+                if set(value) == {'$ref'}:
+                    path = value['$ref']
+                    self.assertTrue(path.startswith('#/$defs/'))
+                    return resolve(compact['$defs'][path.removeprefix('#/$defs/')])
+                return {key: resolve(item) for key, item in value.items() if key != '$defs'}
+            if isinstance(value, list):
+                return [resolve(item) for item in value]
+            return value
+        return resolve(compact)
+
+    def test_unmarked_schema_is_exactly_the_pre_compaction_value(self):
+        legacy, _ = self.schemas()
+        encoded = json.dumps(legacy, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        self.assertEqual('bbf16b610c93578f5b3327675dc59d4d8ca79dd8064ecde7ee643bb9fd90eb1a',
+                         hashlib.sha256(encoded.encode()).hexdigest())
+        self.assertNotIn('$defs', legacy)
+        card = copy.deepcopy(self.card)
+        card['material']['score_input_contract'] = output_schema.COMPACT_SCHEMA_CONTRACT
+        self.assertEqual(legacy, output_schema.assessment_schema(policy=self.policy, card=card))
+
+    def test_local_reference_expansion_preserves_every_kind_and_ranking_constraint(self):
+        before = copy.deepcopy((self.policy, self.card))
+        for kind in ('project', 'update', 'news', 'reading'):
+            for ranking_type in ('daily', 'weekly', 'monthly'):
+                for contexts in (self.card['evidence_context'], [],
+                                 self.card['evidence_context'] * 2):
+                    card = {**self.card, 'ranking_type': ranking_type,
+                            'material': {'kind': kind}, 'evidence_context': contexts}
+                    with self.subTest(kind=kind, ranking_type=ranking_type, contexts=len(contexts)):
+                        legacy, compact = self.schemas(card)
+                        self.assertEqual(legacy, self.expand(compact))
+        self.assertEqual(before, (self.policy, self.card))
+
+    def test_shared_definitions_reduce_wire_without_changing_sources(self):
+        before = copy.deepcopy(self.card)
+        legacy, compact = self.schemas()
+        wire = json.dumps(compact, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+        self.assertLess(len(wire), len(json.dumps(legacy, ensure_ascii=False, sort_keys=True, separators=(',', ':'))))
+        self.assertEqual(1, wire.count(self.url))
+        self.assertEqual({'$ref': '#/$defs/score'},
+                         compact['properties']['scores']['anyOf'][0]['properties']['value'])
+        self.assertEqual({'$ref': '#/$defs/evidence_url'},
+                         compact['$defs']['score']['properties']['evidence_refs']['items'])
+        self.assertFalse(compact['$defs']['score']['additionalProperties'])
+        self.assertEqual(before, self.card)
+
+    def test_closed_output_integer_and_reference_validation_remains_equivalent(self):
+        legacy, compact = self.schemas()
+        variants = [('valid', copy.deepcopy(self.good), True)]
+        for change in ('missing_top', 'extra_top', 'missing_score', 'extra_score', 'boolean',
+                       'float', 'outside', 'url', 'empty_refs', 'blank', 'pass_null'):
+            value = copy.deepcopy(self.good)
+            if change == 'missing_top':
+                value.pop('reason')
+            elif change == 'extra_top':
+                value['reason_note'] = None
+            elif change == 'missing_score':
+                value['scores'].pop('interest')
+            elif change == 'extra_score':
+                value['scores']['value']['extra'] = None
+            elif change == 'url':
+                value['scores']['value']['evidence_refs'] = ['https://unseen.invalid']
+            elif change == 'empty_refs':
+                value['scores']['value']['evidence_refs'] = []
+            elif change == 'blank':
+                value['scores']['value']['reason'] = ' '
+            elif change == 'pass_null':
+                value['scores'] = None
+            else:
+                value['scores']['value']['score'] = {'boolean': True, 'float': 4.5, 'outside': 11}[change]
+            variants.append((change, value, False))
+        unknown = copy.deepcopy(self.good)
+        unknown.update(precheck={'status': 'UNKNOWN', 'reasons': ['No supplied basis.'], 'evidence_refs': []}, scores=None)
+        variants.append(('unknown_null', unknown, True))
+        for name, value, expected in variants:
+            before = copy.deepcopy(value)
+            with self.subTest(name=name):
+                self.assertEqual(expected, Draft202012Validator(legacy).is_valid(value))
+                self.assertEqual(expected, Draft202012Validator(compact).is_valid(value))
+                self.assertEqual(before, value)
+
+    def test_flags_keep_basis_url_gap_kind_and_closed_shape(self):
+        flag = {'code': 'insufficient_usage_evidence', 'reason': 'A supplied use claim lacks steps.',
+                'evidence_refs': [self.url], 'gap': 'actionable_steps',
+                'basis': {'kind': 'usage_evidence_gap', 'claim': 'A usable workflow.',
+                          'quote': 'The setup instructions have not been published.', 'evidence_url': self.url}}
+        for change, expected in (('valid', True), ('missing_basis', False), ('extra_null', False),
+                                 ('unseen_basis_url', False), ('unknown_code', False), ('wrong_gap', False)):
+            value = copy.deepcopy(self.good)
+            current = copy.deepcopy(flag)
+            if change == 'missing_basis':
+                current.pop('basis')
+            elif change == 'extra_null':
+                current['extra'] = None
+            elif change == 'unseen_basis_url':
+                current['basis']['evidence_url'] = 'https://unseen.invalid'
+            elif change == 'unknown_code':
+                current['code'] = 'fabricated'
+            elif change == 'wrong_gap':
+                current['gap'] = 'long_term_support'
+            value['flags'] = [current]
+            legacy, compact = self.schemas()
+            with self.subTest(change=change):
+                self.assertEqual(expected, Draft202012Validator(legacy).is_valid(value))
+                self.assertEqual(expected, Draft202012Validator(compact).is_valid(value))
+        value = {**self.good, 'flags': [flag]}
+        for card, expected in (({**self.card, 'material': {'kind': 'news'}}, False),
+                               ({**self.card, 'ranking_type': 'monthly'}, True)):
+            legacy, compact = self.schemas(card)
+            self.assertEqual(expected, Draft202012Validator(legacy).is_valid(value))
+            self.assertEqual(expected, Draft202012Validator(compact).is_valid(value))
+
+    def test_no_source_policy_preserves_the_false_reference_and_null_scores_branch(self):
+        card = {**self.card, 'evidence_context': []}
+        legacy, compact = self.schemas(card)
+        self.assertEqual(legacy, self.expand(compact))
+        self.assertEqual(False, compact['properties']['precheck']['properties']['evidence_refs']['items'])
+        self.assertEqual({'type': 'null'}, compact['properties']['scores'])
+        value = copy.deepcopy(self.good)
+        value.update(precheck={'status': 'UNKNOWN', 'reasons': ['No readable source.'], 'evidence_refs': []}, scores=None)
+        self.assertTrue(Draft202012Validator(compact).is_valid(value))
+        value['precheck']['status'] = 'PASS'
+        self.assertFalse(Draft202012Validator(compact).is_valid(value))
 
 
 class SourceReviewSchemaTests(unittest.TestCase):

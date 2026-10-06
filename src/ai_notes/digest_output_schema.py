@@ -11,9 +11,47 @@ import copy
 from .digest import CATEGORIES, KINDS
 
 
+COMPACT_SCHEMA_CONTRACT = "compact-schema.v1"
+
+
 def _object(properties):
     return {"type": "object", "properties": properties,
             "required": list(properties), "additionalProperties": False}
+
+
+def _compact_assessment_schema(schema: dict, *, reference, score: dict) -> dict:
+    """Share identical shape nodes without changing the accepted output set.
+
+    These local references belong to the output schema, not source evidence.
+    Full original text, source spans and binding metadata are untouched. Only
+    nodes exactly equal to the builder's URL enum or score object are replaced;
+    expanding the local references reproduces the legacy schema value.
+    """
+    used = set()
+
+    def project(value):
+        if isinstance(value, dict):
+            if value == reference:
+                used.add("evidence_url")
+                return {"$ref": "#/$defs/evidence_url"}
+            if value == score:
+                used.add("score")
+                return {"$ref": "#/$defs/score"}
+            return {key: project(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [project(item) for item in value]
+        return copy.deepcopy(value)
+
+    compact = project(schema)
+    definitions = {}
+    if "score" in used:
+        # Project children, avoiding a self-reference at this definition's root.
+        definitions["score"] = {key: project(value) for key, value in score.items()}
+    if "evidence_url" in used:
+        definitions["evidence_url"] = copy.deepcopy(reference)
+    if definitions:
+        compact["$defs"] = definitions
+    return compact
 
 
 def assessment_schema(*, policy: dict, card: dict) -> dict:
@@ -61,6 +99,8 @@ def assessment_schema(*, policy: dict, card: dict) -> dict:
         {"if": {"properties": {"precheck": {"properties": {"status": {"enum": ["PASS", "BLOCK"]}}}}},
          "then": {"properties": {"precheck": {"properties": {"evidence_refs": refs()}}}}},
     ]
+    if policy.get("score_input_contract") == COMPACT_SCHEMA_CONTRACT:
+        return _compact_assessment_schema(schema, reference=reference, score=score)
     return schema
 
 

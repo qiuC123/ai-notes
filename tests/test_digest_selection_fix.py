@@ -22,6 +22,7 @@ class SelectionFixContractTests(unittest.TestCase):
     def setUp(self):
         self.current = selection.load_policy(ROOT)
         self.current.pop('selection_refinement_contract', None)
+        self.current.pop('score_input_contract', None)
         self.legacy = copy.deepcopy(self.current)
         self.legacy.pop('source_reading_contract')
         self.legacy.pop('editorial_scope')
