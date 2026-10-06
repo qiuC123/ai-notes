@@ -101,7 +101,7 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
 def validate_policy(policy: dict) -> dict:
     """Validate an in-memory policy and return an independent, unmodified copy."""
     policy = copy.deepcopy(policy)
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract", "score_input_contract"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract", "score_input_contract", "reason_review_contract"))
     if "assessment_contract" in policy and policy["assessment_contract"] != SCOPED_CONTRACT:
         raise SelectionError("unsupported assessment contract")
     if "editorial_review_contract" in policy and policy["editorial_review_contract"] != "source-score.v1":
@@ -114,6 +114,7 @@ def validate_policy(policy: dict) -> dict:
     _check_discovery_selection_contracts(policy)
     _check_selection_refinement(policy)
     _check_score_input(policy)
+    _check_reason_review(policy)
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -354,6 +355,18 @@ def _check_score_input(policy: dict) -> None:
     _check_selection_refinement(policy)
 
 
+def _check_reason_review(policy: dict) -> None:
+    """Explicit isolation gate; never upgrade old frozen policies."""
+    if "reason_review_contract" not in policy:
+        return
+    from .digest_reason_review import CONTRACT
+    if policy["reason_review_contract"] != CONTRACT:
+        raise SelectionError("unsupported reason review contract")
+    if policy.get("score_input_contract") != SCORE_INPUT_CONTRACT:
+        raise SelectionError("own-refs requires compact-schema and its dependencies")
+    _check_score_input(policy)
+
+
 def _validated_understanding(value: dict, contexts: list) -> dict:
     """Check frozen bindings against these sources, without claiming entailment."""
     from .digest_passages import build_passages
@@ -432,6 +445,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     _check_discovery_selection_contracts(prepared["policy"])
     _check_selection_refinement(prepared["policy"])
     _check_score_input(prepared["policy"])
+    _check_reason_review(prepared["policy"])
     card = _card(prepared, candidate_id)
     fields = ("url", "title", "category", "kind", "summary", "source_urls", "evidence_urls", "published_at", "change_note")
     material = {key: copy.deepcopy(card["material"][key]) for key in fields if key in card["material"]}

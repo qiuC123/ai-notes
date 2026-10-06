@@ -20,6 +20,7 @@ from .digest_claims import validate_claims
 from .digest_output_schema import assessment_schema, source_review_schema
 from .digest_passages import build_passages, bind_review
 from . import digest_editorial as editorial
+from . import digest_reason_review as reason_review
 from . import digest_reading as reading, digest_understanding as understanding
 
 BUDGETS = {'daily': (30, 12, 8), 'weekly': (80, 35, 25), 'monthly': (150, 60, 30)}
@@ -33,7 +34,13 @@ READER_FOCUS = ('读者不太会代码。优先直接使用的成品、明确操
                 'Pi 也可能是软件名，不能仅按名字判断硬件。CLI、MCP、Skills 不一律排除，需说明用户如何借助 Agent 使用。'
                 'Star 没有数值硬门槛也不是使用证明；工具需核对用途、操作路径、入口、依赖与维护，有使用反馈或案例时说明其证据范围。'
                 '可靠原文和操作文档可支持用途介绍；未亲测或没有独立评测不单独构成暂缓理由，也不能据此宣称稳定或性能优越。'
-                '暂缓必须指出具体主张缺少什么证据、影响何种判断。新闻按事件影响和原始出处判断，不套工具安装或开源条件。')
+                 '暂缓必须指出具体主张缺少什么证据、影响何种判断。新闻按事件影响和原始出处判断，不套工具安装或开源条件。')
+
+
+def _request_budget(policy, deep_limit):
+    """Use the job's frozen opt-in, never a later canonical policy upgrade."""
+    reasons = reason_review.MAX_REASON_UNITS if policy.get('reason_review_contract') == reason_review.CONTRACT else 0
+    return 1 + deep_limit * (3 + reasons)
 
 
 class _Text(HTMLParser):
@@ -356,7 +363,8 @@ def _run_screen(root, job, owner, model, frozen):
     result = {'selected_ids': [], 'decisions': []}
     if records:
         runtime.renew(root, job['job_id'], owner)
-        result = model.request(**frozen['request'], budget_key=job['job_id'], max_requests=1+deep_limit*3)['output']
+        result = model.request(**frozen['request'], budget_key=job['job_id'],
+                               max_requests=_request_budget(frozen['policy_snapshot'],deep_limit))['output']
     chosen = result.get('selected_ids')
     decisions = result.get('decisions')
     if not isinstance(chosen,list) or len(chosen)>deep_limit or len(set(chosen))!=len(chosen) or set(chosen)-set(records):
@@ -844,7 +852,64 @@ def _review_editorial(root, job, owner, model, card, entry, assessment, score_re
 def _issue_notice(root, kind, period, issue, failures, outcome):
     minimum=5 if kind=='daily' else 20
     return runtime.queue_notice(root,kind+':'+period,{'items':[digest.canonical_url(i['url'],i['kind']) for i in issue['items']],
-        'shortfall':max(0,minimum-len(issue['items'])),'failures':failures,'action_required':False,'outcome':outcome})
+                              'shortfall':max(0,minimum-len(issue['items'])),'failures':failures,'action_required':False,'outcome':outcome})
+
+
+def _review_reason_unit(root, job, owner, model, card, entry, score_receipt, unit, budget):
+    """Freeze and check one unchanged reason against only its own source set."""
+    cid=card['candidate_id']; field=unit['field']
+    result_stage='reason-result:'+cid+':'+field
+    input_stage='reason-input:'+cid+':'+field
+    response_stage='reason-response:'+cid+':'+field
+    identity={'card':card['input_hash'],'source':entry['request_id'],
+              'score':score_receipt['request_id'],'contract':reason_review.CONTRACT,'unit':unit}
+    base_signature=runtime._hash(identity)
+    frozen=job['checkpoints'].get(input_stage)
+    if not frozen or frozen.get('base_signature')!=base_signature:
+        missing=copy.deepcopy(unit.get('missing_refs',[]))
+        if missing or not unit.get('passages'):
+            frozen=_save(root,job,owner,input_stage,dict(base_signature=base_signature,
+                signature=runtime._hash({'identity':identity,'missing_refs':missing}),unit=copy.deepcopy(unit),
+                missing_refs=missing,request=None))
+        else:
+            request=dict(stage='reason-review-v15-own-refs',system=reason_review.REASON_REVIEW_PROMPT,
+                material={'reason_review_contract':reason_review.CONTRACT,'candidate_id':cid,'unit':copy.deepcopy(unit),
+                    'input_identity':{'card_input_hash':card['input_hash'],'source_request_id':entry['request_id'],
+                                      'score_request_id':score_receipt['request_id']}},
+                output_schema=reason_review.review_schema(unit),max_output_tokens=2048)
+            signature=runtime._hash({'identity':identity,'request':request})
+            frozen=_save(root,job,owner,input_stage,dict(base_signature=base_signature,signature=signature,
+                                                      unit=copy.deepcopy(unit),request=request))
+    signature=frozen['signature']
+    saved=job['checkpoints'].get(result_stage)
+    if saved and saved.get('signature')==signature:
+        return saved
+    if frozen['request'] is None:
+        return _save(root,job,owner,result_stage,dict(signature=signature,verdict='defer',
+            reason='该评分理由缺少自身引用对应的原文段落，保留评分待核对。',checks=[],
+            missing_refs=frozen.get('missing_refs',[]),missing_source=True))
+    response=job['checkpoints'].get(response_stage)
+    if response and response.get('signature')==signature:
+        receipt=response['receipt']
+    else:
+        runtime.renew(root,job['job_id'],owner)
+        try:
+            receipt=model.request(**frozen['request'],budget_key=job['job_id'],max_requests=budget)
+        except runtime.InputBudgetExceeded as exc:
+            return _save(root,job,owner,result_stage,dict(signature=signature,verdict='defer',
+                reason='逐理由复核输入超出预算，保留材料待处理：'+str(exc),checks=[],input_exceeded=True))
+        except runtime.RuntimeError as exc:
+            if str(exc)!='model request budget exhausted':
+                raise
+            return _save(root,job,owner,result_stage,dict(signature=signature,verdict='defer',
+                reason='逐理由复核请求预算已耗尽，保留已完成结果待处理。',checks=[],budget_exhausted=True))
+        _save(root,job,owner,response_stage,dict(signature=signature,receipt=receipt))
+    try:
+        result=reason_review.validate_review(receipt['output'],frozen['unit'])
+    except (ValueError,TypeError,KeyError) as exc:
+        return _save(root,job,owner,result_stage,dict(signature=signature,request_id=receipt['request_id'],
+            verdict='defer',reason='逐理由复核响应无效：'+str(exc),checks=[],invalid_response=True))
+    return _save(root,job,owner,result_stage,dict(signature=signature,request_id=receipt['request_id'],**result))
 
 
 def _select_public_items(root, job, owner, model, preparation, materials, ranked, budget, maximum, failures, exclusions):
@@ -875,6 +940,23 @@ def _select_public_items(root, job, owner, model, preparation, materials, ranked
         if checked['verdict']!='accept':
             failures.append(cid+':内容复核暂缓：'+checked['reason'])
             continue
+        if eligible and policy.get('reason_review_contract')==reason_review.CONTRACT:
+            # Review precisely the already frozen publication basis. The older
+            # whole-packet verdict remains untouched as a separate receipt.
+            public_material=job['checkpoints']['editorial-input:'+cid]['request']['material']
+            units=reason_review.build_reason_units(public_material)
+            if not units:
+                failures.append(cid+':逐理由复核暂缓：没有可核对的评分理由')
+                continue
+            blocked=False
+            for unit in units:
+                reason_checked=_review_reason_unit(root,job,owner,model,card,entry,receipt,unit,budget)
+                if reason_checked['verdict']!='accept':
+                    failures.append(cid+':逐理由复核暂缓：'+unit['field']+'：'+reason_checked['reason'])
+                    blocked=True
+                    break
+            if blocked:
+                continue
         decision=selection.record(root,review)
         if decision['decision']=='select':
             selected.append((decision['total_score'],cid,entry))
@@ -898,12 +980,12 @@ def generate(root, job, owner):
     _ensure_screen_recoverable(root, job)
     model=runtime.ModelClient(root)  # fail before any source calls if unconfigured
     initial,deep,maximum=BUDGETS[kind]
-    budget=1+deep*3
     available=digest.candidates(root,ranking_type=kind,period=period,limit=1,include_history=False)['eligible_count']
     if available < (5 if kind=='daily' else 20) and 'screen' not in job['checkpoints'] and 'screen-input' not in job['checkpoints'] and 'supplement' not in job['checkpoints']:
         supplement=sources.collect(root,run_id='supplement-'+job['job_id'][:24],limit=20)
         _save(root,job,owner,'supplement',supplement)
     screening=_screen(root,job,owner,model,kind,period,initial,deep)
+    budget=_request_budget(screening['policy_snapshot'],deep)
     contexts=[]; materials={}; exclusions=[]
     failures=[r['name']+':'+r.get('detail','来源失败') for r in job['checkpoints'].get('supplement',{}).get('source_results',[]) if r.get('status')=='failed']
     for cid in screening['selected_ids']:
@@ -943,6 +1025,7 @@ def generate(root, job, owner):
                                       policy_snapshot=policy_snapshot,prompt_snapshot=screening.get('prompt_snapshot'))
         _save(root,job,owner,'preparation',{'signature':signature,'prepare_id':preparation['prepare_id']})
     selected=[]; ranked=[]; featured_ids=set()
+    budget=_request_budget(preparation['policy'],deep)
     public_scope=preparation['policy'].get('editorial_scope') == selection.PUBLIC_REVIEW_SCOPE
     # Keep the stage used before this upgrade for frozen older preparations:
     # stage is part of the request fingerprint, including saved bad responses.
