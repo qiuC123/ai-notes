@@ -1,0 +1,88 @@
+{
+  "schema_version": "digest-live-preview.v1",
+  "presentation": "discovery.v1",
+  "created_at": "2026-10-06T08:30:48.654398+08:00",
+  "formal_ranking": false,
+  "ranking_profile": "weekly",
+  "trial_period": "2026-10-05",
+  "model": "glm-5.3-flash",
+  "policy_version": "v12-discovery-selection-uncalibrated",
+  "screened": 6,
+  "deep_selected": 6,
+  "verified": 4,
+  "model_selected": 4,
+  "fully_cleared": 1,
+  "displayed_items": [
+    {
+      "candidate_id": "80153704316baf3a89c22efa",
+      "url": "https://github.com/zotero/zotero",
+      "kind": "project",
+      "title": "Zotero：收集、整理阅读资料并管理引用",
+      "category": "开源项目",
+      "summary": "Zotero 是一款免费易用的研究资料管理工具，帮助你收集、整理、标注、引用和分享文献来源。亮点包括：浏览网页时一键收集文献、用集合和标签灵活整理、在 Word/LibreOffice/Google Docs 中直接插入引用并可选用 9000 多种引用格式。",
+      "supported_systems": "Mac / Windows / Linux / iOS / Android",
+      "trial_score": 75,
+      "featured": true
+    }
+  ],
+  "candidate_only_items": [
+    {
+      "candidate_id": "e965e390cb739b5e5357e9f1",
+      "url": "https://github.com/syncthing/syncthing",
+      "kind": "project",
+      "title": "Syncthing：在自己的设备之间持续同步文件夹",
+      "category": "开源项目",
+      "summary": "开源的连续文件同步程序，可在两台或更多计算机之间持续同步文件，强调数据安全、防窃听篡改、易用与自动化。",
+      "supported_systems": "Windows / macOS / Linux",
+      "trial_score": 72,
+      "featured": true,
+      "recommendation_status": "deferred",
+      "audit_reason": "评分写了供文没有说明的直连、去中心化等架构判断，推荐依据待补核。"
+    },
+    {
+      "candidate_id": "8868d7c1ad8ba610ba7764c9",
+      "url": "https://github.com/tagspaces/tagspaces",
+      "kind": "project",
+      "title": "TagSpaces：给本地文件加标签并统一整理",
+      "category": "开源项目",
+      "summary": "TagSpaces 是一款免费开源的本地文件管理器，核心是通过打标签来整理文件：可把标签写进文件名或用旁挂文件保存元数据，支持按名称或标签的模糊搜索，全程离线运行，不依赖云服务。它还提供 TXT/Markdown/HTML 笔记、内置音视频播放，以及可选的浏览器扩展（Web Clipper）把网页保存为本地文件。",
+      "supported_systems": "Windows / macOS / Linux（桌面版）；另有 Firefox、Edge、Chrome 浏览器扩展",
+      "trial_score": 70,
+      "featured": true,
+      "recommendation_status": "deferred",
+      "audit_reason": "实际重点展开误把厂商或转售商的商业授权要求推广为所有商业用途，模型复核漏报。"
+    },
+    {
+      "candidate_id": "ec3f9f81a18d49dd7b5fa1e8",
+      "url": "https://github.com/kopia/kopia",
+      "kind": "project",
+      "title": "Kopia：把文件备份为可恢复的加密快照",
+      "category": "开源项目",
+      "summary": "Kopia 是一款开源备份/恢复工具，可为重要文件和目录创建加密快照，保存到本地、NAS、远程服务器或云存储。它同时提供命令行和图形界面两种使用方式，普通用户可以走图形界面，无需写命令。亮点包括端到端加密、压缩与数据去重（重复内容不重复存储）、以及丰富的存储后端选择。",
+      "supported_systems": "Windows / macOS / Linux（依据仓库 API 元数据描述）",
+      "trial_score": 65,
+      "featured": false,
+      "recommendation_status": "deferred",
+      "audit_reason": "增量备份和系统有官方 API 资料，但部分评分只引 README，引用出处仍不匹配。"
+    }
+  ],
+  "original_model_text_modified": false,
+  "independent_audit_completed": true,
+  "human_gold_labels_added": false,
+  "accuracy_rate": null,
+  "actual_http_calls": 15,
+  "retries": 0,
+  "provider_usage": {
+    "prompt_tokens": 205836,
+    "completion_tokens": 16654,
+    "total_tokens": 222490
+  },
+  "actual_billing_amount": null,
+  "local_evidence_root": "work\\digest-v12-live-20261006",
+  "raw_evidence_sha256": {
+    "summary.json": "bf54338000630e3e8a031b74e1ee5b91f21c85838148672d273d0b45b30d96cb",
+    "checkpoints.json": "9f1ee5f31c267dbb18ae1e13ea568df79a9f24a1fcf6f42b58b8dfe2779da668",
+    "frozen.json": "a69dfde9c5c7c597b9675867e568e09c25234a87a97a4dbd9f4bc62dad5663df",
+    "independent-content-audit.json": "7647ec4b5bec2fff044083d350b1524935f08c660a1045c15cdc2de55d89edef"
+  }
+}
