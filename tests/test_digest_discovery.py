@@ -143,10 +143,12 @@ class DiscoveryProjectionPromptTests(unittest.TestCase):
 
     def test_current_policy_only_changes_contract_and_version_not_scoring_rules(self):
         current = selection.load_policy(ROOT)
-        self.assertEqual('v14-score-input-uncalibrated', current['version'])
+        self.assertEqual('v17-discovery-scope-uncalibrated', current['version'])
+        self.assertEqual('excluded.v1', current['license_review_scope'])
         self.assertEqual('evidence-focus.v1', current['selection_refinement_contract'])
         self.assertEqual('discovery.v1', current['introduction_contract'])
         old = copy.deepcopy(current)
+        old.pop('license_review_scope')  # The v10 fixture predates this scope.
         old.pop('introduction_contract')
         old.pop('source_reading_contract', None)
         old.pop('editorial_scope', None)

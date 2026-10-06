@@ -36,6 +36,9 @@ SELECTION_REFINEMENT_CONTRACT = "evidence-focus.v1"
 SELECTION_REFINEMENT_PROMPT_MARKER = "<!-- selection_refinement_contract: evidence-focus.v1 -->"
 SCORE_INPUT_CONTRACT = "compact-schema.v1"
 SCORE_INPUT_PROMPT_MARKER = "<!-- score_input_contract: compact-schema.v1 -->"
+LICENSE_SCOPE_EXCLUDED = "excluded.v1"
+LICENSE_SCOPE_GUIDANCE = '''
+When license_review_scope is excluded.v1, follow this explicit editorial scope instead of any broader licensing-review instructions above. Do not investigate licence terms, component-specific licence coverage or commercial-use permissions. These are not ranking, score-cap or publication gates. Do not put licence names, licence scope or commercial-use conclusions in introductions, highlights, score explanations, flags or overall recommendation reasons. Rank the candidate on its documented purpose, features, supported systems and reader value. Repository open-source identification may retain its already documented licence name, without auditing its legal scope. Continue checking concrete non-licensing facts, including functionality, systems, versions, events and actually stated free/paid availability. Do not use the exclusion to forgive an unrelated unsupported claim in the same sentence. This editorial scope is not a statement about what any licence permits.'''
 FLAG_BASIS_KINDS = {
     "routine_update": "limited_increment", "unsupported_promotion": "unsupported_effect_claim",
     "unfulfilled_announcement": "availability_limit", "unclear_usage": "usage_path_gap",
@@ -101,7 +104,8 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
 def validate_policy(policy: dict) -> dict:
     """Validate an in-memory policy and return an independent, unmodified copy."""
     policy = copy.deepcopy(policy)
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract", "score_input_contract", "reason_review_contract"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract", "score_input_contract", "reason_review_contract", "license_review_scope"))
+    _check_license_review_scope(policy)
     if "assessment_contract" in policy and policy["assessment_contract"] != SCOPED_CONTRACT:
         raise SelectionError("unsupported assessment contract")
     if "editorial_review_contract" in policy and policy["editorial_review_contract"] != "source-score.v1":
@@ -208,6 +212,7 @@ def load_prompt(root: Path, policy: dict) -> str:
     _check_discovery_selection_contracts(policy)
     _check_selection_refinement(policy)
     _check_score_input(policy)
+    _check_license_review_scope(policy)
     prior_text, score_marker, score_guidance = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8").partition(SCORE_INPUT_PROMPT_MARKER)
     legacy_text, refinement_marker, refinement = prior_text.partition(SELECTION_REFINEMENT_PROMPT_MARKER)
     text, fix_marker, fix = legacy_text.partition(SELECTION_FIX_PROMPT_MARKER)
@@ -233,6 +238,8 @@ def load_prompt(root: Path, policy: dict) -> str:
         if not score_marker:
             raise SelectionError("compact-schema prompt supplement is unavailable")
         base += score_marker + score_guidance
+    if policy.get("license_review_scope") == LICENSE_SCOPE_EXCLUDED:
+        base += LICENSE_SCOPE_GUIDANCE
     return base
 
 
@@ -355,6 +362,16 @@ def _check_score_input(policy: dict) -> None:
     _check_selection_refinement(policy)
 
 
+def _check_license_review_scope(policy: dict) -> None:
+    if "license_review_scope" not in policy:
+        return
+    if policy["license_review_scope"] != LICENSE_SCOPE_EXCLUDED:
+        raise SelectionError("unsupported license review scope")
+    if (policy.get("editorial_scope") != PUBLIC_REVIEW_SCOPE
+            or policy.get("introduction_contract") != INTRODUCTION_CONTRACT):
+        raise SelectionError("license review exclusion requires public discovery scope")
+
+
 def _check_reason_review(policy: dict) -> None:
     """Explicit isolation gate; never upgrade old frozen policies."""
     if "reason_review_contract" not in policy:
@@ -447,6 +464,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     _check_selection_refinement(prepared["policy"])
     _check_score_input(prepared["policy"])
     _check_reason_review(prepared["policy"])
+    _check_license_review_scope(prepared["policy"])
     card = _card(prepared, candidate_id)
     fields = ("url", "title", "category", "kind", "summary", "source_urls", "evidence_urls", "published_at", "change_note")
     material = {key: copy.deepcopy(card["material"][key]) for key in fields if key in card["material"]}
@@ -456,7 +474,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     if event:
         material["event"] = {key: copy.deepcopy(event[key]) for key in
                              ("url", "occurred_at", "occurred_on", "date_precision", "timezone", "type") if key in event}
-    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract", "score_input_contract")
+    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract", "score_input_contract", "license_review_scope")
     result = {
         "card": {"ranking_type": card.get("ranking_type", prepared["ranking_type"]), "profile": card["profile"],
                  "material": material,

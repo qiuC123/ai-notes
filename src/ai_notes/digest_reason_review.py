@@ -10,6 +10,8 @@ import unicodedata
 
 from jsonschema import Draft202012Validator
 
+from .digest_editorial import license_review_supplement
+
 
 CONTRACT = 'own-refs.v1'
 MAX_REASON_UNITS = 13  # one precheck group, five dimensions, six flags, overall
@@ -25,6 +27,16 @@ Do not demand an exhaustive manual, setup conditions, extra platforms, immediate
 Return only verdict, reason, checks, with every required field. accept requires all checks supported or editorial_judgment; defer requires at least one not_supported or scope_conflict. Each reason must explain its actual source comparison. No corrected text, new references, scores, retry request or additional keys.'''
 
 
+def review_prompt(unit):
+    """Use the unit's frozen scope; an unmarked unit gets the original prompt."""
+    if 'license_review_scope' not in unit:
+        return REASON_REVIEW_PROMPT
+    supplement = license_review_supplement(unit['license_review_scope'])
+    if not supplement:
+        raise ValueError('unsupported licence review scope')
+    return REASON_REVIEW_PROMPT + '\n' + supplement
+
+
 def _sources(material, refs):
     passages = [copy.deepcopy(p) for p in material['passages'] if p['evidence_url'] in refs]
     documents = [copy.deepcopy(d) for d in material.get('source_documents', []) if d['evidence_url'] in refs]
@@ -34,6 +46,10 @@ def _sources(material, refs):
 
 def build_reason_units(material):
     """Keep each original cited set; never supplement it from other fields."""
+    if 'license_review_scope' in material:
+        supplement = license_review_supplement(material['license_review_scope'])
+        if not supplement:
+            raise ValueError('unsupported licence review scope')
     basis = material['selection_basis']
     entries = []
     for name in _DIMENSIONS:
@@ -79,6 +95,8 @@ def build_reason_units(material):
             raise ValueError('reason review requires nonempty original explanation')
         if policy:
             unit['judgment_policy'] = copy.deepcopy(policy)
+        if 'license_review_scope' in material:
+            unit['license_review_scope'] = material['license_review_scope']
     return units
 
 

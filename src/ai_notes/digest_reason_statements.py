@@ -24,6 +24,17 @@ original_evidence_refs keeps the reason's unchanged references. For derived_comp
 Judge only actual written claims; do not demand an exhaustive manual, extra setup details, platforms, immediate practice or independent usage tests. If any factual clause in a statement is unsupported or conflicts with its source scope, that statement cannot be supported or merely editorial_judgment.
 Return only verdict, reason, checks. Every check has exactly statement_id, status, passage_ids, reason. Use the supplied statement and passage IDs literally. supported and scope_conflict require nonempty source IDs. accept requires every check supported or editorial_judgment; defer requires at least one not_supported or scope_conflict. Explain the concrete source comparison; no corrected prose, text echo, new references, scores or additional keys.'''
 
+
+def review_prompt(unit):
+    """Keep the v2 prompt and bind only an explicitly supplied scope supplement."""
+    if 'license_review_scope' not in unit:
+        return REASON_REVIEW_PROMPT
+    supplement = original.license_review_supplement(unit['license_review_scope'])
+    if not supplement:
+        raise ValueError('unsupported licence review scope')
+    return REASON_REVIEW_PROMPT + '\n' + supplement
+
+
 _TERMINALS = frozenset('。！？!?；;\r\n')
 _CLOSERS = frozenset("”’」』）》）)]}\"'")
 

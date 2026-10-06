@@ -15,6 +15,7 @@ from .digest_passages import build_passages
 
 REVIEW_CONTRACT = 'source-score.v1'
 PUBLIC_INTRODUCTION_SCOPE = 'public-introduction.v1'
+LICENSE_REVIEW_SCOPE = 'excluded.v1'
 ISSUE_CODES = ('condition_scope', 'source_conflict', 'optionality', 'version_or_path',
                'evidence_strength', 'reader_policy', 'unsupported_assertion', 'cross_field_conflict')
 _FACT_FIELDS = ('title', 'category', 'summary', 'reason', 'audience', 'usage_conditions',
@@ -64,6 +65,20 @@ Only when selection_refinement_contract is evidence-focus.v1, perform these focu
 For each substantive selection_basis reason, identify every product fact it relies on and read the passages at that reason's own evidence_refs URLs. Each cited set must support the facts used in that reason. A fact appearing elsewhere in the packet does not repair a citation to a README or other source that lacks it. The overall reason must not add unsupported facts absent from the correctly cited component reasons. Distinguish documented facts from an explicitly bounded editorial inference; outside product knowledge and another model's understanding are not supplied evidence. If a reason relies on an unsupported architecture or capability, report the actual selection_basis field and the relevant supplied passages; do not conclude that the product lacks that feature everywhere.
 For every public_fields or selection_basis statement that depends on a condition, compare its subject, action, quantifier, channel/version and exceptions with the original words and heading context. Keep the named party attached to the condition: a rule directed at vendors or resellers does not establish a rule for all commercial users. This is a synthetic scope contrast, not a claim about this candidate; do not assume either wording occurs here. Likewise, a capability stated only in supplied API metadata requires that API source when used in a score reason. These examples illustrate the comparison, not a keyword blacklist: judge the actual supplied wording and meaning, including other subjects or qualifications.
 An issue must describe the actual written claim versus its source support or scope, using literal source words when they determine the mismatch and known passage IDs. Inspect both the reason's cited set and the whole packet for relevant conflicting or limiting text. Citation existence or all-packet support alone is insufficient. Do not invent a defect based on these examples or require an exhaustive manual, unpublished conditions or a new platform claim. Return exactly verdict, reason, issues; missing keys remain invalid and no corrected response or retry is requested.'''
+
+LICENSE_REVIEW_SUPPLEMENT = '''
+The frozen license_review_scope is excluded.v1. This narrower scope overrides earlier instructions to check licence ownership, applicable components, licence terms or permitted commercial use. These licensing interpretations are outside this review and must not cause defer, a negative precheck or a score reduction. Do not add licensing or commercial-use conclusions to an introduction or score explanation, and do not describe excluded licensing assertions as verified.
+Continue checking concrete purpose, functions, supported systems, event facts, versions, optionality and factual scope against their actual sources. A mixed statement containing licensing prose and another product fact is not wholly exempt: assess the other fact normally. Pricing or availability of an actual product/service route is not a licence interpretation and remains reviewable when actually asserted.
+Preserve the original response shape, text, references and raw receipts. In a per-reason review, a statement consisting only of excluded licensing interpretation may use editorial_judgment with a reason explicitly saying licensing is outside this review; this does not certify that licensing claim. For a mixed statement, determine its status from the remaining reviewable facts, and defer for any concrete source mismatch in those facts. Do not omit a program-bound statement, invent supporting citations, repair an old response or change scores.'''
+
+
+def license_review_supplement(scope):
+    """Select the explicit frozen exclusion; absent scope keeps old prompts."""
+    if scope is None:
+        return ''
+    if scope != LICENSE_REVIEW_SCOPE:
+        raise ValueError('unsupported licence review scope')
+    return LICENSE_REVIEW_SUPPLEMENT
 
 
 def _object(properties):
@@ -214,7 +229,7 @@ def _public_review_input(*, record, facts, assessment, contexts, passages, ranki
 
 def build_review_input(*, record, facts, assessment, contexts, ranking_type, reader_context=None, editorial_position=None,
                        understanding_contract=None, introduction_contract=None, review_scope=None, featured=False,
-                       selection_refinement_contract=None, score_input_contract=None):
+                       selection_refinement_contract=None, score_input_contract=None, license_review_scope=None):
     """Project current prose and score reasoning, never ledger history/labels.
 
     Source text occurs once as passages rather than also duplicating long legacy
@@ -225,6 +240,7 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type, rea
         raise ValueError('invalid editorial ranking type')
     if not all(isinstance(value, dict) for value in (record, facts, assessment)):
         raise ValueError('editorial record, facts and assessment must be objects')
+    license_review_supplement(license_review_scope)
     if selection_refinement_contract is not None:
         from .digest_selection import SELECTION_REFINEMENT_CONTRACT
         if selection_refinement_contract != SELECTION_REFINEMENT_CONTRACT:
@@ -264,6 +280,8 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type, rea
                 'sources': [{'url': url, 'passage_ids': [p['id'] for p in passages if p['evidence_url'] == url]}
                             for url in value['evidence_refs']],
             } for field, value in entries if value is not None]
+        if license_review_scope is not None:
+            result['license_review_scope'] = license_review_scope
         return result
     candidate = _project(record, _CANDIDATE_FIELDS)
     if record.get('event'):
@@ -306,4 +324,6 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type, rea
         result['understanding_contract'] = understanding_contract
         result['source_documents'] = source_documents(contexts)
         result['facts']['understanding'] = _understanding_projection(facts.get('understanding'), contexts, source_spans=False)
+    if license_review_scope is not None:
+        result['license_review_scope'] = license_review_scope
     return result

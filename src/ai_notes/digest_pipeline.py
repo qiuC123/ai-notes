@@ -700,6 +700,9 @@ def _review_original(root, job, owner, model, record, cid, budget):
                     request['material']['selection_refinement_contract'] = refinement
                     request['material']['output_guidance'] = _source_output_guidance(request['output_schema'])
                     request['system'] += '\n' + EVIDENCE_FOCUS_VERIFY_SUPPLEMENT
+                if frozen_policy.get('license_review_scope') == selection.LICENSE_SCOPE_EXCLUDED:
+                    request['material']['license_review_scope'] = selection.LICENSE_SCOPE_EXCLUDED
+                    request['system'] += selection.LICENSE_SCOPE_GUIDANCE
             if scoped:
                 # Persist the whole request before HTTP: even a crash between
                 # the runtime receipt and our response checkpoint must keep
@@ -765,7 +768,7 @@ def _review_original(root, job, owner, model, record, cid, budget):
     return evidence
 
 
-def _review_editorial(root, job, owner, model, card, entry, assessment, score_receipt, budget, *, reader_context=None, editorial_position=None, understanding_contract=None, introduction_contract=None, editorial_scope=None, featured=False, selection_refinement_contract=None, score_input_contract=None):
+def _review_editorial(root, job, owner, model, card, entry, assessment, score_receipt, budget, *, reader_context=None, editorial_position=None, understanding_contract=None, introduction_contract=None, editorial_scope=None, featured=False, selection_refinement_contract=None, score_input_contract=None, license_review_scope=None):
     """One source-linked consistency review, retaining every raw judgment.
 
     This does not amend facts/scores or assert human accuracy. A rejected review
@@ -788,6 +791,10 @@ def _review_editorial(root, job, owner, model, card, entry, assessment, score_re
         identity['selection_refinement_contract'] = selection_refinement_contract
     if score_input_contract is not None:
         identity['score_input_contract'] = score_input_contract
+    if license_review_scope is not None:
+        selection._check_license_review_scope({'license_review_scope': license_review_scope,
+            'editorial_scope': editorial_scope, 'introduction_contract': introduction_contract})
+        identity['license_review_scope'] = license_review_scope
     signature=runtime._hash(identity)
     saved=job['checkpoints'].get(stage)
     if saved and saved['signature']==signature and editorial_scope != selection.PUBLIC_REVIEW_SCOPE:
@@ -801,7 +808,8 @@ def _review_editorial(root, job, owner, model, card, entry, assessment, score_re
             editorial_position=editorial_position,understanding_contract=understanding_contract,introduction_contract=introduction_contract,
             **({'review_scope':editorial_scope,'featured':featured} if editorial_scope is not None else {}),
             **({'selection_refinement_contract': selection_refinement_contract} if selection_refinement_contract is not None else {}),
-            **({'score_input_contract': score_input_contract} if score_input_contract is not None else {}))
+            **({'score_input_contract': score_input_contract} if score_input_contract is not None else {}),
+            **({'license_review_scope': license_review_scope} if license_review_scope is not None else {}))
         request=dict(stage='editorial-v14-reason-navigation' if score_input_contract is not None else
                           'editorial-v13-evidence-focus' if selection_refinement_contract is not None else
                           'editorial-v12-public-introduction' if editorial_scope == selection.PUBLIC_REVIEW_SCOPE else
@@ -823,6 +831,8 @@ def _review_editorial(root, job, owner, model, card, entry, assessment, score_re
                 'unchanged evidence_refs and their passages. Read those passages for that reason; a fact elsewhere '
                 'cannot repair missing support in its cited set. Navigation is not proof of entailment. '
                 'Report concrete mismatches without changing refs, scores or prose; do not demand unrelated setup details.')
+        if license_review_scope is not None:
+            request['system'] += editorial.license_review_supplement(license_review_scope)
         frozen=_save(root,job,owner,input_stage,dict(signature=signature,request=request))
     if editorial_scope == selection.PUBLIC_REVIEW_SCOPE:
         # Check the frozen prose that will actually be printed, including a
@@ -882,7 +892,7 @@ def _review_reason_unit(root, job, owner, model, card, entry, score_receipt, uni
                 missing_refs=missing,request=None))
         else:
             request=dict(stage='reason-review-v15-own-refs' if contract is reason_review else 'reason-review-v16-statements',
-                system=contract.REASON_REVIEW_PROMPT,
+                system=contract.review_prompt(unit),
                 material={'reason_review_contract':contract.CONTRACT,'candidate_id':cid,'unit':copy.deepcopy(unit),
                     'input_identity':{'card_input_hash':card['input_hash'],'source_request_id':entry['request_id'],
                                       'score_request_id':score_receipt['request_id']}},
@@ -946,7 +956,8 @@ def _select_public_items(root, job, owner, model, preparation, materials, ranked
             editorial_scope=policy['editorial_scope'],featured=planned_featured,
             **({'selection_refinement_contract': policy['selection_refinement_contract']}
                if 'selection_refinement_contract' in policy else {}),
-            **({'score_input_contract': policy['score_input_contract']} if 'score_input_contract' in policy else {}))
+            **({'score_input_contract': policy['score_input_contract']} if 'score_input_contract' in policy else {}),
+            **({'license_review_scope': policy['license_review_scope']} if 'license_review_scope' in policy else {}))
         if checked['verdict']!='accept':
             failures.append(cid+':内容复核暂缓：'+checked['reason'])
             continue

@@ -33,6 +33,7 @@ class PipelineTests(unittest.TestCase):
         policy.pop('selection_refinement_contract', None)
         policy.pop('score_input_contract', None)
         policy.pop('reason_review_contract', None)
+        policy.pop('license_review_scope', None)  # Keep this legacy fixture's original scope.
         policy['version'] = 'v11-discovery-introduction-uncalibrated'
         policy_path.write_text(json.dumps(policy), encoding='utf-8')
         self.now = digest._now()

@@ -23,6 +23,7 @@ class SelectionFixContractTests(unittest.TestCase):
         self.current = selection.load_policy(ROOT)
         self.current.pop('selection_refinement_contract', None)
         self.current.pop('score_input_contract', None)
+        self.current.pop('license_review_scope', None)  # Exercise the frozen v12 contract.
         self.legacy = copy.deepcopy(self.current)
         self.legacy.pop('source_reading_contract')
         self.legacy.pop('editorial_scope')

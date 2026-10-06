@@ -28,6 +28,7 @@ class EvidenceFocusPolicyTests(unittest.TestCase):
     def setUp(self):
         self.policy = selection.load_policy(ROOT)
         self.policy.pop('score_input_contract', None)  # Frozen v13 guidance.
+        self.policy.pop('license_review_scope', None)
 
     def test_marker_is_closed_and_requires_existing_v12_contracts(self):
         self.assertEqual(MARKER, self.policy['selection_refinement_contract'])
@@ -175,6 +176,7 @@ class EvidenceFocusPipelineTests(unittest.TestCase):
         path = self.fixture.root / selection.POLICY_PATH
         policy = selection.load_policy(ROOT)
         policy.pop('score_input_contract', None)
+        policy.pop('license_review_scope', None)  # Freeze the v13 stage guidance.
         path.write_text(json.dumps(policy), encoding='utf-8')
 
     def test_new_stage_material_and_guidance_are_frozen_through_all_stages(self):
@@ -203,6 +205,7 @@ class EvidenceFocusPipelineTests(unittest.TestCase):
     def test_unmarked_source_request_remains_exact_under_new_current_policy(self):
         policy = selection.load_policy(ROOT)
         policy.pop('score_input_contract', None)
+        policy.pop('license_review_scope', None)
         policy.pop('selection_refinement_contract')
         record = dict(url='https://projects.example/legacy', title='Synthetic legacy tool',
                       category='游戏', kind='project', summary='Supplied purpose', reason='Source checking',

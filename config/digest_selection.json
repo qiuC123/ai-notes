@@ -1,6 +1,7 @@
 {
   "schema_version": "digest-selection.policy.v1",
-  "version": "v14-score-input-uncalibrated",
+  "version": "v17-discovery-scope-uncalibrated",
+  "license_review_scope": "excluded.v1",
   "score_input_contract": "compact-schema.v1",
   "selection_refinement_contract": "evidence-focus.v1",
   "introduction_contract": "discovery.v1",
@@ -46,7 +47,7 @@
       "项目知识库与归档：把做过的项目资料整理为可查找、可供后续 AI 读取和复用的内容。"
     ]
   },
-  "calibration_status": "Uncalibrated evidence-focus policy. The v12 live trial completed: valid passage IDs and model accept verdicts still missed qualifier scope and scoring provenance errors; one source review omitted a required output field. evidence-focus.v1 adds explicit output guidance and checks of each stated basis against its own source and scope. Confirmed collaboration, file-management and project-knowledge interests are context, not human selection labels or guaranteed current tasks. Weights, caps, thresholds, flags and source grades remain unchanged; frozen older inputs and verdicts retain their rules. Offline checks do not establish semantic correctness or calibrated preference quality; a new bounded pilot is required.",
+  "calibration_status": "Uncalibrated discovery policy. On 2026-10-06 the user explicitly excluded licence terms, component licence coverage and commercial-use permissions from scoring and publication review. New introductions and recommendation reasons omit those conclusions; repository open-source identification may retain a documented licence name without interpreting its scope. Purpose, functions, systems, events and source bindings still require support. Older frozen requests and verdicts retain their original rules. Weights, caps, thresholds, flags, source grades and paused automation are unchanged. Offline checks verify mechanics, not representative selection quality.",
   "dimensions": ["value", "novelty", "evidence", "usability", "interest"],
   "profiles": {
     "practical": {"value": 4, "novelty": 1, "evidence": 1, "usability": 3, "interest": 1},

@@ -24,6 +24,7 @@ MARKER = "compact-schema.v1"
 class ScoreInputTests(unittest.TestCase):
     def setUp(self):
         self.policy = selection.load_policy(ROOT)
+        self.policy.pop("license_review_scope", None)  # Pin this v14 fixture's earlier review scope.
         self.policy["score_input_contract"] = MARKER
         self.readme = "https://example.com/README.md"
         self.install = "https://example.com/install.md"
