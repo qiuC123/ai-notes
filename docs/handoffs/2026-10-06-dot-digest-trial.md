@@ -1,6 +1,6 @@
 # Dot 三榜接手与云端试运行
 
-用户已于 2026-10-06 确认执行：同步最新代码与历史候选，先跑一次云端采集和榜单预览，确认保存及恢复，再切换日、周、月任务。2026-10-08 主控已在用户登录的 Chrome 页面核对、保存并发布三个 GLM 普通环境变量，现有网络密钥绑定保持，页面读回通过。此前云端 76 项测试与 6 个来源入口检查成功为执行者回报。下一步在本次发布环境的新执行中检查模型、做一次真实连通检查与迁移历史；不能把环境发布当作已完成采集生成回执。
+用户已于 2026-10-06 确认执行：同步最新代码与历史候选，先跑一次云端采集和榜单预览，确认保存及恢复，再切换日、周、月任务。2026-10-08 主控已核对、保存并发布 GLM 配置；唯一真实模型 smoke 通过，主控打开原结果与执行文件读回。历史 ZIP 已分别附到原 Dot 与现有云端执行任务，两次下载均为 HTTP 403，历史恢复尚未执行；主控已打开新失败 JSON 核对。下一步解决私密附件传输，再恢复历史并验证后续任务的状态读取；采集生成和定时尚未完成。此前云端 76 项测试与 6 个来源入口检查成功为执行者回报。
 
 ## 可以直接交给 Dot 的任务
 
@@ -37,7 +37,7 @@
 | 环境变量 | `DIGEST_MODEL_NAME` | `glm-5.3-flash` |
 | 环境变量 | `DIGEST_MODEL_REASONING_EFFORT` | `low` |
 
-网络密钥按官方约定向程序提供占位符，代理在指定域名的 HTTPS 443 请求中替换；当前 `ModelClient` 只检查密钥非空并写入 Bearer 请求头，代码层面可采用该方式，代理替换仍需真实 smoke 回执验证。采用此方式时不设置 `DIGEST_MODEL_ENV_FILE`，也不传 `--model-env-file`：选定文件时程序会完全使用文件配置，不会合并云端注入变量。若选择完整私密文件，则显式提供其云端绝对路径。配置入口和交付方式见[官方环境变量与网络密钥说明](https://learn.chatgpt.com/docs/environments/cloud-environments#configure-environment-variables-and-network-secrets)。
+网络密钥按官方约定向程序提供占位符，代理在指定域名的 HTTPS 443 请求中替换；当前 `ModelClient` 只检查密钥非空并写入 Bearer 请求头。2026-10-08 已按此配置完成唯一真实 smoke，主控在网页打开结果与执行文件读回成功，见下方记录。采用此方式时不设置 `DIGEST_MODEL_ENV_FILE`，也不传 `--model-env-file`：选定文件时程序会完全使用文件配置，不会合并云端注入变量。若选择完整私密文件，则显式提供其云端绝对路径。配置入口和交付方式见[官方环境变量与网络密钥说明](https://learn.chatgpt.com/docs/environments/cloud-environments#configure-environment-variables-and-network-secrets)。
 
 ### 执行检查与单轮试运行
 
@@ -78,6 +78,14 @@ print(digest_runtime.work_once(root, job_id=job['job_id']))
 原本地 heartbeat 继续暂停；不恢复它来代替 Dot，也不修改飞书、Pi、共学和旧 Release 管道。正常采集与未变化缺口安静，仅榜单完成、失败、实质缺口变化或需要用户处理时通知。结果交付到此 Dot 对话；本地原任务作为交接入口。准确报告“材料已准备／Dot 已收到／云端单轮已运行／定时已保存／已观察到定时运行”，未完成的步骤不能合并称为部署成功。
 
 ## 本次实际记录
+
+2026-10-08 21:43，北京时间：原 Dot 附件403后，主控将同一个 ZIP 直接附到现有执行任务，新附件 ID 为 `file_00000000278c81fd849163532a73e4ed`。执行者使用新ID只下载一次，未重试旧链接，仍返回 HTTP403。主控打开 `/workspace/digest-backup-import/receipts/direct-attachment-blocked.json`，读回 `status=blocked`、`download_exit_code=1`、`download_error="library file transfer failed: download failed with HTTP status 403"`、`local_zip_exists=false`、`target_exists=false`、`counts_verified=false`。附件元数据大小与预期相同，但实际 bytes／SHA均为空，解压、verify、restore、status/history及索引检查全部未运行。47／287／169／22／3保持预期值，不能称已迁移。原403回执与模型账本保留；本轮模型、采集生成调用均为0。原 Dot 已自动收到失败摘要，主控没有更改分享权限、公开上传备份或恢复自动化。截图保留于忽略目录 `work/dot-cloud-config-20261008/direct-attachment-403.png` 与 `direct-attachment-403-details.png`。
+
+当前没有已经核验可用的替代私密传输渠道。修复附件合法下载或取得已配置、执行任务可认证读取的私密存储后，继续使用此 ZIP；不要循环重传、猜链接或用空历史代替。取得文件后，`digest_backup verify` 对解压后的备份目录执行，成功才恢复到空目标；restore不会将manifest复制进状态目录。后续先续跑现有任务读回同一root和账本；另开任务不因路径同名就共享状态，持续保存与跨任务读取还需实际验证。原本地自动化再次读回为 PAUSED，尚未保存新schedule。
+
+2026-10-08 21:21:41 北京时间，Dot 新任务“检查智谱最小模型调用”完成唯一模型请求，零重试。实际代码 SHA 为 `a587897b934013e333f299b4d7db4a8febea631d`，Python 3.12.14，使用 `/workspace/ai-notes/.venv/bin/python`，独立 root 为 `/workspace/ai-notes-glm-smoke-20261008`。`model-check` 回报表中参数正确、key_configured=true，无模型 env 文件；主控打开该 root 的 `model-smoke.stdout.json` 与 `model-smoke.execution.json`，读回 `succeeded`、`output={"ok":true}`、`reused=false`、exit_code=0、输入81／输出32／合计113 tokens（reasoning21、cached0）。执行者另回报 runtime status 为1成功请求、error=null、无 jobs/outbox；二进制账本无法直接网页预览，未声称主控独立查过 SQLite。原生任务卡片和“打开聊天”可读；生成的进度文本链接曾显示无权访问，未改变共享权限。
+
+同日21:30，已私密上传历史 ZIP `digest-dot-20261006-234016.zip` 到原 Dot 对话：7,722,087 bytes，SHA-256 `b1c91cc78427d40492152fdb8b88befbc63e7dd773d14c77ab9ee23394fedba6`。单一同名根目录下为701内容文件＋manifest；本地逐 ZIP 成员哈希及实际解压 verify 通过，无 .env／密钥配置。Dot 已将恢复要求交给现有云端任务继续：先核对原 ZIP、verify，再 restore 到 `/workspace/ai-notes-digest-state-trial-20261008`；保留模型账本且不重做 smoke。历史与跨任务状态仍待云端读回，尚未采集生成或保存新定时，原自动化保持暂停。
 
 2026-10-08 21:16 北京时间，主控按用户授权使用 nuphus 操作已有 Chrome 的 `ai-notes` 配置会话。管理环境变量中实际核对表中三个值及环境作用域，原有 `DIGEST_MODEL_API_KEY` 网络密钥绑定保持且值未读取；列表没有 `DIGEST_MODEL_ENV_FILE`。保存草稿后页面显示“所有更改已保存”，随后点击发布，读回“环境已发布”与“已发布”。截图保留在忽略目录 `work/dot-cloud-config-20261008/published.png`，没有上传凭据。内置浏览器的环境列表仍加载失败，但 Chrome 这次保存发布成功；不再沿用此前 `draft_not_editable` 作为当前配置阻塞。原本地自动化现场实读为 PAUSED；本步骤没有模型请求、历史迁移、采集生成或定时切换。云端配置注入及代理替换还须以下一步实际执行回执验收。
 
