@@ -1,6 +1,6 @@
 # TASK — 三榜筛选优化与独立运行
 
-更新时间：2026-10-08；状态：主控已在用户登录的 Chrome 页面核对、保存并发布 GLM 配置。Dot 新建的云端检查实际完成一次模型请求，主控打开结果和执行文件读回 `succeeded`、`ok=true`、`reused=false`、113 tokens；环境配置与 API 连通通过。历史 ZIP 已验证并分别私密上传原 Dot 对话和执行任务，两次云端下载均返回 HTTP 403；主控打开新失败回执，确认 ZIP 未落盘、恢复目标不存在，历史恢复未执行。采集生成、跨任务状态保留和定时尚未验收。本地交接材料、701 文件私密备份和 22 期历史恢复验证已完成；许可范围排除已实现，564 项三榜离线测试通过。整体自动刊用与完整计划仍未验收。原自动化现场仍为 PAUSED；主控 Codex。
+更新时间：2026-10-09；状态：云端 GLM 配置发布与唯一真实 smoke 已通过（113 tokens，不重跑）。按用户本次直接授权，原历史 ZIP 已上传公开 GitHub Release；本机与 Dot 云端均无认证下载 HTTP200、大小及哈希一致。Dot 已在原任务恢复701文件，读回47批／287观察／169入选／22归档／3草稿；主控打开并下载原JSON回执核对。22期文章、清单与索引通过，3份旧草稿JSON因原库无清单校验字段标为 legacy_untracked，文件原样保持。采集生成、状态持续保存和定时尚未验收；本轮零模型调用和调度变动。许可范围排除已实现，564 项三榜离线测试通过，整体自动刊用与完整计划仍未验收。原自动化实读为 PAUSED；主控 Codex。
 
 本次用户调整已落实：三榜重点是发现项目，正文显示名称、用途、代表性亮点、已知支持系统和链接，配图按需；不要求讲全使用条件或限制。固定的读者／泛化使用条件行已移除；新复核只因实际写出的实质事实错误暂缓，不因省略无关细节拒绝。原有错例和测试结果保持。
 
@@ -25,8 +25,8 @@
 | v14 输入预算、输出结构与恢复稳定性 | [评分回归](docs/DIGEST_SCORE_INPUT_FIX_2026-10-06.md)：489 项测试通过；5 评分＋5 复核、零重试，全部输入小于 60,000。五条[原模型短介绍](outputs/digest/v14-reader-preview-2026-10-06.md)可展示；四项 select 的完整评分引用仍需暂缓，机器复核漏掉五处问题。 |
 | 独立 worker 从初筛运行到本地文章，恢复不重付费 | 真实隔离单期 14 初筛→4 深核尝试→2 原文成功→1 条归档；8 API、0 付费重试，重复 work 为 idle。日榜缺 4 条，尚未验证连续采集、周月和持续调度。 |
 | 默认轮换来源的真实采集与幂等恢复 | 已完成一次隔离 worker：三个入口、33 份 fetch 回执、16 个 discovered 候选入库读回；同任务 idle、同批重放 unchanged，零模型调用。见[来源验收](docs/DIGEST_SOURCES_RUNTIME.md)。 |
-| 私密迁移与云端持续运行 | 实际生产状态 685 文件、22/22 历史归档备份恢复匹配；目标连接、云环境、长期运行和通知送达尚未验收。 |
-| Dot 接手与最新状态准备 | 10/8 GLM 配置发布及唯一真实 smoke 通过，主控在网页读回结果与执行文件。私密历史 ZIP 两次下载均为 HTTP 403，未恢复；主控读回新失败 JSON。跨任务状态、采集生成及新 schedule 尚未验收，见 [Dot 交接](docs/handoffs/2026-10-06-dot-digest-trial.md)。 |
+| 历史迁移与云端持续运行 | 10/9 Dot云端恢复701文件，47批／287观察／169入选／22归档／3草稿一致，22期文章清单及索引通过；3份旧草稿清单缺原库校验字段，原样保留。新容器状态保留、长期运行和通知送达尚未验收。 |
+| Dot 接手与最新状态准备 | 10/8 GLM配置发布及唯一真实smoke通过。10/9单份公开Release传输及原任务历史恢复通过，主控读回原JSON回执。跨任务状态、采集生成及新schedule尚未验收，见 [Dot 交接](docs/handoffs/2026-10-06-dot-digest-trial.md)。 |
 
 ## 约束与决定
 
@@ -38,9 +38,11 @@
 - 当前权重、65 分推荐及 45 分以下淘汰均为待校准编辑标准，不因样本失败调门槛凑数。人工标签只能来自用户真实反馈，模型审阅不是人工 gold。
 - 保留全部旧材料、原始坏回执、人工反馈和生产历史；有界一次请求，不循环抽样。源于操作中断的未知请求明确记录，不误报为供应商故障、不自动重发。
 - 每组完成并验证的代码改动提交 Git；实验材料及私密数据保留于忽略目录。
+- 2026-10-09 用户直接要求将已有历史 ZIP 上传自己的 GitHub 仓库供 Dot 下载；单份 `digest-dot-20261006-234016.zip` 已作为公开 Release 附件发布，保留原哈希，不加入代码 Git 历史。该明确授权仅适用于此快照，后续备份和密钥仍保持私密。
 
 ## 当前工作
 
+- 2026-10-09 17:38，北京时间：已发布 [历史 Release](https://github.com/qiuC123/ai-notes/releases/tag/digest-backup-20261006)，原 ZIP 7,722,087 bytes、SHA-256 `b1c91cc78427d40492152fdb8b88befbc63e7dd773d14c77ab9ee23394fedba6`。静态检查全部成员及SQLite文本，未发现真实用户凭据或明确无关业务资料；701载荷逐项哈希、CRC、SQLite及47／287／169／22／3一致。本机无认证下载HTTP200并核对大小／哈希，临时副本已移除；17:40发原Dot，17:42经当前公开资源证据核对后继续原任务。17:48:30云端回执为 `restored_with_legacy_draft_limitations`：下载HTTP200、零重试、无Authorization；verify/restore exit0，701文件逐项匹配，目标 `/workspace/ai-notes-digest-state-trial-20261008`，47批／287观察／169入选／22归档（日18/周3/月1）／3日草稿，SQLite integrity与外键检查通过。22期文章／清单及4个索引通过，3份旧草稿JSON缺原库预期hash，标记legacy_untracked并原样保留，strict_export_audit_ok=false，不迁移格式。主控网页打开并下载原JSON读回，保存为 `work/digest-github-transfer-20261009/cloud-history-restore-receipt.json`；云端回执目录 `/workspace/digest-backup-import/github-public-h41gxu69/receipts`，Library `libfile_3ab3640de974819197b833333cec33c9`。smoke账本及全部旧失败回执哈希保持；本轮模型、采集生成及scheduler均0。原任务状态读回通过，新容器持久化未验证；本地原自动化再次实读PAUSED。
 - 2026-10-08 21:43，北京时间：原 Dot 附件下载 HTTP 403 后，主控将同一个已核验 ZIP 直接附到“检查智谱最小模型调用”现有任务，使用新文件 ID 再执行一次合法下载，仍 HTTP 403。主控在网页打开 `/workspace/digest-backup-import/receipts/direct-attachment-blocked.json`：`status=blocked`、`new_attachment_download_attempts=1`、`old_attachment_download_attempts_this_round=0`、`download_exit_code=1`，错误为 `library file transfer failed: download failed with HTTP status 403`；`local_zip_exists=false`、`target_exists=false`、`counts_verified=false`，模型及采集生成调用均为0，smoke 账本保持。解压、verify、restore、历史读回均未执行；47／287／169／22／3只是预期计数。原 Dot 已自动收到任务失败摘要。失败截图保留在 `work/dot-cloud-config-20261008/`；未改分享权限或上传私有数据到 Git。本地自动化文件再次实读为 PAUSED。下一步需解决附件合法下载或取得现有私密传输渠道；仅指定同名 `/workspace` 路径不能证明新任务共享状态。
 - 2026-10-08 21:21:41 北京时间，Dot 的“检查智谱最小模型调用”任务实际完成唯一 smoke：`status=succeeded`、`output={"ok":true}`、`reused=false`，输入81／输出32／合计113 tokens（reasoning21、cached0），零重试。主控打开 `/workspace/ai-notes-glm-smoke-20261008/model-smoke.stdout.json` 与 `model-smoke.execution.json`，读回以上字段和命令 exit_code=0；直接二进制账本不支持网页预览，其成功请求数、error=null、无 jobs/outbox 为执行者的 runtime status 回报。代码 SHA `a587897b934013e333f299b4d7db4a8febea631d`、Python 3.12.14、解释器 `/workspace/ai-notes/.venv/bin/python`；云端使用普通环境变量与网络密钥，未使用模型 env 文件。原生成进度文本链接打开曾显示无权访问；原生任务卡片与“打开聊天”可正常读结果，没有改共享权限。历史 ZIP 7,722,087 bytes，SHA-256 `b1c91cc78427d40492152fdb8b88befbc63e7dd773d14c77ab9ee23394fedba6`，本地逐成员与解压 verify 均通过，21:30 已上传原 Dot 私密对话并下发恢复；后续两次下载403的结果见上一条，云端历史尚未恢复。
 - 2026-10-08 主控按用户授权操作网页：内置浏览器的环境列表重试仍显示“无法加载已保存的环境”，随后切换用户已有 Chrome 配置会话。管理环境变量中实际核对 endpoint `https://open.bigmodel.cn/api/paas/v4`、model `glm-5.3-flash`、reasoning `low`；三项均为环境作用域。现有 `DIGEST_MODEL_API_KEY` 网络密钥绑定可见但值保持隐藏，环境变量列表没有 `DIGEST_MODEL_ENV_FILE`。保存草稿后显示“所有更改已保存”，点击发布后读回“环境已发布”与面板“已发布”；截图保留在忽略目录 `work/dot-cloud-config-20261008/published.png`。联网范围及私有权限保持现值。本地旧自动化文件实读为 PAUSED；本步骤没有发模型 HTTP、迁移历史或启动生产定时。
@@ -91,6 +93,6 @@
 
 ## 下一步
 
-GLM 配置发布与唯一真实 smoke 已通过，不重跑该付费请求。当前先解决两次 HTTP 403 的历史附件下载，或通过已具备认证且执行任务可读取的私密渠道传递同一个 ZIP；本轮尚未确认这种替代渠道存在。取得原文件后核对哈希、verify、restore，并验收后续任务的实际状态读取方式，再有界采集和生成一份预览、读回文件及账本，验收通过后保存唯一新定时入口，详见 [云端交接试运行](docs/handoffs/2026-10-06-dot-digest-trial.md)。采用云端注入变量时不设置 `DIGEST_MODEL_ENV_FILE`，不传 `--model-env-file`。不重复创建环境、索取对话链接或重新确认已授权的试运行；原 Codex 保留交接入口，不把模型连通冒充三榜采集生成和持续运行。
+GLM配置发布、唯一真实smoke与GitHub历史传输／原任务恢复已通过，不重跑付费请求、不重新下载或覆盖状态。下一步复用 `/workspace/ai-notes-digest-state-trial-20261008` 验收后续任务的实际状态读取方式；新容器先证明该root存在并与备份匹配，不能凭同名路径断言共享。随后有界采集和生成一份预览、读回文件及账本，验收通过后保存唯一新定时入口，详见 [云端交接试运行](docs/handoffs/2026-10-06-dot-digest-trial.md)。本轮历史传输与核对已完成，原自动化继续暂停。采用云端注入变量时不设置 `DIGEST_MODEL_ENV_FILE`，不传 `--model-env-file`。不重复创建环境、索取对话链接或重新确认已授权的试运行；原Codex保留交接入口，不把模型连通和历史恢复冒充三榜采集生成与持续运行。
 
 在新试运行中，用未见过的资料判断用途、亮点、系统及读者价值，不继续许可证组件范围专项修复；其余实质事实、新闻／游戏与代表性筛选校准保持。外部 Agent、订阅复用、文件整理及知识库偏好沿用。旧生产调度继续暂停；不要求在聊天发送密钥。未知 Claude 请求保持原账本，不能重发。仍不能宣称整体筛选质量、持续运行、云端和通知送达已完成。

@@ -1,6 +1,6 @@
 # Dot 三榜接手与云端试运行
 
-用户已于 2026-10-06 确认执行：同步最新代码与历史候选，先跑一次云端采集和榜单预览，确认保存及恢复，再切换日、周、月任务。2026-10-08 主控已核对、保存并发布 GLM 配置；唯一真实模型 smoke 通过，主控打开原结果与执行文件读回。历史 ZIP 已分别附到原 Dot 与现有云端执行任务，两次下载均为 HTTP 403，历史恢复尚未执行；主控已打开新失败 JSON 核对。下一步解决私密附件传输，再恢复历史并验证后续任务的状态读取；采集生成和定时尚未完成。此前云端 76 项测试与 6 个来源入口检查成功为执行者回报。
+用户已于2026-10-06确认执行：同步最新代码与历史候选，先跑一次云端采集和榜单预览，确认保存及恢复，再切换日、周、月任务。10/8 GLM配置发布与唯一真实模型smoke通过。历史附件三次HTTP403，具体原因未知；10/9用户直接要求公开上传自己的GitHub仓库，由Dot下载。原ZIP已作为Release附件发布，本机与Dot云端无认证下载HTTP200、大小／哈希一致，verify/restore成功，701文件、47批／287观察／169入选／22归档／3草稿读回；主控打开并下载原JSON回执核对。22期文章清单与索引通过；旧3草稿JSON缺原库校验字段，原样保留。采集生成、状态持续保存和定时尚未完成，本轮零模型及调度调用。此前云端76项测试与6个来源入口检查成功为执行者回报。
 
 ## 可以直接交给 Dot 的任务
 
@@ -17,7 +17,7 @@
 ## 代码、状态与模型分别交接
 
 - 代码：从上述仓库取得此次交接提交，业务基线至少包含 `e2bc2b1` 的核对范围调整。记录实际 Git SHA、Python 版本、云端绝对路径和执行者。
-- 状态：使用私密备份目录或其完整压缩包；公开 GitHub 没有生产数据库和完整历史材料。先 `digest_backup verify`，只恢复到新建的空状态目录。代码目录和状态目录分开。
+- 状态：默认使用私密备份目录或其完整压缩包。2026-10-09 用户明确授权的单份快照已有公开 [GitHub Release 下载入口](https://github.com/qiuC123/ai-notes/releases/tag/digest-backup-20261006)，不意味着代码 checkout 自带历史或后续备份自动公开。先核对 ZIP，再 `digest_backup verify`，只恢复到新建的空状态目录。代码目录和状态目录分开。
 - 模型：当前 endpoint 为 `https://open.bigmodel.cn/api/paas/v4`，model 为 `glm-5.3-flash`，reasoning effort 为 `low`。云端可通过私密面板注入网络密钥与普通环境变量，或显式读取完整的仓库外配置文件；两种配置来源不混用，密钥不写入对话、Git 或报告。参见下文、部署说明及 `deploy/digest/model.env.example`。
 
 截至本次备份：701 个文件，47 批次、287 条观察、169 条入选、22 期归档（日 18／周 3／月 1）与 3 份草稿。本次实际只有 `digest.sqlite3`；`selection.sqlite3`、`runtime.sqlite3` 不存在，不能声称迁移了这两个旧库。目标上的新流程可正常初始化它们。本地备份恢复计数及全部文件检查通过，云端必须另行核对。
@@ -79,9 +79,17 @@ print(digest_runtime.work_once(root, job_id=job['job_id']))
 
 ## 本次实际记录
 
+2026-10-09 17:38，北京时间：按用户“上传到 GitHub 仓库，然后让 Dot 下载”的直接要求，在公开仓库发布 `digest-backup-20261006` Release（prerelease，非 latest），附件为原 `digest-dot-20261006-234016.zip`，7,722,087 bytes，SHA-256 `b1c91cc78427d40492152fdb8b88befbc63e7dd773d14c77ab9ee23394fedba6`。下载地址：[原 ZIP](https://github.com/qiuC123/ai-notes/releases/download/digest-backup-20261006/digest-dot-20261006-234016.zip)。701 个载荷和 manifest 完整匹配，ZIP CRC、SQLite 均通过，47／287／169／22／3一致；静态检查未发现真实用户凭据或明确无关业务资料，未读取引用的私密文件。GitHub 元数据大小和 digest 一致；主控不带账号凭据实际下载 HTTP 200，逐字节大小及 SHA 相同，检查后移除临时下载副本。原 ZIP 未改。审计、Release 元数据与下载回执保留于忽略目录 `work/digest-github-transfer-20261009/`。
+
+17:40已把当前公开下载地址和核验／恢复要求发给原Dot；Dot起初把旧附件403概括为不应换渠道读取，未执行下载。主控补充用户所有权、直接发布授权及本机无认证HTTP200的实际证据；17:42 Dot核对当前Release上传者、元数据与访问依据后明确修正判断，继续原云端任务。未要求修改旧附件权限或读取其URL。17:45:05实际下载完成，HTTP200、7722087 bytes、SHA匹配，零重试且无Authorization头；verify/restore均exit0，目标先前不存在。
+
+17:48:30最终回执状态 `restored_with_legacy_draft_limitations`：状态目录 `/workspace/ai-notes-digest-state-trial-20261008`，恢复701文件全部与备份匹配，无多余／缺失／修改；实际47 batches、287 observations、169 ranked_selections、22 ranked_issues（日18/周3/月1）、3 daily drafts，旧issues/selections表均0。仅迁移digest.sqlite3，selection/runtime原本缺失且仍未伪造。SQLite integrity／外键检查通过；status、due、history读回成功；22期文章／清单及4个索引通过，history刷新后701文件仍未变化。recover只读检查25期，44个归档导出为ok；3份旧草稿正文为ok，2026-09-10／09-14／09-23三份JSON清单因原库没有manifest文本／预期hash而标为legacy_untracked。它们存在且与备份manifest匹配，未修复或迁移格式，`strict_export_audit_ok=false`不能省略。
+
+主控在网页打开并下载原JSON回执读回上述字段，Library `libfile_3ab3640de974819197b833333cec33c9`，本地保存为 `work/digest-github-transfer-20261009/cloud-history-restore-receipt.json`；云端回执目录 `/workspace/digest-backup-import/github-public-h41gxu69/receipts`。原ZIP与解压备份位于 `/workspace/digest-backup-import/github-public-h41gxu69/`。原smoke账本、三份附件403资料、诊断及初始不下载回执hash保持；本轮model_calls、collection_generation_calls和scheduler_calls均0，automation_changed=false。原任务读取状态通过，`new_container_persistence_verified=false`；未来新容器必须先实读状态，不能因路径相同断言共享。原本地自动化再次实读PAUSED。历史传输与本轮恢复已完成，后续采集生成、状态持续保存与schedule仍待验收。
+
 2026-10-08 21:43，北京时间：原 Dot 附件403后，主控将同一个 ZIP 直接附到现有执行任务，新附件 ID 为 `file_00000000278c81fd849163532a73e4ed`。执行者使用新ID只下载一次，未重试旧链接，仍返回 HTTP403。主控打开 `/workspace/digest-backup-import/receipts/direct-attachment-blocked.json`，读回 `status=blocked`、`download_exit_code=1`、`download_error="library file transfer failed: download failed with HTTP status 403"`、`local_zip_exists=false`、`target_exists=false`、`counts_verified=false`。附件元数据大小与预期相同，但实际 bytes／SHA均为空，解压、verify、restore、status/history及索引检查全部未运行。47／287／169／22／3保持预期值，不能称已迁移。原403回执与模型账本保留；本轮模型、采集生成调用均为0。原 Dot 已自动收到失败摘要，主控没有更改分享权限、公开上传备份或恢复自动化。截图保留于忽略目录 `work/dot-cloud-config-20261008/direct-attachment-403.png` 与 `direct-attachment-403-details.png`。
 
-当前没有已经核验可用的替代私密传输渠道。修复附件合法下载或取得已配置、执行任务可认证读取的私密存储后，继续使用此 ZIP；不要循环重传、猜链接或用空历史代替。取得文件后，`digest_backup verify` 对解压后的备份目录执行，成功才恢复到空目标；restore不会将manifest复制进状态目录。后续先续跑现有任务读回同一root和账本；另开任务不因路径同名就共享状态，持续保存与跨任务读取还需实际验证。原本地自动化再次读回为 PAUSED，尚未保存新schedule。
+10/8 尚无已核验的替代私密传输渠道；10/9 用户另行明确授权公开发布同一 ZIP，当前公开入口的本机下载已通过，见上方新记录。不要循环重传附件、猜链接或用空历史代替。取得文件后，`digest_backup verify` 对解压后的备份目录执行，成功才恢复到空目标；restore不会将manifest复制进状态目录。后续先续跑现有任务读回同一root和账本；另开任务不因路径同名就共享状态，持续保存与跨任务读取还需实际验证。原本地自动化保持 PAUSED，尚未保存新schedule。
 
 2026-10-08 21:21:41 北京时间，Dot 新任务“检查智谱最小模型调用”完成唯一模型请求，零重试。实际代码 SHA 为 `a587897b934013e333f299b4d7db4a8febea631d`，Python 3.12.14，使用 `/workspace/ai-notes/.venv/bin/python`，独立 root 为 `/workspace/ai-notes-glm-smoke-20261008`。`model-check` 回报表中参数正确、key_configured=true，无模型 env 文件；主控打开该 root 的 `model-smoke.stdout.json` 与 `model-smoke.execution.json`，读回 `succeeded`、`output={"ok":true}`、`reused=false`、exit_code=0、输入81／输出32／合计113 tokens（reasoning21、cached0）。执行者另回报 runtime status 为1成功请求、error=null、无 jobs/outbox；二进制账本无法直接网页预览，未声称主控独立查过 SQLite。原生任务卡片和“打开聊天”可读；生成的进度文本链接曾显示无权访问，未改变共享权限。
 
