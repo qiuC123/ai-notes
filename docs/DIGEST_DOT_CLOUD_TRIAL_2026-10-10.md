@@ -66,7 +66,7 @@
 
 ## 原始证据
 
-主控从原云端任务打开并下载完整 JSON 回执，本机 SHA-256 与云端一致。独立审阅直接从解析后 output 重算 17 条 decision、7 个入选及两个漏项；19 项完整输入集合、数据库逐行保护检查仍依据云端审计，原数据库未另行下载。
+主控从原云端任务打开并下载完整 JSON 回执，本机 SHA-256 与云端一致。初次独立审阅直接从解析后 output 重算 17 条 decision、7 个入选及两个漏项。随后 post-readback 完整回执包含原 generate job 的 checkpoints，解码后取得完整 screen-input：19个 records 与19个 cards 的ID集合一致，两个缺失ID均被原模型选中。输入与输出集合现在可以在本机逐项独立重算；数据库逐行保护检查仍依据云端审计，原数据库未另行下载。
 
 - 本地完整回执：`work/dot-cloud-trial-20261010/cloud-single-trial-receipt.json`（忽略目录）。
 - 回执时间：2026-10-10 11:23:50，北京时间。
@@ -79,3 +79,17 @@
 - 本机直接重算输出及快照比较：同目录 `local-output-audit.json`、`local-post-readback-audit.json`；没有另外下载数据库来重做SQL审计。
 
 本组只记录真实云端测试与状态，不改业务代码、评分门槛、来源等级、其他自动化或凭据；没有安装候选软件。
+
+## 完整代码同步与同响应回放
+
+用户随后要求完整项目上传GitHub并让Dot下载，追问为何本机能跑而Dot失败。已实读GitHub main为`ad59fe040b07f4bda2c09cb23ae791e435b19eb1`，Git树`e2a183b896a6c002e49c40897079538475dc815f`，281个跟踪文件。源码、配置、提示词、依赖声明、部署脚本及项目阅读Skill均已跟踪；没有未提交的运行必需源码。Dot实测版本`a587897`到此提交只有记录文档变化，业务代码及配置没有差异。运行历史已在原状态根恢复，模型密钥沿用云端配置；不把本机虚拟环境或凭据加入代码仓库。
+
+主控在本机Python3.12.11用上述原冻结输入与原解析后output调用实际`digest_pipeline._run_screen`，仅将付费请求替换成返回原回执的对象，冻结请求参数逐值匹配；数据库renew与save禁止写入。得到相同错误`shortlist must retain one reason for every screened candidate`，19输入／17决策／同两个漏项，0 API、0数据库写。两次附加统计器的字段路径KeyError单独保存，修正统计路径后读回，不改变输入或原响应。因此此份输出在本机也失败；此前其他候选的本地成功不证明这一轮会通过。重新上传相同业务代码不能修复模型漏决策。
+
+11:47:51，现有Dot任务实际从GitHub fetch main成功；11:48:07仅fast-forward至上述精确提交，均exit0，工作区干净。随后核对全部281个文件存在、字节与Git blob一致、Git树匹配；Python3.12.14、实际模块均来自该checkout，六项CLI帮助与`pip check`通过。主控下载完整回执，将281项文件记录与本地对应提交的Git对象逐项比较，全部一致。
+
+回执前后快照直接比较通过：原48批／307观察／169入选／22归档／3草稿与123候选、全部runtime行、808个状态文件、89个历史文件及21份旧回执保持。原采集completed、生成failed状态不变，本轮模型、采集生成、retry、restore和scheduler调用均0，未读取密钥值或重配凭据。仍是原环境中新Python进程，未验证新容器持久化。云端组装回执时误把records映射当列表的TypeError、主控将前后哈希不同表示直接比较的AssertionError均是只读检查错误，修正读取方式后完成；不改原业务失败账本。
+
+完整下载回执：`work/dot-code-sync-20261010/cloud-code-sync-complete.json`，1,773,773 bytes，SHA-256 `cd396f6c72ed6551e5588d637a1efef3c5dd65b92b10c290c7d45b4944e22254`，与网页交付值一致；本地核对记录`local-code-sync-audit.json`。云端回执工作目录`/workspace/ai-notes-code-sync-m4iuupbm`，状态`code_sync_and_read_only_verification_passed`。已完成完整代码同步；当前运营阻塞仍是初筛模型输出不完整，而非漏传源码。
+
+本机证据保留于`work/dot-code-sync-20261010/`：`local-code-manifest.json`、`local-same-response-replay.json`、下载要求及截图。本机依赖metadata可读，`pip check`因虚拟环境没有pip模块不可执行；未为此安装pip。实际模块加载及离线原函数回放成功，不把该诊断工具缺失写成业务生成故障。
