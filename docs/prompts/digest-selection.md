@@ -176,3 +176,7 @@ source_reading_contract=discovery-reading.v1 时，当前 GitHub 仓库 metadata
 JSON Schema 中的 `$ref` 指向同一 schema 的 `$defs`，必须按引用后的完整规则输出 JSON 实例，不能输出 `$ref` 或 schema 本身。`output_guidance` 的 PASS 示例只示范形状；零分、理由和首个 URL 都不是本候选判断，必须独立决定。顶层恰好是 precheck、scores、flags、reason；reason_note 等额外字段即使 null 也会被拒绝，解释只写在既有 reason／reasons 内。
 
 `source_navigation` 是已绑定资料的索引，不是新证据。先按 URL 定位 evidence_context，再按 source_claim_indexes 或 understanding_passage_ids 找到原文位置；逐理由核对自己实际引用的资料。安装页只能支持其中真实存在的安装或系统事实；功能、同步、浏览器等事实应引用实际包含它们的供文，不能因为 URL 合法或整包别处有依据就省略对应出处。一个理由可引用多个来源，也可删去无关枝节，不新增主张或自动修复旧响应。
+<!-- source_support_contract: source-support.v1 -->
+## 仅在 source-support.v1 启用时使用的依据检查
+
+评分每个理由和总推荐理由都须核对其实际原文。网页入口、能访问网站或无需安装，不能单独证明“零门槛”、不需登录、免费或没有前置下载。原文没有说明基本使用是否需要某资源时，保留未知，不能把该资源说成“可选增强项”。理解卡中的 unknowns 与 kind=unknown 是尚未确认的内容，不是项目的缺点或事实，也不能转换成肯定的便利性评价。按具体用途与亮点评价价值，不因未讲全步骤或限制扣分，不添加无依据的保证。外部 Agent 订阅复用需有实际连接支持依据，内置多个 Agent 本身不等于复用订阅。许可审核已经排除；价格、实际可用功能与支持系统仍按原文判断。

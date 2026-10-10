@@ -22,6 +22,7 @@ class AssessmentContractTests(unittest.TestCase):
         self.policy.pop('selection_refinement_contract', None)
         self.policy.pop('score_input_contract', None)
         self.policy.pop('license_review_scope', None)
+        self.policy.pop('source_support_contract', None)
         self.url = "https://example.com/source"
         self.source = ("Acme announced reusable instructions and a migration for saved instructions. "
                        "Acme claims tasks are twice as fast, without offering measurements. "
@@ -266,7 +267,8 @@ class AssessmentContractTests(unittest.TestCase):
         self.assertEqual([], accepted["transformations"])
 
     def test_prompt_has_one_executable_example_and_no_full_review_output_path(self):
-        text = (self.root / selection.PROMPT_PATH).read_text(encoding="utf-8")
+        text = (self.root / selection.PROMPT_PATH).read_text(encoding="utf-8").partition(
+            selection.SOURCE_SUPPORT_PROMPT_MARKER)[0]
         examples = re.findall(r"```json\s*(.*?)\s*```", text, re.S)
         self.assertEqual(1, len(examples))
         self.assertEqual("accepted", self.adapt(json.loads(examples[0]))["status"])

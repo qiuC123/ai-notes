@@ -308,9 +308,9 @@ class SourceReviewSchemaTests(unittest.TestCase):
              'quote': 'MIT License.', 'heading_path': ['License']},
         ]
 
-    def schema(self, kind='project', passages=None):
+    def schema(self, kind='project', passages=None, **options):
         schema = output_schema.source_review_schema(record={'kind': kind},
-            passages=self.passages if passages is None else passages)
+            passages=self.passages if passages is None else passages, **options)
         Draft202012Validator.check_schema(schema)
         return schema
 
@@ -441,6 +441,90 @@ class SourceReviewSchemaTests(unittest.TestCase):
         self.assertTrue(self.valid(news, 'news'))
         news['facts']['event_date'] = '2026-10-04T12:00:00+08:00'
         self.assertTrue(self.valid(news, 'news'))  # It preserves source precision, not a generated default time.
+
+    def test_fresh_options_do_not_change_frozen_legacy_schema_hashes(self):
+        expected = {False: 'd0b1da66966ad90be68af54124f05ed5d055bad578fea90a4726c70db6657b90',
+                    True: '0a633720d719d9ab9c68c5b1ba528a3d1c7f3e7929b73fab7c9dde5dbc99173b'}
+        for inline, digest in expected.items():
+            schema = self.schema(include_understanding=True, include_discovery=True,
+                                 inline_passage_ids=inline)
+            wire = json.dumps(schema, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+            self.assertEqual(digest, hashlib.sha256(wire.encode()).hexdigest())
+            self.assertEqual(schema, self.schema(include_understanding=True, include_discovery=True,
+                inline_passage_ids=inline, shared_passage_ids=False, nonlicensing=False,
+                allow_unknown_conditions=False))
+
+    def test_shared_references_keep_all_ids_once_and_the_inline_array_bounds(self):
+        original = copy.deepcopy(self.passages)
+        inline = self.schema(include_understanding=True, inline_passage_ids=True)
+        shared = self.schema(include_understanding=True, inline_passage_ids=True, shared_passage_ids=True)
+
+        def expand(value):
+            if isinstance(value, list):
+                return [expand(item) for item in value]
+            if not isinstance(value, dict):
+                return value
+            if value == {'$ref': '#/$defs/passage_id'}:
+                return copy.deepcopy(shared['$defs']['passage_id'])
+            return {key: expand(item) for key, item in value.items()}
+
+        self.assertEqual(inline, expand(shared))
+        wire = json.dumps(shared)
+        self.assertEqual(1, wire.count('passage-01'))
+        self.assertEqual(1, wire.count('passage-02'))
+        for field, array in shared['$defs']['evidence']['properties'].items():
+            self.assertEqual({'$ref': '#/$defs/passage_id'}, array['items'], field)
+            self.assertTrue(array['uniqueItems'])
+            self.assertEqual(2, array['maxItems'])
+        self.assertEqual(original, self.passages)
+        with self.assertRaisesRegex(ValueError, 'distinct'):
+            self.schema(passages=self.passages + [copy.deepcopy(self.passages[0])],
+                        shared_passage_ids=True)
+
+    def test_nonlicensing_preserves_identity_evidence_without_a_license_gate(self):
+        for kind in ('project', 'update', 'reading', 'news'):
+            schema = self.schema(kind, nonlicensing=True, shared_passage_ids=True)
+            validator = Draft202012Validator(schema)
+            for status in ('confirmed', 'closed', 'unknown'):
+                value = self.sample(kind)
+                value['facts']['open_source_status'] = status
+                value['evidence']['license'] = []
+                value['evidence']['open_source_status'] = ['passage-01'] if status == 'confirmed' else []
+                original = copy.deepcopy(value)
+                with self.subTest(kind=kind, status=status):
+                    self.assertTrue(validator.is_valid(value))
+                    self.assertFalse(self.valid(value, kind))  # New evidence key is an explicit opt-in.
+                    self.assertEqual(original, value)
+                missing_identity = copy.deepcopy(value)
+                missing_identity['evidence']['open_source_status'] = []
+                self.assertEqual(status != 'confirmed', validator.is_valid(missing_identity))
+                for ids in (['unread-id'], ['passage-01', 'passage-01']):
+                    invalid = copy.deepcopy(value)
+                    invalid['evidence']['open_source_status'] = ids
+                    self.assertFalse(validator.is_valid(invalid))
+                invalid = copy.deepcopy(value)
+                invalid['evidence']['license'] = ['passage-02']
+                self.assertFalse(validator.is_valid(invalid))
+                missing = copy.deepcopy(value)
+                del missing['evidence']['open_source_status']
+                self.assertFalse(validator.is_valid(missing))
+
+    def test_empty_shared_source_can_defer_but_cannot_claim_confirmed_identity(self):
+        schema = self.schema(passages=[], shared_passage_ids=True, nonlicensing=True)
+        validator = Draft202012Validator(schema)
+        deferred = dict(qualified=False, reason='No supplied text.', facts=None, evidence=None)
+        self.assertTrue(validator.is_valid(deferred))
+        value = self.sample()
+        value['evidence'].update(license=[], open_source_status=[])
+        self.assertFalse(validator.is_valid(value))
+        self.assertEqual(False, schema['$defs']['passage_id'])
+        self.assertEqual(0, schema['$defs']['evidence']['properties']['license']['maxItems'])
+
+    def test_fresh_contract_flags_require_actual_booleans(self):
+        for name in ('shared_passage_ids', 'nonlicensing', 'allow_unknown_conditions'):
+            for invalid in (1, 'true', None):
+                with self.subTest(name=name, value=invalid), self.assertRaisesRegex(ValueError, 'boolean'):
+                    self.schema(**{name: invalid})
 
 
 if __name__ == '__main__':

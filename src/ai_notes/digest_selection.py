@@ -37,6 +37,8 @@ SELECTION_REFINEMENT_PROMPT_MARKER = "<!-- selection_refinement_contract: eviden
 SCORE_INPUT_CONTRACT = "compact-schema.v1"
 SCORE_INPUT_PROMPT_MARKER = "<!-- score_input_contract: compact-schema.v1 -->"
 LICENSE_SCOPE_EXCLUDED = "excluded.v1"
+SOURCE_SUPPORT_CONTRACT = "source-support.v1"
+SOURCE_SUPPORT_PROMPT_MARKER = "<!-- source_support_contract: source-support.v1 -->"
 LICENSE_SCOPE_GUIDANCE = '''
 When license_review_scope is excluded.v1, follow this explicit editorial scope instead of any broader licensing-review instructions above. Do not investigate licence terms, component-specific licence coverage or commercial-use permissions. These are not ranking, score-cap or publication gates. Do not put licence names, licence scope or commercial-use conclusions in introductions, highlights, score explanations, flags or overall recommendation reasons. Rank the candidate on its documented purpose, features, supported systems and reader value. Repository open-source identification may retain its already documented licence name, without auditing its legal scope. Continue checking concrete non-licensing facts, including functionality, systems, versions, events and actually stated free/paid availability. Do not use the exclusion to forgive an unrelated unsupported claim in the same sentence. This editorial scope is not a statement about what any licence permits.'''
 FLAG_BASIS_KINDS = {
@@ -104,7 +106,7 @@ def load_policy(root: Path, policy_path: Path | None = None) -> dict:
 def validate_policy(policy: dict) -> dict:
     """Validate an in-memory policy and return an independent, unmodified copy."""
     policy = copy.deepcopy(policy)
-    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract", "score_input_contract", "reason_review_contract", "license_review_scope"))
+    _object(policy, ("schema_version", "version", "calibration_status", "dimensions", "profiles", "category_profiles", "thresholds", "flag_caps", "defer_flags"), "policy", optional=("kind_profiles", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "editorial_review_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract", "score_input_contract", "reason_review_contract", "license_review_scope", "source_support_contract"))
     _check_license_review_scope(policy)
     if "assessment_contract" in policy and policy["assessment_contract"] != SCOPED_CONTRACT:
         raise SelectionError("unsupported assessment contract")
@@ -119,6 +121,7 @@ def validate_policy(policy: dict) -> dict:
     _check_selection_refinement(policy)
     _check_score_input(policy)
     _check_reason_review(policy)
+    _check_source_support(policy)
     if policy["schema_version"] != "digest-selection.policy.v1" or policy["dimensions"] != list(DIMENSIONS):
         raise SelectionError("unsupported policy schema/dimensions")
     _text(policy["version"], "policy.version")
@@ -213,7 +216,9 @@ def load_prompt(root: Path, policy: dict) -> str:
     _check_selection_refinement(policy)
     _check_score_input(policy)
     _check_license_review_scope(policy)
-    prior_text, score_marker, score_guidance = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8").partition(SCORE_INPUT_PROMPT_MARKER)
+    _check_source_support(policy)
+    legacy_prompt, support_marker, support_guidance = (Path(root) / PROMPT_PATH).read_text(encoding="utf-8").partition(SOURCE_SUPPORT_PROMPT_MARKER)
+    prior_text, score_marker, score_guidance = legacy_prompt.partition(SCORE_INPUT_PROMPT_MARKER)
     legacy_text, refinement_marker, refinement = prior_text.partition(SELECTION_REFINEMENT_PROMPT_MARKER)
     text, fix_marker, fix = legacy_text.partition(SELECTION_FIX_PROMPT_MARKER)
     existing, discovery_marker, discovery = text.partition(INTRODUCTION_PROMPT_MARKER)
@@ -238,6 +243,10 @@ def load_prompt(root: Path, policy: dict) -> str:
         if not score_marker:
             raise SelectionError("compact-schema prompt supplement is unavailable")
         base += score_marker + score_guidance
+    if policy.get("source_support_contract") == SOURCE_SUPPORT_CONTRACT:
+        if not support_marker:
+            raise SelectionError("source-support prompt supplement is unavailable")
+        base += support_marker + support_guidance
     if policy.get("license_review_scope") == LICENSE_SCOPE_EXCLUDED:
         base += LICENSE_SCOPE_GUIDANCE
     return base
@@ -385,12 +394,23 @@ def _check_reason_review(policy: dict) -> None:
     _check_score_input(policy)
 
 
-def _validated_understanding(value: dict, contexts: list) -> dict:
+def _check_source_support(policy: dict) -> None:
+    if "source_support_contract" not in policy:
+        return
+    if policy["source_support_contract"] != SOURCE_SUPPORT_CONTRACT:
+        raise SelectionError("unsupported source support contract")
+    if (policy.get("license_review_scope") != LICENSE_SCOPE_EXCLUDED
+            or policy.get("score_input_contract") != SCORE_INPUT_CONTRACT
+            or policy.get("understanding_contract") != UNDERSTANDING_CONTRACT):
+        raise SelectionError("source-support requires excluded licensing, compact scoring and project reading")
+
+
+def _validated_understanding(value: dict, contexts: list, *, allow_unknown_conditions=False) -> dict:
     """Check frozen bindings against these sources, without claiming entailment."""
     from .digest_passages import build_passages
     from .digest_understanding import source_documents, validate_understanding
     try:
-        card = validate_understanding(value)
+        card = validate_understanding(value, allow_unknown_conditions=allow_unknown_conditions)
         documents = source_documents(contexts)
         if card["source_documents"] != documents:
             raise ValueError("understanding source documents differ from supplied contexts")
@@ -403,9 +423,9 @@ def _validated_understanding(value: dict, contexts: list) -> dict:
         raise SelectionError(str(exc)) from exc
 
 
-def _understanding_projection(value: dict, contexts: list, *, source_spans: bool) -> dict:
+def _understanding_projection(value: dict, contexts: list, *, source_spans: bool, allow_unknown_conditions=False) -> dict:
     """Keep one original text copy; source IDs refer to passages or exact spans."""
-    card = _validated_understanding(value, contexts)
+    card = _validated_understanding(value, contexts, allow_unknown_conditions=allow_unknown_conditions)
     proofs = card.pop("proof_map")
     card.pop("source_documents")  # The enclosing input carries these once.
     if source_spans:
@@ -465,6 +485,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     _check_score_input(prepared["policy"])
     _check_reason_review(prepared["policy"])
     _check_license_review_scope(prepared["policy"])
+    _check_source_support(prepared["policy"])
     card = _card(prepared, candidate_id)
     fields = ("url", "title", "category", "kind", "summary", "source_urls", "evidence_urls", "published_at", "change_note")
     material = {key: copy.deepcopy(card["material"][key]) for key in fields if key in card["material"]}
@@ -474,7 +495,7 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
     if event:
         material["event"] = {key: copy.deepcopy(event[key]) for key in
                              ("url", "occurred_at", "occurred_on", "date_precision", "timezone", "type") if key in event}
-    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract", "score_input_contract", "license_review_scope")
+    policy_fields = ("version", "dimensions", "profiles", "category_profiles", "kind_profiles", "flag_caps", "flag_kinds", "flag_basis", "usage_evidence_gaps", "assessment_contract", "scoring_projection", "reader_context", "editorial_position", "understanding_contract", "introduction_contract", "source_reading_contract", "editorial_scope", "selection_refinement_contract", "score_input_contract", "license_review_scope", "source_support_contract")
     result = {
         "card": {"ranking_type": card.get("ranking_type", prepared["ranking_type"]), "profile": card["profile"],
                  "material": material,
@@ -489,7 +510,8 @@ def build_scoring_input(prepared: dict, candidate_id: str) -> dict:
             result["card"]["source_claims"] = copy.deepcopy(card.get("source_claims", []))
     if prepared["policy"].get("understanding_contract") == UNDERSTANDING_CONTRACT:
         from .digest_understanding import source_documents
-        result["card"]["understanding"] = _understanding_projection(card.get("understanding"), card["evidence_context"], source_spans=True)
+        result["card"]["understanding"] = _understanding_projection(card.get("understanding"), card["evidence_context"], source_spans=True,
+            allow_unknown_conditions=prepared['policy'].get('source_support_contract') == SOURCE_SUPPORT_CONTRACT)
         result["card"]["source_documents"] = source_documents(card["evidence_context"])
     if prepared["policy"].get("selection_refinement_contract") == SELECTION_REFINEMENT_CONTRACT:
         result["output_example"] = {
@@ -719,7 +741,8 @@ def prepare(root: Path, ranking_type: str, period: str, limit: int = 30, *,
             if systems is not None and (not system_claims or any(claim["text"] != systems for claim in system_claims)):
                 raise SelectionError("known supported_systems requires matching original source claims")
         if understands:
-            card["understanding"] = _validated_understanding(understanding_by_id.get(cid), relevant)
+            card["understanding"] = _validated_understanding(understanding_by_id.get(cid), relevant,
+                allow_unknown_conditions=policy.get('source_support_contract') == SOURCE_SUPPORT_CONTRACT)
         card["input_hash"] = _hash(card)
         cards.append(card)
     if understands and set(understanding_by_id) - seen:

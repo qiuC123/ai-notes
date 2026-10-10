@@ -2,6 +2,7 @@
   "schema_version": "digest-selection.policy.v1",
   "version": "v17-discovery-scope-uncalibrated",
   "license_review_scope": "excluded.v1",
+  "source_support_contract": "source-support.v1",
   "score_input_contract": "compact-schema.v1",
   "selection_refinement_contract": "evidence-focus.v1",
   "introduction_contract": "discovery.v1",

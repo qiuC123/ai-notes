@@ -143,6 +143,7 @@ class DiscoveryProjectionPromptTests(unittest.TestCase):
 
     def test_current_policy_only_changes_contract_and_version_not_scoring_rules(self):
         current = selection.load_policy(ROOT)
+        current.pop('source_support_contract', None)  # Compare the original v10-v17 contracts.
         self.assertEqual('v17-discovery-scope-uncalibrated', current['version'])
         self.assertEqual('excluded.v1', current['license_review_scope'])
         self.assertEqual('evidence-focus.v1', current['selection_refinement_contract'])

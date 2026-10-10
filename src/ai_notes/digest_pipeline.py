@@ -25,6 +25,7 @@ from . import digest_editorial as editorial
 from . import digest_reason_review as reason_review
 from . import digest_reason_statements as reason_statements
 from . import digest_reading as reading, digest_understanding as understanding
+from . import digest_verify_packet as verify_packet
 
 BUDGETS = {'daily': (30, 12, 8), 'weekly': (80, 35, 25), 'monthly': (150, 60, 30)}
 SOURCE_REVIEW_CONTRACT = 'passages.reviewed.v1'
@@ -339,7 +340,9 @@ def _screen_request(compact, policy, kind, deep_limit):
             'decisions':{'type':'array', 'items':decision,
                          'minItems':len(compact), 'maxItems':len(compact)}},
         'required':['selected_ids','decisions'], 'additionalProperties':False}
-    return dict(stage='screen-v18-complete-decisions', system=system, material=material,
+    if policy.get('source_support_contract') == selection.SOURCE_SUPPORT_CONTRACT:
+        material['source_support_contract'] = selection.SOURCE_SUPPORT_CONTRACT
+    return dict(stage='screen-v19-source-support' if 'source_support_contract' in material else 'screen-v18-complete-decisions', system=system, material=material,
                 output_schema=schema, max_output_tokens=min(16384, 1024 + len(compact)*256))
 
 
@@ -485,6 +488,18 @@ Only when selection_refinement_contract is evidence-focus.v1, use the supplied o
 Read the original wording and heading context for each statement before assigning its own evidence IDs. Every field's cited set must support that field's asserted facts. A relevant fact elsewhere in this packet does not make an unrelated README passage a valid source for it; supplied API metadata and other documents keep their own IDs and URLs. Do not add architecture or capability claims from prior product knowledge. A condition must retain its named subject, action, quantifier, channel/version and exceptions; do not broaden a rule aimed at one party or route to all users or all uses. These comparisons concern claims actually written, not an exhaustive user manual. No field repair, score repair or paid retry follows an invalid response.'''
 
 
+def _source_support_prompt():
+    # This is a fresh contract, not a contradictory licence exclusion appended
+    # to the old mandatory licence instructions. Old frozen requests stay exact.
+    excluded = ('evidence is a field-to-passage-ID-list map.', 'Project/update in ', 'Reading needs original author')
+    base = '\n'.join(line for line in REVIEWED_PASSAGE_VERIFY_PROMPT.splitlines()
+                     if not line.startswith(excluded))
+    return base + '''
+evidence includes category, summary, usage_conditions, license and open_source_status. The first three require their own supporting IDs. license MUST be []; licence terms, component permissions and commercial-use interpretation are excluded from this task and cannot defer a candidate or reduce its value. Skills/framework/MCP/model functional categories do not require confirmed open-source status. The 开源项目 category does require the author's source-supported open-source identity, cited in open_source_status; this is identity, not legal interpretation. If identity is unknown, keep open_source_status=unknown and choose a matching functional category when supported. Never infer open source from a generic 'other' licence label or the mere existence of a repository.
+Reading needs the original author/date. News requires the original publication/event date. An exact matching item in supplied same-publisher official RSS can support that item's date through its actual feed URL, as listed in news_date_sources. These are program-extracted source hints, not independent evidence: cite the passage containing that exact item and date. Do not cite a neighbouring item, feed refresh, updated/dateModified or discovery time. Prefer the canonical explicit timezone timestamp in the hint when available; if only a calendar date is known, retain YYYY-MM-DD and unknown timezone. Never invent midnight or timezone. Updates require their actual event passages.
+Every known condition needs its source. If the source does not establish whether a resource is mandatory or optional for basic use, use kind=unknown and retain that uncertainty in unknowns; do not label it optional for convenience. A web entry alone does not establish no login, free use, no pre-downloads or zero barriers. Do not expand the public introduction into a requirements manual. The packet is bounded supplied text; full source receipts remain outside this request and are not proof you read omitted text.'''
+
+
 def _source_output_guidance(schema):
     """Show required keys and one legal null branch, never invent source facts."""
     deferred = {'qualified': False, 'reason': '结构示例，不是当前候选的判断。',
@@ -497,6 +512,39 @@ def _source_output_guidance(schema):
                 'evidence': copy.deepcopy(schema['$defs']['evidence']['required']),
                 'understanding': copy.deepcopy(schema['$defs']['understanding']['required'])},
             'unknown_input_or_output_shape': {'text': None, 'passage_ids': []}}
+
+
+def _bounded_source_request(request, contexts, checks, record):
+    """Freeze a fresh, measurable packet, retaining full sources separately."""
+    for cap in (20000, 16000, 12000, 8000, 4000, 2000, 1000):
+        try:
+            packet = verify_packet.build_verify_packet(contexts, record, max_chars=cap)
+        except ValueError:
+            if cap == 20000:
+                raise
+            break  # Keep the previous exact packet for the standard local guard.
+        supplied = packet['contexts']
+        passages = build_passages(supplied)
+        fresh = dict(stage='verify-facts-v19-source-support',
+            system=_source_support_prompt() + '\n' + READER_FOCUS + '\n' +
+                   understanding.UNDERSTANDING_PROMPT_SUPPLEMENT + '\n' + DISCOVERY_VERIFY_SUPPLEMENT +
+                   '\n' + EVIDENCE_FOCUS_VERIFY_SUPPLEMENT + selection.LICENSE_SCOPE_GUIDANCE,
+            material={key:copy.deepcopy(value) for key,value in request['material'].items()
+                      if key not in ('passages','source_checks','source_documents','reading_plans','output_guidance')},
+            output_schema=source_review_schema(record=record, passages=passages, include_understanding=True,
+                include_discovery=True, shared_passage_ids=True, nonlicensing=True, allow_unknown_conditions=True))
+        fresh['material'].update(passages=passages, source_documents=understanding.source_documents(supplied),
+            source_checks=[{key:value for key,value in check.items() if key in ('url','checked_at','sha256')}
+                           for check in checks],
+            source_support_contract=selection.SOURCE_SUPPORT_CONTRACT, verify_packet_contract=packet['contract'],
+            news_date_sources=packet['news_date_sources'], output_guidance=_source_output_guidance(fresh['output_schema']))
+        size = len(runtime.model_wire_system(fresh['system'], fresh['output_schema'])) + len(runtime._json(fresh['material']))
+        packet['wire_input_chars'] = size
+        if size <= 60000:
+            return fresh, supplied, packet
+    # Preserve the actual final packet; the standard guard records the real
+    # local failure if unusual metadata alone still exceeds the same budget.
+    return fresh, supplied, packet
 
 
 def _news_event(record, event_date):
@@ -543,13 +591,15 @@ def _date_quote_support(event_date, quote, original=None):
     return event_date in dates
 
 
-def _facts(output, contexts, record, *, require_scope=False, require_understanding=False, require_discovery=False):
+def _facts(output, contexts, record, *, require_scope=False, require_understanding=False, require_discovery=False,
+           source_support_contract=None, news_date_sources=None):
     if set(output) != {'qualified','reason','facts'} or type(output['qualified']) is not bool or not isinstance(output['reason'],str):
         raise runtime.RuntimeError('invalid source review result')
     if not output['qualified']:
         if output['facts'] is not None: raise runtime.RuntimeError('deferred review must not supply qualified facts')
         return None
-    facts = output['facts']
+    supported = source_support_contract == selection.SOURCE_SUPPORT_CONTRACT
+    facts = copy.deepcopy(output['facts']) if supported else output['facts']
     required={'title','category','summary','reason','audience','usage_conditions','detail','retention_reason','evidence_urls','claims','open_source_status'}
     if record['kind']=='reading': required |= {'author','original_date'}
     if record['kind']=='news': required.add('event_date')
@@ -562,7 +612,7 @@ def _facts(output, contexts, record, *, require_scope=False, require_understandi
         if not isinstance(facts['supported_systems'],str) or not facts['supported_systems'].strip():
             raise runtime.RuntimeError('supported_systems must be a nonempty string or null')
     if require_understanding:
-        understanding.validate_understanding(facts['understanding'])
+        understanding.validate_understanding(facts['understanding'], allow_unknown_conditions=supported)
     refs = facts['evidence_urls']
     originals={c['url']:c['text'] for c in contexts}
     if not isinstance(refs,list) or not refs or set(refs)-set(originals): raise runtime.RuntimeError('source review cited unread evidence')
@@ -582,7 +632,12 @@ def _facts(output, contexts, record, *, require_scope=False, require_understandi
     if record['kind']=='reading' and facts['category']!='博客、帖子与访谈': raise runtime.RuntimeError('category/kind mismatch')
     if record['kind'] not in ('reading','news') and facts['category']=='博客、帖子与访谈': raise runtime.RuntimeError('category/kind mismatch')
     if record['kind'] in ('project','update') and facts['category'] in ('开源项目','Skills','Agent 框架与编排','MCP 服务与连接器','模型与运行工具'):
-        if facts['open_source_status']!='confirmed' or 'license' not in fields: raise runtime.RuntimeError('open source licence has not been evidenced')
+        if not supported:
+            if facts['open_source_status']!='confirmed' or 'license' not in fields: raise runtime.RuntimeError('open source licence has not been evidenced')
+        elif facts['category'] == '开源项目' and (facts['open_source_status'] != 'confirmed' or 'open_source_status' not in fields):
+            raise runtime.RuntimeError('open-source identity lacks original evidence')
+    if supported and 'license' in fields:
+        raise runtime.RuntimeError('licence review is excluded by the frozen source contract')
     if facts['open_source_status'] not in ('confirmed','closed','unknown'): raise runtime.RuntimeError('invalid open source status')
     if record.get('event') and record['event']['url'] not in refs: raise runtime.RuntimeError('event original was not verified')
     if record['kind']=='update' and not any(c['field']=='change_note' and c['evidence_url']==record['event']['url'] for c in claims):
@@ -591,10 +646,57 @@ def _facts(output, contexts, record, *, require_scope=False, require_understandi
         digest._date(facts['original_date'],'original_date')
         if not {'author','original_date'} <= fields: raise runtime.RuntimeError('reading author/date lack original evidence')
     if record['kind']=='news':
+        if supported:
+            parsed = verify_packet.parse_publication_date(facts['event_date'])
+            if parsed is None:
+                raise runtime.RuntimeError('news event date has no explicit supported precision')
+            original_url = record.get('event', {}).get('url') or record['url']
+            if parsed['date_precision'] == 'date' and any(
+                    hint['event_url'] == original_url and hint['date_precision'] == 'timestamp'
+                    for hint in (news_date_sources or [])):
+                raise runtime.RuntimeError('known news timestamp cannot be reduced to date-only')
+            original_date = facts['event_date']
+            facts['event_date'] = parsed['event_date']
+            for claim in claims:
+                if claim['field'] == 'event_date' and claim['text'] == original_date:
+                    claim['text'] = facts['event_date']
+            facts['claims'] = claims
         event = _news_event(record, facts['event_date'])
         original = record.get('event', {}).get('url') or record['url']
-        if not any(c['field']=='event_date' and c['text']==facts['event_date'] and c['evidence_url']==original
-                   and _date_quote_support(facts['event_date'], c['quote'], originals[original]) for c in claims):
+        def supports_date(claim):
+            if claim['field'] != 'event_date' or claim['text'] != facts['event_date']:
+                return False
+            if claim['evidence_url'] == original and _date_quote_support(facts['event_date'], claim['quote'], originals[original]):
+                return True
+            if not supported:
+                return False
+            def same_date(value):
+                parsed_hint = verify_packet.parse_publication_date(value)
+                if parsed_hint is None or parsed_hint['date_precision'] != parsed['date_precision']:
+                    return False
+                if parsed['date_precision'] == 'date':
+                    return parsed_hint['event_date'] == facts['event_date']
+                return digest._timestamp(parsed_hint['event_date'], 'feed date') == digest._timestamp(facts['event_date'], 'event date')
+            for hint in (news_date_sources or []):
+                if (hint['event_url'] != original or hint['feed_url'] != claim['evidence_url']
+                        or not same_date(hint['event_date']) or hint['raw_date'] not in hint['quote']):
+                    continue
+                # A real pubDate may straddle passage boundaries. Check the
+                # referenced contiguous coverage inside this exact item;
+                # never concatenate unrelated items or fill an omitted gap.
+                start = hint['quote'].index(hint['raw_date'])
+                stop = start + len(hint['raw_date'])
+                spans = sorted((hint['quote'].index(c['quote']), hint['quote'].index(c['quote']) + len(c['quote']))
+                    for c in claims if c['field'] == 'event_date' and c['text'] == facts['event_date']
+                    and c['evidence_url'] == hint['feed_url'] and c['quote'] in hint['quote'])
+                cursor = start
+                for left, right in spans:
+                    if left <= cursor < right:
+                        cursor = right
+                if cursor >= stop:
+                    return True
+            return False
+        if not any(supports_date(c) for c in claims):
             raise runtime.RuntimeError('news event date lacks original evidence')
         if record.get('event') and digest._event_time_key(event) != digest._event_time_key(record['event']):
             raise runtime.RuntimeError('news event date conflicts with recorded original event')
@@ -612,6 +714,7 @@ def _review_original(root, job, owner, model, record, cid, budget):
     contract=job['checkpoints'].get('screen',{}).get('source_review_contract')
     discovery=job['checkpoints'].get('screen',{}).get('policy_snapshot',{}).get('introduction_contract') == 'discovery.v1'
     frozen_policy=job['checkpoints'].get('screen',{}).get('policy_snapshot',{})
+    support = frozen_policy.get('source_support_contract') == selection.SOURCE_SUPPORT_CONTRACT
     reading_contract=frozen_policy.get('source_reading_contract')
     public_scope=frozen_policy.get('editorial_scope') == selection.PUBLIC_REVIEW_SCOPE
     refinement=frozen_policy.get('selection_refinement_contract')
@@ -729,13 +832,26 @@ def _review_original(root, job, owner, model, record, cid, budget):
                 if frozen_policy.get('license_review_scope') == selection.LICENSE_SCOPE_EXCLUDED:
                     request['material']['license_review_scope'] = selection.LICENSE_SCOPE_EXCLUDED
                     request['system'] += selection.LICENSE_SCOPE_GUIDANCE
+            full_sources = None
+            packet_receipt = None
+            if support and understood and discovery:
+                full_sources = dict(contexts=contexts, checks=checks, reading_plans=reading_plans)
+                try:
+                    request, contexts, packet_receipt = _bounded_source_request(request, contexts, checks, record)
+                except ValueError as exc:
+                    _save(root,job,owner,'original-packet-failure:'+cid,
+                          dict(full_sources=full_sources,error=str(exc),contract=verify_packet.CONTRACT))
+                    return _save(root,job,owner,stage,dict(deferred=True,
+                        reason='原文资料无法在预算内保留：'+str(exc),failures=failures))
+                passages = request['material']['passages']
             if scoped:
                 # Persist the whole request before HTTP: even a crash between
                 # the runtime receipt and our response checkpoint must keep
                 # the same fingerprint (including source timestamps/prompt).
                 request['max_output_tokens']=4096
                 _save(root,job,owner,input_stage,dict(base_original_request_id=base_request_id,
-                      request=request,contexts=contexts,checks=checks,failures=failures))
+                      request=request,contexts=contexts,checks=checks,failures=failures,
+                      **({'full_sources':full_sources, 'packet_receipt':packet_receipt} if full_sources else {})))
         try:
             receipt=model.request(**request,budget_key=job['job_id'],max_requests=budget)
         except runtime.InputBudgetExceeded as exc:
@@ -746,10 +862,14 @@ def _review_original(root, job, owner, model, record, cid, budget):
                   receipt=receipt,contexts=contexts,checks=checks,failures=failures,
                   **({'passages':passages} if bound else {})))
     try:
+        source_material = job['checkpoints'].get(input_stage, {}).get('request', {}).get('material', {})
+        source_support = source_material.get('source_support_contract') == selection.SOURCE_SUPPORT_CONTRACT
         normalized=(understanding.bind_understanding_review(receipt['output'],passages,record,
-                    job['checkpoints'][input_stage]['request']['material']['source_documents'],include_discovery=discovery) if understood else
+                    job['checkpoints'][input_stage]['request']['material']['source_documents'],include_discovery=discovery,
+                    **({'nonlicensing':True, 'allow_unknown_conditions':True} if source_support else {})) if understood else
                     bind_review(receipt['output'],passages,record,include_discovery=discovery) if bound else receipt['output'])
-        facts=_facts(normalized,contexts,record,require_scope=contract=='claims.scope.v1',require_understanding=understood,require_discovery=discovery)
+        facts=_facts(normalized,contexts,record,require_scope=contract=='claims.scope.v1',require_understanding=understood,require_discovery=discovery,
+            source_support_contract=source_material.get('source_support_contract'), news_date_sources=source_material.get('news_date_sources'))
     except (ValueError, TypeError, KeyError) as exc:
         if not scoped: raise
         error=str(exc) if isinstance(exc,ValueError) else type(exc).__name__
@@ -794,7 +914,7 @@ def _review_original(root, job, owner, model, record, cid, budget):
     return evidence
 
 
-def _review_editorial(root, job, owner, model, card, entry, assessment, score_receipt, budget, *, reader_context=None, editorial_position=None, understanding_contract=None, introduction_contract=None, editorial_scope=None, featured=False, selection_refinement_contract=None, score_input_contract=None, license_review_scope=None):
+def _review_editorial(root, job, owner, model, card, entry, assessment, score_receipt, budget, *, reader_context=None, editorial_position=None, understanding_contract=None, introduction_contract=None, editorial_scope=None, featured=False, selection_refinement_contract=None, score_input_contract=None, license_review_scope=None, source_support_contract=None):
     """One source-linked consistency review, retaining every raw judgment.
 
     This does not amend facts/scores or assert human accuracy. A rejected review
@@ -817,6 +937,8 @@ def _review_editorial(root, job, owner, model, card, entry, assessment, score_re
         identity['selection_refinement_contract'] = selection_refinement_contract
     if score_input_contract is not None:
         identity['score_input_contract'] = score_input_contract
+    if source_support_contract is not None:
+        identity['source_support_contract'] = source_support_contract
     if license_review_scope is not None:
         selection._check_license_review_scope({'license_review_scope': license_review_scope,
             'editorial_scope': editorial_scope, 'introduction_contract': introduction_contract})
@@ -835,8 +957,10 @@ def _review_editorial(root, job, owner, model, card, entry, assessment, score_re
             **({'review_scope':editorial_scope,'featured':featured} if editorial_scope is not None else {}),
             **({'selection_refinement_contract': selection_refinement_contract} if selection_refinement_contract is not None else {}),
             **({'score_input_contract': score_input_contract} if score_input_contract is not None else {}),
-            **({'license_review_scope': license_review_scope} if license_review_scope is not None else {}))
-        request=dict(stage='editorial-v14-reason-navigation' if score_input_contract is not None else
+            **({'license_review_scope': license_review_scope} if license_review_scope is not None else {}),
+            **({'source_support_contract': source_support_contract} if source_support_contract is not None else {}))
+        request=dict(stage='editorial-v19-source-support' if source_support_contract is not None else
+                          'editorial-v14-reason-navigation' if score_input_contract is not None else
                           'editorial-v13-evidence-focus' if selection_refinement_contract is not None else
                           'editorial-v12-public-introduction' if editorial_scope == selection.PUBLIC_REVIEW_SCOPE else
                           'editorial-v11-discovery' if introduction_contract == 'discovery.v1' else
@@ -859,6 +983,13 @@ def _review_editorial(root, job, owner, model, card, entry, assessment, score_re
                 'Report concrete mismatches without changing refs, scores or prose; do not demand unrelated setup details.')
         if license_review_scope is not None:
             request['system'] += editorial.license_review_supplement(license_review_scope)
+        if source_support_contract is not None:
+            request['system'] += ('\nselection_limits contains internal model interpretations and unknowns, never independent evidence or required public manual sections. '
+                'Compare each score reason and overall recommendation reason with its own cited passages and these unknowns. '
+                'A web entry alone does not support zero barriers, no login, free use or no download. If basic-use necessity of a resource is unknown, '
+                'calling it optional is an unsupported assertion. Use cross_field_conflict, optionality or unsupported_assertion for a concrete '
+                'mismatch with the original; do not reject because unrelated conditions are omitted, or demand their publication. '
+                'No automatic rewriting or second score call follows this review.')
         frozen=_save(root,job,owner,input_stage,dict(signature=signature,request=request))
     if editorial_scope == selection.PUBLIC_REVIEW_SCOPE:
         # Check the frozen prose that will actually be printed, including a
@@ -983,7 +1114,8 @@ def _select_public_items(root, job, owner, model, preparation, materials, ranked
             **({'selection_refinement_contract': policy['selection_refinement_contract']}
                if 'selection_refinement_contract' in policy else {}),
             **({'score_input_contract': policy['score_input_contract']} if 'score_input_contract' in policy else {}),
-            **({'license_review_scope': policy['license_review_scope']} if 'license_review_scope' in policy else {}))
+            **({'license_review_scope': policy['license_review_scope']} if 'license_review_scope' in policy else {}),
+            **({'source_support_contract': policy['source_support_contract']} if 'source_support_contract' in policy else {}))
         if checked['verdict']!='accept':
             failures.append(cid+':内容复核暂缓：'+checked['reason'])
             continue
@@ -1079,7 +1211,8 @@ def generate(root, job, owner):
     # Keep the stage used before this upgrade for frozen older preparations:
     # stage is part of the request fingerprint, including saved bad responses.
     scoped_scoring = preparation['policy'].get('assessment_contract') == 'scoped-source.v1'
-    score_stage = ('value-score-v14-compact-schema' if preparation['policy'].get('score_input_contract') == selection.SCORE_INPUT_CONTRACT else
+    score_stage = ('value-score-v19-source-support' if preparation['policy'].get('source_support_contract') == selection.SOURCE_SUPPORT_CONTRACT else
+                   'value-score-v14-compact-schema' if preparation['policy'].get('score_input_contract') == selection.SCORE_INPUT_CONTRACT else
                    'value-score-v13-evidence-focus' if preparation['policy'].get('selection_refinement_contract') is not None else
                    'value-score-v5-scoped-source' if scoped_scoring else
                    'value-score-v4-evidence-scope' if preparation['policy']['version'].startswith('v4-evidence-scope')

@@ -128,7 +128,7 @@ def build_passages(contexts):
     return passages
 
 
-def bind_review(output, passages, record, *, include_discovery=False):
+def bind_review(output, passages, record, *, include_discovery=False, nonlicensing=False):
     """Bind strict model evidence IDs to program-owned legacy facts/claims.
 
     Unknown IDs and extra/null fields fail; no old malformed quote is repaired.
@@ -154,7 +154,8 @@ def bind_review(output, passages, record, *, include_discovery=False):
         if field == 'supported_systems' and facts[field] is None:
             continue
         _text(facts[field], 'facts.' + field)
-    evidence_fields = (_EVIDENCE_FIELDS + _KIND_FIELDS[kind] + (('change_note',) if kind == 'update' else ())
+    evidence_fields = (_EVIDENCE_FIELDS + (('open_source_status',) if nonlicensing else ())
+                       + _KIND_FIELDS[kind] + (('change_note',) if kind == 'update' else ())
                        + (('supported_systems',) if include_discovery else ()))
     evidence = output['evidence']
     if not isinstance(evidence, dict) or set(evidence) != set(evidence_fields):
@@ -179,8 +180,11 @@ def bind_review(output, passages, record, *, include_discovery=False):
     for field in evidence_fields:
         ids = evidence[field]
         unknown_systems = field == 'supported_systems' and facts[field] is None
-        if not isinstance(ids, list) or (field != 'license' and not unknown_systems and not ids):
+        unknown_identity = field == 'open_source_status' and facts[field] != 'confirmed'
+        if not isinstance(ids, list) or (field != 'license' and not unknown_systems and not unknown_identity and not ids):
             raise ValueError('evidence.' + field + ' requires passage IDs')
+        if nonlicensing and field == 'license' and ids:
+            raise ValueError('excluded licence review requires empty licence evidence')
         if unknown_systems and ids:
             raise ValueError('null supported_systems requires empty evidence')
         seen = set()

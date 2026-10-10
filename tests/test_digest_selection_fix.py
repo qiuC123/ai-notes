@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class SelectionFixContractTests(unittest.TestCase):
     def setUp(self):
         self.current = selection.load_policy(ROOT)
+        self.current.pop('source_support_contract', None)
         self.current.pop('selection_refinement_contract', None)
         self.current.pop('score_input_contract', None)
         self.current.pop('license_review_scope', None)  # Exercise the frozen v12 contract.
@@ -49,7 +50,8 @@ class SelectionFixContractTests(unittest.TestCase):
             selection.validate_policy(policy)
 
     def test_old_prompt_bytes_and_authoritative_snapshot_are_not_upgraded(self):
-        current_text = (ROOT / selection.PROMPT_PATH).read_text(encoding='utf-8')
+        current_text = (ROOT / selection.PROMPT_PATH).read_text(encoding='utf-8').partition(
+            selection.SOURCE_SUPPORT_PROMPT_MARKER)[0]
         v11 = current_text.partition(selection.SELECTION_FIX_PROMPT_MARKER)[0]
         self.assertEqual(v11, selection.load_prompt(ROOT, self.legacy))
         v10_policy = copy.deepcopy(self.legacy)

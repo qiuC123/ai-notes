@@ -20,6 +20,7 @@ class ScreenOutputTests(unittest.TestCase):
         self.root = Path(temp.name)
         project = Path(__file__).resolve().parents[1]
         self.policy = pipeline.selection.load_policy(project)
+        self.policy.pop('source_support_contract', None)  # Freeze the v18 screen contract.
         self.period = (digest._now().date() - timedelta(days=2)).isoformat()
         runtime.enqueue(self.root, {'action':'generate', 'ranking_type':'daily', 'period':self.period})
         self.job = runtime.claim(self.root, 'owner')

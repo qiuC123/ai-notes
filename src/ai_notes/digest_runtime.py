@@ -258,6 +258,27 @@ def status(root):
     return {'jobs': jobs, 'requests': requests, 'usage': usage, 'cost': 'unknown; configure provider prices separately', 'pending_notices': notices(root)}
 
 
+def model_wire_system(system, output_schema=None):
+    """Use the identical schema wrapper for measurement and the real request."""
+    wire_system = system
+    if output_schema is not None:
+        if not isinstance(output_schema, dict):
+            raise RuntimeError('output schema must be a JSON Schema object')
+        try:
+            schema_text = _json(output_schema)
+            Draft202012Validator.check_schema(output_schema)
+        except (SchemaError, ValueError, TypeError):
+            raise RuntimeError('invalid output JSON Schema') from None
+        # This is the documented JSON-object + prompt-schema approach, not
+        # an unsupported provider-side json_schema/strict parameter. Keep
+        # the untouched output receipt for the application validator.
+        wire_system += ('\n\nOUTPUT JSON SHAPE CONTRACT: Return one JSON instance matching the schema below, '
+                        'not the schema itself. Do not add keys even when their value is null. '
+                        'All explanations must use the existing reason/reasons fields. '
+                        'This contract describes output shape, not source facts or scores.\n' + schema_text)
+    return wire_system
+
+
 class ModelClient:
     """Explicitly configured Chat Completions-compatible endpoint, no defaults.
 
@@ -293,22 +314,7 @@ class ModelClient:
             raise RuntimeError('request budget must be an integer in 1..1000')
         if type(max_output_tokens) is not int or not 1 <= max_output_tokens <= 16384:
             raise RuntimeError('output token budget must be bounded')
-        wire_system = system
-        if output_schema is not None:
-            if not isinstance(output_schema, dict):
-                raise RuntimeError('output schema must be a JSON Schema object')
-            try:
-                schema_text = _json(output_schema)
-                Draft202012Validator.check_schema(output_schema)
-            except (SchemaError, ValueError, TypeError):
-                raise RuntimeError('invalid output JSON Schema') from None
-            # This is the documented JSON-object + prompt-schema approach, not
-            # an unsupported provider-side json_schema/strict parameter. Keep
-            # the untouched output receipt for the application validator.
-            wire_system += ('\n\nOUTPUT JSON SHAPE CONTRACT: Return one JSON instance matching the schema below, '
-                            'not the schema itself. Do not add keys even when their value is null. '
-                            'All explanations must use the existing reason/reasons fields. '
-                            'This contract describes output shape, not source facts or scores.\n' + schema_text)
+        wire_system = model_wire_system(system, output_schema)
         if len(wire_system) + len(_json(material)) > 60000:
             raise InputBudgetExceeded('model input exceeds 60000 character budget')
         fingerprint = {'endpoint': self.base_url, 'model': self.model, 'stage': stage, 'system': system,

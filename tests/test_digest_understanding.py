@@ -244,6 +244,94 @@ class UnderstandingContractTests(unittest.TestCase):
         card = self.bound(output)['facts']['understanding']
         self.assertEqual('mandatory', validate_understanding(card)['conditions'][0]['kind'])
 
+    def test_unknown_condition_is_available_only_with_the_fresh_explicit_contract(self):
+        contexts = [dict(url='https://example.com/game-help', text=(
+            '# Game\nA browser game where players debate an AI judge.\n\n'
+            '# Voice\nThe full voice experience requires an extra ~250MB payload.\n'))]
+        passages = build_passages(contexts)
+        game_id, voice_id = [passage['id'] for passage in passages]
+        output = dict(qualified=True, reason='The described game can be introduced.',
+            facts=dict(title='Debate game', category='游戏', summary='Debate an AI judge.',
+                reason='A documented game concept.', audience='Players.',
+                usage_conditions='The full voice experience needs an extra payload.',
+                detail='A browser game.', retention_reason='A game design example.', open_source_status='unknown'),
+            evidence=dict(category=[game_id], summary=[game_id], usage_conditions=[voice_id], license=[]),
+            understanding=dict(purpose=dict(text='Debate an AI judge.', passage_ids=[game_id]),
+                input=dict(text=None, passage_ids=[]), output=dict(text=None, passage_ids=[]), operations=[],
+                conditions=[dict(subject='Voice payload', kind='unknown',
+                    text='The source does not establish whether the basic game can skip the payload.',
+                    passage_ids=[voice_id])], unknowns=['Whether basic play requires the voice payload.']))
+        documents = source_documents(contexts)
+        frozen = copy.deepcopy((output, passages, documents))
+        legacy = source_review_schema(record={'kind': 'project'}, passages=passages,
+                                     include_understanding=True)
+        fresh = source_review_schema(record={'kind': 'project'}, passages=passages,
+            include_understanding=True, shared_passage_ids=True, allow_unknown_conditions=True)
+        self.assertFalse(Draft202012Validator(legacy).is_valid(output))
+        self.assertTrue(Draft202012Validator(fresh).is_valid(output))
+        with self.assertRaisesRegex(ValueError, 'condition kind'):
+            bind_understanding_review(output, passages, {'kind': 'project'}, documents)
+        card = bind_understanding_review(output, passages, {'kind': 'project'}, documents,
+                                       allow_unknown_conditions=True)['facts']['understanding']
+        self.assertEqual('unknown', card['conditions'][0]['kind'])
+        self.assertEqual(passages[1]['quote'], card['proof_map'][voice_id]['quote'])
+        self.assertEqual(card, validate_understanding(card, allow_unknown_conditions=True))
+        with self.assertRaisesRegex(ValueError, 'condition kind'):
+            validate_understanding(card)
+        self.assertEqual(frozen, (output, passages, documents))
+
+    def test_fresh_unknown_condition_still_requires_closed_original_source_ids(self):
+        for ids in ([], ['invented'], [self.usage_id, self.usage_id]):
+            output = copy.deepcopy(self.output)
+            output['understanding']['conditions'][0].update(kind='unknown', passage_ids=ids)
+            schema = source_review_schema(record=self.record, passages=self.passages,
+                include_understanding=True, allow_unknown_conditions=True, shared_passage_ids=True)
+            with self.subTest(ids=ids):
+                self.assertFalse(Draft202012Validator(schema).is_valid(output))
+                with self.assertRaises(ValueError):
+                    bind_understanding_review(output, self.passages, self.record, self.documents,
+                                              allow_unknown_conditions=True)
+
+    def test_fresh_nonlicensing_binder_keeps_identity_claims_separate_from_license_terms(self):
+        for status in ('confirmed', 'closed', 'unknown'):
+            output = copy.deepcopy(self.output)
+            output['facts'].update(category='MCP 服务与连接器', open_source_status=status)
+            output['evidence']['open_source_status'] = [self.purpose_id] if status == 'confirmed' else []
+            before = copy.deepcopy(output)
+            bound = bind_understanding_review(output, self.passages, self.record, self.documents,
+                                             nonlicensing=True)
+            claims = bound['facts']['claims']
+            self.assertFalse(any(claim['field'] == 'license' for claim in claims))
+            identities = [claim for claim in claims if claim['field'] == 'open_source_status']
+            self.assertEqual(int(status == 'confirmed'), len(identities))
+            if identities:
+                self.assertEqual(status, identities[0]['text'])
+                self.assertEqual(self.passages[0]['quote'], identities[0]['quote'])
+                self.assertEqual(self.url, identities[0]['evidence_url'])
+            self.assertEqual(before, output)
+            with self.assertRaisesRegex(ValueError, 'evidence fields'):
+                self.bound(output)
+        output = copy.deepcopy(self.output)
+        output['facts']['open_source_status'] = 'confirmed'
+        output['evidence'].update(license=[], open_source_status=[])
+        with self.assertRaises(ValueError):
+            bind_understanding_review(output, self.passages, self.record, self.documents,
+                                      nonlicensing=True)
+        output['evidence'].update(license=[self.usage_id], open_source_status=[self.purpose_id])
+        with self.assertRaises(ValueError):
+            bind_understanding_review(output, self.passages, self.record, self.documents,
+                                      nonlicensing=True)
+
+    def test_fresh_binding_options_do_not_treat_truthy_values_as_authorization(self):
+        for invalid in (1, 'true', None):
+            with self.subTest(value=invalid):
+                with self.assertRaisesRegex(ValueError, 'boolean'):
+                    bind_understanding_review(self.output, self.passages, self.record, self.documents,
+                                              allow_unknown_conditions=invalid)
+                with self.assertRaisesRegex(ValueError, 'boolean'):
+                    bind_understanding_review(self.output, self.passages, self.record, self.documents,
+                                              nonlicensing=invalid)
+
     def test_full_reading_claim_on_excerpt_reports_literal_issue_only(self):
         excerpt_scope = scope_for(self.contexts[0]['text'], coverage='excerpt', document_chars=500,
                                   ranges=[dict(start=50, end=50 + len(self.contexts[0]['text']))])

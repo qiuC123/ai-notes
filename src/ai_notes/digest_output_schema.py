@@ -112,20 +112,28 @@ def assessment_schema(*, policy: dict, card: dict) -> dict:
 
 
 def source_review_schema(*, record: dict, passages: list[dict], include_understanding: bool = False,
-                         include_discovery: bool = False, inline_passage_ids: bool = False) -> dict:
+                         include_discovery: bool = False, inline_passage_ids: bool = False,
+                         shared_passage_ids: bool = False, nonlicensing: bool = False,
+                         allow_unknown_conditions: bool = False) -> dict:
     """Guide a source review that cites program-owned passage IDs only.
 
     The caller binds IDs to original URLs, quotes and headings. This schema
     neither asks the model to reproduce those fields nor proves that a cited
-    passage entails its summary. Existing fact/date/license checks still apply.
+    passage entails its summary. Fresh shared references and nonlicensing scope
+    are explicit opt-ins; absent flags preserve the frozen legacy schema.
     """
+    for name, value in (('shared_passage_ids', shared_passage_ids),
+                        ('nonlicensing', nonlicensing),
+                        ('allow_unknown_conditions', allow_unknown_conditions)):
+        if type(value) is not bool:
+            raise ValueError(name + ' must be a boolean')
     kind = record['kind']
     if kind not in KINDS:
         raise ValueError('unsupported source review candidate kind')
     ids = [passage['id'] for passage in passages]
     if any(not isinstance(value, str) or not value.strip() for value in ids):
         raise ValueError('source passage IDs must be nonempty strings')
-    if inline_passage_ids and len(ids) != len(set(ids)):
+    if (inline_passage_ids or shared_passage_ids) and len(ids) != len(set(ids)):
         raise ValueError('source passage IDs must be distinct')
     ids = sorted(set(ids))
     text = {'$ref': '#/$defs/nonempty_text'}
@@ -135,6 +143,8 @@ def source_review_schema(*, record: dict, passages: list[dict], include_understa
     facts['category'] = {'type': 'string', 'enum': list(CATEGORIES)}
     facts['open_source_status'] = {'enum': ['confirmed', 'closed', 'unknown']}
     evidence_fields = ['category', 'summary', 'usage_conditions', 'license']
+    if nonlicensing:
+        evidence_fields.append('open_source_status')
     if include_discovery:
         facts['supported_systems'] = {'anyOf': [dict(text), {'type': 'null'}]}
         evidence_fields.append('supported_systems')
@@ -147,7 +157,10 @@ def source_review_schema(*, record: dict, passages: list[dict], include_understa
     elif kind == 'update':
         evidence_fields.append('change_note')
     evidence = {name: {'type': 'array', 'items': {'$ref': '#/$defs/passage_id'}, 'uniqueItems': True,
-                       'minItems': 0 if name in ('license', 'supported_systems') else 1} for name in evidence_fields}
+                       'minItems': 0 if name in ('license', 'supported_systems', 'open_source_status') else 1}
+                for name in evidence_fields}
+    if nonlicensing:
+        evidence['license']['maxItems'] = 0
     schema = _object({'qualified': {'type': 'boolean'}, 'reason': dict(text),
                       'facts': {'anyOf': [{'$ref': '#/$defs/facts'}, {'type': 'null'}]},
                       'evidence': {'anyOf': [{'$ref': '#/$defs/evidence'}, {'type': 'null'}]}})
@@ -162,6 +175,12 @@ def source_review_schema(*, record: dict, passages: list[dict], include_understa
         'then': {'properties': {'facts': {'$ref': '#/$defs/facts'}, 'evidence': {'$ref': '#/$defs/evidence'}}},
         'else': {'properties': {'facts': {'type': 'null'}, 'evidence': {'type': 'null'}}},
     }]
+    if nonlicensing:
+        schema['allOf'].append({
+            'if': {'properties': {'qualified': {'const': True}, 'facts': {
+                'type': 'object', 'properties': {'open_source_status': {'const': 'confirmed'}}}}},
+            'then': {'properties': {'evidence': {'properties': {'open_source_status': {'minItems': 1}}}}},
+        })
     if include_discovery:
         schema['allOf'].append({
             'if': {'properties': {'qualified': {'const': True},
@@ -172,14 +191,28 @@ def source_review_schema(*, record: dict, passages: list[dict], include_understa
     if include_understanding:
         from .digest_understanding import understanding_schema
 
-        schema['$defs']['understanding'] = understanding_schema()
+        schema['$defs']['understanding'] = understanding_schema(
+            **({'allow_unknown_conditions': True} if allow_unknown_conditions else {}))
         schema['properties']['understanding'] = {
             'anyOf': [{'$ref': '#/$defs/understanding'}, {'type': 'null'}]}
         schema['required'].append('understanding')
         branch = schema['allOf'][0]
         branch['then']['properties']['understanding'] = {'$ref': '#/$defs/understanding'}
         branch['else']['properties']['understanding'] = {'type': 'null'}
-    if inline_passage_ids:
+    if shared_passage_ids:
+        # Bound every ID array while keeping its enum in one shared definition.
+        # This deliberately supersedes inline expansion for a fresh contract.
+        def bound_arrays(value):
+            if isinstance(value, list):
+                return [bound_arrays(item) for item in value]
+            if not isinstance(value, dict):
+                return value
+            result = {key: bound_arrays(item) for key, item in value.items()}
+            if value.get('type') == 'array' and value.get('items') == {'$ref': '#/$defs/passage_id'}:
+                result['maxItems'] = min(result.get('maxItems', len(ids)), len(ids))
+            return result
+        schema = bound_arrays(schema)
+    elif inline_passage_ids:
         # Ordinary JSON-object mode does not enforce a schema. Put the literal
         # allowed choices beside each ID array, without changing legacy schemas
         # or repairing a malformed paid response.

@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class LicensePolicyTests(unittest.TestCase):
     def test_new_scope_is_closed_and_requires_public_discovery(self):
         policy = selection.load_policy(ROOT)
+        policy.pop('source_support_contract', None)
         self.assertEqual('excluded.v1', policy['license_review_scope'])
         for key, value in (('license_review_scope', None), ('license_review_scope', {}),
                            ('license_review_scope', 'unknown'), ('editorial_scope', None),
@@ -42,13 +43,15 @@ class LicensePolicyTests(unittest.TestCase):
         self.assertNotIn('license_review_scope', old['policy'])
 
     def test_old_prepared_prompt_is_reused_without_new_scope_suffix(self):
-        legacy = selection.load_policy(ROOT)
+        scoped = selection.load_policy(ROOT)
+        scoped.pop('source_support_contract', None)
+        legacy = copy.deepcopy(scoped)
         legacy.pop('license_review_scope')
         text = selection.load_prompt(ROOT, legacy)
         old = {'policy': legacy, 'prompt_text': text,
                'prompt_hash': hashlib.sha256(text.encode()).hexdigest()}
         self.assertNotIn(selection.LICENSE_SCOPE_GUIDANCE, text)
-        self.assertTrue(selection.load_prompt(ROOT, selection.load_policy(ROOT)).endswith(selection.LICENSE_SCOPE_GUIDANCE))
+        self.assertTrue(selection.load_prompt(ROOT, scoped).endswith(selection.LICENSE_SCOPE_GUIDANCE))
         with patch.object(selection, 'load_prompt', side_effect=AssertionError('use saved prompt')):
             self.assertEqual(text, selection.get_prompt(ROOT, old))
 

@@ -25,6 +25,7 @@ class PublicPipelineTests(unittest.TestCase):
         project = Path(__file__).resolve().parents[1]
         policy = json.loads((project / 'config/digest_selection.json').read_text(encoding='utf-8'))
         policy.pop('reason_review_contract', None)  # This fixture preserves pre-v15 whole-packet reviews.
+        policy.pop('source_support_contract', None)
         self.assertEqual('public-introduction.v1', policy['editorial_scope'])
         (self.fx.root / 'config/digest_selection.json').write_text(json.dumps(policy), encoding='utf-8')
         self.fx.client.close()

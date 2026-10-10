@@ -24,6 +24,7 @@ MARKER = "compact-schema.v1"
 class ScoreInputTests(unittest.TestCase):
     def setUp(self):
         self.policy = selection.load_policy(ROOT)
+        self.policy.pop("source_support_contract", None)
         self.policy.pop("license_review_scope", None)  # Pin this v14 fixture's earlier review scope.
         self.policy["score_input_contract"] = MARKER
         self.readme = "https://example.com/README.md"
@@ -150,7 +151,8 @@ class ScoreInputTests(unittest.TestCase):
                 self.assertNotIn(selection.SCORE_INPUT_PROMPT_MARKER, selection.load_prompt(ROOT, old["policy"]))
 
     def test_new_prompt_suffix_is_explicit_and_missing_supplement_fails(self):
-        text = (ROOT / selection.PROMPT_PATH).read_text(encoding="utf-8")
+        text = (ROOT / selection.PROMPT_PATH).read_text(encoding="utf-8").partition(
+            selection.SOURCE_SUPPORT_PROMPT_MARKER)[0]
         prefix, marker, suffix = text.partition(selection.SCORE_INPUT_PROMPT_MARKER)
         self.assertTrue(marker)
         old = self.old_preparation()
@@ -383,8 +385,10 @@ class ScoreInputTests(unittest.TestCase):
         fixture = pipeline_fixtures.PipelineTests()
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
+        policy = selection.load_policy(ROOT)
+        policy.pop("source_support_contract", None)  # Preserve the frozen v14-v18 stages.
         (fixture.root / selection.POLICY_PATH).write_text(
-            json.dumps(selection.load_policy(ROOT), ensure_ascii=False), encoding="utf-8")
+            json.dumps(policy, ensure_ascii=False), encoding="utf-8")
         job, result = fixture.run_job()
         self.assertEqual("completed", result["status"], result)
         self.assertEqual(MARKER, job["checkpoints"]["screen"]["policy_snapshot"]["score_input_contract"])

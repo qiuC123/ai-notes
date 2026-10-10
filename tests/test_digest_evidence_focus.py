@@ -27,6 +27,7 @@ MARKER = 'evidence-focus.v1'
 class EvidenceFocusPolicyTests(unittest.TestCase):
     def setUp(self):
         self.policy = selection.load_policy(ROOT)
+        self.policy.pop('source_support_contract', None)
         self.policy.pop('score_input_contract', None)  # Frozen v13 guidance.
         self.policy.pop('license_review_scope', None)
 
@@ -75,6 +76,7 @@ class EvidenceFocusPolicyTests(unittest.TestCase):
         fixture.setUp()
         fixture.enable()
         fixture.policy.update(copy.deepcopy(self.policy))
+        fixture.policy.pop('source_support_contract', None)
         fixture.policy.pop('selection_refinement_contract')
         before = copy.deepcopy((fixture.policy, fixture.card))
         old = fixture.projected()
@@ -175,6 +177,7 @@ class EvidenceFocusPipelineTests(unittest.TestCase):
         self.addCleanup(self.fixture.doCleanups)
         path = self.fixture.root / selection.POLICY_PATH
         policy = selection.load_policy(ROOT)
+        policy.pop('source_support_contract', None)
         policy.pop('score_input_contract', None)
         policy.pop('license_review_scope', None)  # Freeze the v13 stage guidance.
         path.write_text(json.dumps(policy), encoding='utf-8')
@@ -204,6 +207,7 @@ class EvidenceFocusPipelineTests(unittest.TestCase):
 
     def test_unmarked_source_request_remains_exact_under_new_current_policy(self):
         policy = selection.load_policy(ROOT)
+        policy.pop('source_support_contract', None)
         policy.pop('score_input_contract', None)
         policy.pop('license_review_scope', None)
         policy.pop('selection_refinement_contract')

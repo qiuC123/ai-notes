@@ -22,6 +22,7 @@ class SourceReferenceProjectionTests(unittest.TestCase):
         self.policy.pop('selection_refinement_contract', None)
         self.policy.pop('score_input_contract', None)
         self.policy.pop('license_review_scope', None)  # Preserve the pre-public projection fixture.
+        self.policy.pop('source_support_contract', None)
         self.url = "https://example.com/guide"
         self.other = "https://example.com/license"
         self.quote = "中文🙂 Windows 10 or later."
@@ -286,7 +287,8 @@ class ProjectReadingProjectionTests(unittest.TestCase):
 
     def test_prompt_opt_in_keeps_legacy_bytes_and_frozen_snapshot_unchanged(self):
         root = Path(__file__).resolve().parents[1]
-        file_text = (root / selection.PROMPT_PATH).read_text(encoding="utf-8")
+        file_text = (root / selection.PROMPT_PATH).read_text(encoding="utf-8").partition(
+            selection.SOURCE_SUPPORT_PROMPT_MARKER)[0]
         file_text = file_text.partition(selection.INTRODUCTION_PROMPT_MARKER)[0]
         legacy = file_text.partition(selection.UNDERSTANDING_PROMPT_MARKER)[0]
         self.assertEqual(legacy, selection.load_prompt(root, self.policy))

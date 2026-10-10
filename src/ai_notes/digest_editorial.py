@@ -229,7 +229,8 @@ def _public_review_input(*, record, facts, assessment, contexts, passages, ranki
 
 def build_review_input(*, record, facts, assessment, contexts, ranking_type, reader_context=None, editorial_position=None,
                        understanding_contract=None, introduction_contract=None, review_scope=None, featured=False,
-                       selection_refinement_contract=None, score_input_contract=None, license_review_scope=None):
+                       selection_refinement_contract=None, score_input_contract=None, license_review_scope=None,
+                       source_support_contract=None):
     """Project current prose and score reasoning, never ledger history/labels.
 
     Source text occurs once as passages rather than also duplicating long legacy
@@ -241,6 +242,11 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type, rea
     if not all(isinstance(value, dict) for value in (record, facts, assessment)):
         raise ValueError('editorial record, facts and assessment must be objects')
     license_review_supplement(license_review_scope)
+    if source_support_contract is not None:
+        from .digest_selection import _check_source_support
+        _check_source_support(dict(source_support_contract=source_support_contract,
+            license_review_scope=license_review_scope, score_input_contract=score_input_contract,
+            understanding_contract=understanding_contract))
     if selection_refinement_contract is not None:
         from .digest_selection import SELECTION_REFINEMENT_CONTRACT
         if selection_refinement_contract != SELECTION_REFINEMENT_CONTRACT:
@@ -282,6 +288,14 @@ def build_review_input(*, record, facts, assessment, contexts, ranking_type, rea
             } for field, value in entries if value is not None]
         if license_review_scope is not None:
             result['license_review_scope'] = license_review_scope
+        if source_support_contract is not None:
+            from .digest_understanding import validate_understanding
+            notes = validate_understanding(facts['understanding'], allow_unknown_conditions=True)
+            result['source_support_contract'] = source_support_contract
+            result['selection_limits'] = {
+                'scope': 'model_interpretation_to_check_against_passages_not_independent_evidence',
+                'conditions': notes['conditions'], 'unknowns': notes['unknowns'],
+            }
         return result
     candidate = _project(record, _CANDIDATE_FIELDS)
     if record.get('event'):

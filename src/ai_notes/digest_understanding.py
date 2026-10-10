@@ -167,8 +167,11 @@ def _documents(documents):
     return result
 
 
-def understanding_schema():
+def understanding_schema(*, allow_unknown_conditions=False):
     """Schema fragment using the enclosing review's shared passage ID enum."""
+    if type(allow_unknown_conditions) is not bool:
+        raise ValueError('allow_unknown_conditions must be a boolean')
+    condition_kinds = CONDITION_KINDS + (('unknown',) if allow_unknown_conditions else ())
     text = {'$ref': '#/$defs/nonempty_text'}
     nullable = {'anyOf': [dict(text), {'type': 'null'}]}
 
@@ -190,13 +193,13 @@ def understanding_schema():
             'input': copy.deepcopy(nullable), 'action': dict(text),
             'output': copy.deepcopy(nullable), 'passage_ids': refs()})},
         'conditions': {'type': 'array', 'maxItems': 8, 'items': obj({
-            'subject': dict(text), 'kind': {'enum': list(CONDITION_KINDS)},
+            'subject': dict(text), 'kind': {'enum': list(condition_kinds)},
             'text': dict(text), 'passage_ids': refs()})},
         'unknowns': {'type': 'array', 'items': dict(text), 'uniqueItems': True},
     })
 
 
-def _raw_understanding(value, available_ids):
+def _raw_understanding(value, available_ids, *, allow_unknown_conditions=False):
     if not isinstance(value, dict) or set(value) != _RAW_FIELDS:
         raise ValueError('understanding requires exactly purpose, input, output, operations, conditions, unknowns')
     referenced = set()
@@ -241,7 +244,8 @@ def _raw_understanding(value, available_ids):
             raise ValueError('invalid understanding condition fields')
         _text(item['subject'], 'condition subject')
         _text(item['text'], 'condition text')
-        if item['kind'] not in CONDITION_KINDS:
+        condition_kinds = CONDITION_KINDS + (('unknown',) if allow_unknown_conditions else ())
+        if item['kind'] not in condition_kinds:
             raise ValueError('unsupported condition kind')
         references(item['passage_ids'], 'understanding condition')
     unknowns = value['unknowns']
@@ -369,12 +373,14 @@ def prose_scope_issues(facts, documents, claims=None):
     return issues
 
 
-def validate_understanding(card):
+def validate_understanding(card, *, allow_unknown_conditions=False):
     """Validate a canonical bound card and return an independent deep copy.
 
     References must close over program-bound proof_map and document metadata.
     This validates structure and provenance consistency, not semantic meaning.
     """
+    if type(allow_unknown_conditions) is not bool:
+        raise ValueError('allow_unknown_conditions must be a boolean')
     if not isinstance(card, dict) or set(card) != _CARD_FIELDS:
         raise ValueError('invalid canonical understanding card fields')
     if card['schema_version'] != UNDERSTANDING_VERSION:
@@ -396,7 +402,8 @@ def validate_understanding(card):
             raise ValueError('proof heading_path must be a list')
         for heading in proof['heading_path']:
             _text(heading, 'proof heading')
-    referenced = _raw_understanding({key: card[key] for key in _RAW_FIELDS}, set(proofs))
+    referenced = _raw_understanding({key: card[key] for key in _RAW_FIELDS}, set(proofs),
+                                   allow_unknown_conditions=allow_unknown_conditions)
     if referenced != set(proofs):
         raise ValueError('understanding proof_map must contain exactly the referenced passage IDs')
     issues = reading_scope_issues(card, documents)
@@ -405,19 +412,24 @@ def validate_understanding(card):
     return copy.deepcopy(card)
 
 
-def bind_understanding_review(output, passages, record, documents, *, include_discovery=False):
+def bind_understanding_review(output, passages, record, documents, *, include_discovery=False,
+                              nonlicensing=False, allow_unknown_conditions=False):
     """Use the old binder, then attach a frozen evidence-linked fact card."""
+    if type(nonlicensing) is not bool or type(allow_unknown_conditions) is not bool:
+        raise ValueError('understanding contract options must be booleans')
     if not isinstance(output, dict) or set(output) != {'qualified', 'reason', 'facts', 'evidence', 'understanding'}:
         raise ValueError('understood review requires exactly qualified, reason, facts, evidence, understanding')
     documents = _documents(documents)
     legacy = {key: output[key] for key in ('qualified', 'reason', 'facts', 'evidence')}
-    bound = bind_review(legacy, passages, record, include_discovery=include_discovery)
+    bound = bind_review(legacy, passages, record, include_discovery=include_discovery,
+                        **({'nonlicensing': True} if nonlicensing else {}))
     if not bound['qualified']:
         if output['understanding'] is not None:
             raise ValueError('unqualified review requires null understanding')
         return bound
     by_id = {passage['id']: passage for passage in passages}
-    referenced = _raw_understanding(output['understanding'], set(by_id))
+    referenced = _raw_understanding(output['understanding'], set(by_id),
+                                   allow_unknown_conditions=allow_unknown_conditions)
     card = copy.deepcopy(output['understanding'])
     card.update(schema_version=UNDERSTANDING_VERSION,
                 proof_map={passage_id: {key: copy.deepcopy(by_id[passage_id][key])
@@ -425,5 +437,6 @@ def bind_understanding_review(output, passages, record, documents, *, include_di
                            for passage_id in sorted(referenced)},
                 source_documents=documents)
     card['reading_scope_issues'] = reading_scope_issues(card, documents)
-    bound['facts']['understanding'] = validate_understanding(card)
+    bound['facts']['understanding'] = validate_understanding(
+        card, allow_unknown_conditions=allow_unknown_conditions)
     return bound
