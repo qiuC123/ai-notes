@@ -1,6 +1,6 @@
 # TASK — 三榜筛选优化与独立运行
 
-更新时间：2026-10-10；状态：Dot 原云端任务真实单轮已执行，采集成功、日榜初筛失败，尚不能正式自动运营。三个轮换来源成功，新增20候选／20观察并入库读回；2026-10-09日榜输入19项、模型返回17项逐项决策，漏掉两个入选候选，被完整覆盖校验拒绝。1次API、5,951 tokens、零重试，未进入深核、评分或成文，无新文章／草稿。后续新Python进程重复执行检查通过，返回原job且worker idle，不重复付费或入库。原历史业务记录、文章和索引保留；当前48批／307观察／169入选／22归档／3草稿。新容器持久化、持续运行与定时尚未验收；原自动化实读PAUSED，未新建schedule。许可范围排除已实现，但本轮初筛仍有许可理由偏离；不以564项旧离线通过数或模型HTTP成功冒充自动刊用通过。见[云端单轮实测](docs/DIGEST_DOT_CLOUD_TRIAL_2026-10-10.md)；主控Codex。
+更新时间：2026-10-10；状态：初筛完整性修正已上传GitHub，125项相关离线检查通过；Dot按`f565e4f`复用原19项材料，在新隔离目录完整返回19决策、选中7项，真实生成2条日榜试稿、缺3条。11次API／165,130 tokens／零付费重试，另1次核验输入超限在发送前暂缓；同ID再次idle，不新增请求。主控完整回执读回及独立内容审查完成，原目录808文件、全部数据库行和旧失败job保持。筛选许可范围偏离、评分无据推断及核验输入／日期阻断仍存在，整体内容质量与自动运营未通过；原自动化收尾实读PAUSED，新容器持久化、真实通知和定时未验收。见[新合同实际验收](docs/DIGEST_SCREEN_OUTPUT_FIX_2026-10-10.md)；原19→17失败仍见[原单轮实测](docs/DIGEST_DOT_CLOUD_TRIAL_2026-10-10.md)；主控Codex。
 
 本次用户调整已落实：三榜重点是发现项目，正文显示名称、用途、代表性亮点、已知支持系统和链接，配图按需；不要求讲全使用条件或限制。固定的读者／泛化使用条件行已移除；新复核只因实际写出的实质事实错误暂缓，不因省略无关细节拒绝。原有错例和测试结果保持。
 
@@ -26,7 +26,7 @@
 | 独立 worker 从初筛运行到本地文章，恢复不重付费 | 真实隔离单期 14 初筛→4 深核尝试→2 原文成功→1 条归档；8 API、0 付费重试，重复 work 为 idle。日榜缺 4 条，尚未验证连续采集、周月和持续调度。 |
 | 默认轮换来源的真实采集与幂等恢复 | 已完成一次隔离 worker：三个入口、33 份 fetch 回执、16 个 discovered 候选入库读回；同任务 idle、同批重放 unchanged，零模型调用。见[来源验收](docs/DIGEST_SOURCES_RUNTIME.md)。 |
 | 历史迁移与云端持续运行 | 10/9恢复701文件及22期归档通过；10/10采集后48批／307观察／169入选／22归档／3草稿，同任务新Python进程读回与重复idle通过，原历史保护通过。现有ingest自动v2→v3且迁移备份保留，旧3份草稿清单仍legacy_untracked。新容器持久化、长期运行及通知送达尚未验收。 |
-| Dot 接手与最新状态准备 | 已发布GLM配置、唯一smoke与GitHub历史恢复通过；[10/10单轮](docs/DIGEST_DOT_CLOUD_TRIAL_2026-10-10.md)采集通过、日榜初筛覆盖失败，1次API／零重试，未启用schedule。修正初筛后继续有界验收，见 [Dot 交接](docs/handoffs/2026-10-06-dot-digest-trial.md)。 |
+| Dot 接手与最新状态准备 | GLM、唯一smoke、历史恢复与真实采集已通过；[v18同批验收](docs/DIGEST_SCREEN_OUTPUT_FIX_2026-10-10.md)初筛19/19完整并生成2条隔离日榜，11API／零重试，原历史保护及终态idle通过。整体内容质量仍未通过，未启用schedule；见[Dot交接](docs/handoffs/2026-10-06-dot-digest-trial.md)。 |
 
 ## 约束与决定
 
@@ -42,7 +42,7 @@
 
 ## 当前工作
 
-- 2026-10-10，用户确认执行初筛输出完整性修正。新请求`screen-v18-complete-decisions`已实现：精确输出结构、最多80字符的逐项理由、19项5,888输出预算，并继承`excluded.v1`；原逐ID完整覆盖门、旧冻结请求和失败回执保持，次数预算不变。125项相关离线测试、独立审阅和原19→17输出实际回放通过，0新API；150卡片实际wire54,336字符低于60,000。主控负责任务记录、GitHub同步和Dot验收，下一步在原Dot环境的独立新验收目录复用原19项输入跑一次有界日榜，不重采或直接retry旧job。见[修正报告](docs/DIGEST_SCREEN_OUTPUT_FIX_2026-10-10.md)与[同批验收](docs/handoffs/2026-10-10-screen-v18-validation.md)。原自动化保持暂停。
+- 2026-10-10，用户确认执行初筛输出完整性修正及同批日榜验收。`screen-v18-complete-decisions`在代码`f565e4f`实现：精确结构、80字符逐项理由、19项5,888输出预算及`excluded.v1`指导；保留旧冻结请求、原覆盖门和失败账本，次数预算不变。125项相关离线测试、独立代码审阅、原19→17回放及150卡片wire54,336字符检查通过。Dot原任务实际fast-forward，四项输入／策略／请求哈希匹配；独立目录`/workspace/ai-notes-screen-v18-trial-20261010`真实初筛19/19完整、选中7项，6次原文核验请求／2个documented观察、2评分／2复核，隔离归档2条、缺3条。11API／165,130 tokens／零重试，另1次核验输入超限无HTTP；终态再次idle无额外用量。主控下载14,428,615-byte ZIP与80,359,154-byte JSON，CRC／两份SHA及284Git文件、原808文件／全部数据库行、70份原文／产物和idle全快照逐项核对通过，旧17条输出与原失败记录保持。独立审查确认两项正文核心用途有据，初筛及核验仍受许可理由影响，评分“零门槛”“可选TTS”有无据推断且复核漏判，整体质量未通过。交付401／403保留后压缩上传成功，无业务重跑。见[报告](docs/DIGEST_SCREEN_OUTPUT_FIX_2026-10-10.md)，证据私密保留`work/digest-screen-v18-20261010/`；原自动化继续暂停，无schedule或新容器验收。
 - 2026-10-10，用户要求完整项目同步GitHub、让Dot下载并解释本机与云端差异：已确认main为`ad59fe0`、281跟踪文件、树`e2a183b896a6c002e49c40897079538475dc815f`，运行必需源码／配置／依赖声明／部署脚本／项目Skill均已跟踪，Dot原`a587897`与当前版本无业务差异。使用原post-readback完整冻结19项输入与原17项output，本机实际`_run_screen`也重现同一coverage错误，0API／0数据库写。11:47实际fetch、11:48仅fast-forward成功；Dot核对281文件／Git树、checkout导入、Python3.12.14、CLI及pip check通过。主控下载1,773,773-byte完整回执，SHA-256 `cd396f6c72ed6551e5588d637a1efef3c5dd65b92b10c290c7d45b4944e22254`一致，逐项对比281个Git对象及前后runtime、808状态文件／89历史文件／21旧回执，全部保持；原48／307／169／22／3和123候选不变，本轮0API／retry／restore／schedule。检查器字段路径或表示差异错误均另行保留、修正后检查通过，不改变业务失败。证据`work/dot-code-sync-20261010/`及[报告](docs/DIGEST_DOT_CLOUD_TRIAL_2026-10-10.md)。完整代码同步完成，暂停决定保持；新容器持久化仍未验证。本机没有pip模块仅影响本机pip check，实际模块加载和离线回放已成功。
 - 2026-10-10，北京时间：用户“你去测试一下”后，复用原云端任务、代码`a587897`及状态`/workspace/ai-notes-digest-state-trial-20261008`，冻结真实当天2026-10-10及日榜期2026-10-09。预检字节差异经本机与云端分别确认为仅CRLF/LF，完整内容相同，保留原字节继续。三个轮换入口成功，20新候选／20观察入库读回；初筛19输入／17决策、两个入选漏decision，程序以`shortlist must retain one reason for every screened candidate`拒绝。1模型请求／0重试，3,729输入＋2,222输出＝5,951 tokens，未深核／评分／复核／成文，无新文章或草稿；不是合格内容零条。原解析后output完整保存，实际输出达到预算但无finish_reason，不认定截断；另有许可理由偏离excluded.v1，不放宽规则。旧归档、入选和草稿业务字段及文件保持，现48／307／169／22／3；ingest现有代码自动schema2→3且先备份。主控已下载并核对完整回执SHA，证据`work/dot-cloud-trial-20261010/`，详见[报告](docs/DIGEST_DOT_CLOUD_TRIAL_2026-10-10.md)。11:34新Python进程免费重复检查通过：同payload原job、worker idle、attempts1，计数／请求／usage／原error/result／outbox及808状态文件／89历史文件hash保持，主控已下载完整回执并直接比较前后快照；首次只读诊断查错表发生在动作前，原错误保留，改正确查询后完成。新容器持久化未验证；outbox为pending，不伪造送达。原自动化PAUSED，scheduler调用0。
 - 2026-10-09 17:38，北京时间：已发布 [历史 Release](https://github.com/qiuC123/ai-notes/releases/tag/digest-backup-20261006)，原 ZIP 7,722,087 bytes、SHA-256 `b1c91cc78427d40492152fdb8b88befbc63e7dd773d14c77ab9ee23394fedba6`。静态检查全部成员及SQLite文本，未发现真实用户凭据或明确无关业务资料；701载荷逐项哈希、CRC、SQLite及47／287／169／22／3一致。本机无认证下载HTTP200并核对大小／哈希，临时副本已移除；17:40发原Dot，17:42经当前公开资源证据核对后继续原任务。17:48:30云端回执为 `restored_with_legacy_draft_limitations`：下载HTTP200、零重试、无Authorization；verify/restore exit0，701文件逐项匹配，目标 `/workspace/ai-notes-digest-state-trial-20261008`，47批／287观察／169入选／22归档（日18/周3/月1）／3日草稿，SQLite integrity与外键检查通过。22期文章／清单及4个索引通过，3份旧草稿JSON缺原库预期hash，标记legacy_untracked并原样保留，strict_export_audit_ok=false，不迁移格式。主控网页打开并下载原JSON读回，保存为 `work/digest-github-transfer-20261009/cloud-history-restore-receipt.json`；云端回执目录 `/workspace/digest-backup-import/github-public-h41gxu69/receipts`，Library `libfile_3ab3640de974819197b833333cec33c9`。smoke账本及全部旧失败回执哈希保持；本轮模型、采集生成及scheduler均0。原任务状态读回通过，新容器持久化未验证；本地原自动化再次实读PAUSED。
@@ -96,6 +96,6 @@
 
 ## 下一步
 
-GLM配置、唯一smoke、历史恢复及10/10云端采集已通过，不重复smoke、下载或覆盖状态。原日榜初筛失败已定位，新合同本地125项相关检查通过；下一步按[同批验收](docs/handoffs/2026-10-10-screen-v18-validation.md)在独立新目录用原19项输入验证真实完整输出和后续日榜生成，不人工补漏或直接retry旧请求。原状态 `/workspace/ai-notes-digest-state-trial-20261008` 保持。生成验收后再分别验证新容器状态持续保存和真实通知，全部通过后才保存唯一新定时入口。原自动化继续暂停，既有失败账本、候选和历史保留。采用云端注入变量时不设置 `DIGEST_MODEL_ENV_FILE`，不传 `--model-env-file`。不重复创建环境、索取对话链接或重新确认已授权的试运行；原Codex保留交接入口。
+GLM配置、唯一smoke、历史恢复、10/10真实采集和v18初筛完整输出／隔离生成流程已通过，不重复smoke、恢复或同批付费试跑。先修正本轮已确认的筛选范围偏离、评分无据推断和核验输入／日期阻断，再用有界验收确认内容质量。原状态`/workspace/ai-notes-digest-state-trial-20261008`、旧失败账本与隔离试稿均保持；试稿不合并原历史。生成质量通过后，再分别验收新容器状态持续保存与真实通知，全部通过后保存唯一新定时入口。原自动化继续暂停，采用云端注入变量时不设置`DIGEST_MODEL_ENV_FILE`或`--model-env-file`。不重复创建环境、重配key或重新确认已授权工作；原Codex保留交接入口。
 
 在新试运行中，用未见过的资料判断用途、亮点、系统及读者价值，不继续许可证组件范围专项修复；其余实质事实、新闻／游戏与代表性筛选校准保持。外部 Agent、订阅复用、文件整理及知识库偏好沿用。旧生产调度继续暂停；不要求在聊天发送密钥。未知 Claude 请求保持原账本，不能重发。仍不能宣称整体筛选质量、持续运行、云端和通知送达已完成。
