@@ -406,7 +406,7 @@ class ScoreInputTests(unittest.TestCase):
                                 for source in entry["sources"]))
         with runtime._db(fixture.root, write=False) as connection:
             stages = {row["stage"] for row in connection.execute("SELECT stage FROM requests")}
-        self.assertEqual({"screen-v13-evidence-focus", "verify-facts-v13-evidence-focus",
+        self.assertEqual({"screen-v18-complete-decisions", "verify-facts-v13-evidence-focus",
                           "value-score-v14-compact-schema", "editorial-v14-reason-navigation"}, stages)
 
     def test_score_and_review_navigation_are_stable_after_sorted_json_recovery(self):

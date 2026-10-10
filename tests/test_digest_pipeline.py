@@ -332,7 +332,7 @@ class PipelineTests(unittest.TestCase):
         with runtime._db(self.root,write=False) as con:
             prepared=json.loads(con.execute('SELECT checkpoints FROM jobs WHERE job_id=?',(job['job_id'],)).fetchone()[0])
             stages={row[0] for row in con.execute('SELECT stage FROM requests')}
-        self.assertEqual({'screen-v11-discovery', 'verify-facts-v11-discovery',
+        self.assertEqual({'screen-v18-complete-decisions', 'verify-facts-v11-discovery',
                           'value-score-v5-scoped-source','editorial-v11-discovery'}, stages)
         self.assertEqual(6,len(prepared['issue']['items']))
         self.assertTrue(all(x['verification_level']=='documented' for x in prepared['issue']['items']))

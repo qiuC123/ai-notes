@@ -199,7 +199,7 @@ class EvidenceFocusPipelineTests(unittest.TestCase):
             self.assertEqual(MARKER, value['selection_refinement_contract'])
         with runtime._db(self.fixture.root, write=False) as con:
             stages = {row['stage'] for row in con.execute('SELECT stage FROM requests')}
-        self.assertEqual({'screen-v13-evidence-focus', 'verify-facts-v13-evidence-focus',
+        self.assertEqual({'screen-v18-complete-decisions', 'verify-facts-v13-evidence-focus',
                           'value-score-v13-evidence-focus', 'editorial-v13-evidence-focus'}, stages)
 
     def test_unmarked_source_request_remains_exact_under_new_current_policy(self):
