@@ -1,6 +1,6 @@
 # Dot 三榜接手与云端试运行
 
-用户已于2026-10-06确认执行：同步最新代码与历史候选，先跑一次云端采集和榜单预览，确认保存及恢复，再切换日、周、月任务。10/8 GLM配置发布与唯一真实模型smoke通过。历史附件三次HTTP403，具体原因未知；10/9用户直接要求公开上传自己的GitHub仓库，由Dot下载。原ZIP已作为Release附件发布，本机与Dot云端无认证下载HTTP200、大小／哈希一致，verify/restore成功，701文件、47批／287观察／169入选／22归档／3草稿读回；主控打开并下载原JSON回执核对。22期文章清单与索引通过；旧3草稿JSON缺原库校验字段，原样保留。采集生成、状态持续保存和定时尚未完成，本轮零模型及调度调用。此前云端76项测试与6个来源入口检查成功为执行者回报。
+用户已于2026-10-06确认执行：同步最新代码与历史候选，先跑一次云端采集和榜单预览，确认保存及恢复，再切换日、周、月任务。10/8 GLM配置发布与唯一真实模型smoke通过，10/9 GitHub单份历史传输与恢复通过。10/10复用原云端任务的[真实单轮实测](../DIGEST_DOT_CLOUD_TRIAL_2026-10-10.md)：三个轮换来源成功，20候选／20观察入库读回；2026-10-09日榜初筛19输入／17逐项决策，漏掉两个入选候选，覆盖校验失败。1次API／5,951 tokens／零重试，没有进入深核、评分或成文，无新文章／草稿。当前48批／307观察／169入选／22归档／3草稿，原历史业务记录及文件保持。需修正初筛后继续验收，不重新下载历史、重做smoke或直接retry旧请求。原自动化PAUSED，新schedule未创建；新容器持久化和真实通知未验收。此前云端76项测试与六个来源入口检查成功为执行者回报，不混入此次三来源实测。
 
 ## 可以直接交给 Dot 的任务
 
@@ -48,6 +48,8 @@
 5. 随后只为前一个完整北京时间自然日显式入队一个 `generate`，执行该 ID 的 worker；已归档期复用原稿。时间从真实 `Asia/Shanghai` 计算，不传伪造的 `--now`。确认当前新任务采用新配置；有限失败就记录，不循环改材料或抽样重试。
 6. 检查文章/草稿、清单、候选库和请求账本，汇报实际入选与缺口。runtime 的 outbox 只是本地待交付记录；向用户实际展示摘要和全文后，才保存真实送达回执。再次读取同一任务确认不重复付费、不重建同一期文章。
 
+截至10/10，这一单轮已经实际执行到初筛失败，原请求及采集结果保留。允许原日期、同payload的幂等检查，预期返回原job且worker为idle；保留原job和冻结输入，不调用retry或改期重发。先依据原响应修正新初筛合同，随后另行有界验收。来源配置、状态根路径、失败任务及旧合同不覆盖。初始字节差异经两端检查仅CRLF/LF，完整内容相同，可保留原字节；有实质内容差异则仍需记录并核对，不能只凭JSON部分字段相同放行。
+
 离时槽时 `deploy/digest/one_tick.py --execute` 应安静结束；因此不能拿空 tick 当作采集或生成成功。上述显式单轮可使用已实现的 Python 接口，在代码目录执行。先将 `DIGEST_TRIAL_ROOT` 设为刚恢复并核对的独立状态目录。模型采用云端注入变量时直接继承其配置；完整私密文件模式才将 `DIGEST_MODEL_ENV_FILE` 设为该文件的云端绝对路径。先执行采集块：
 
 ```python
@@ -78,6 +80,10 @@ print(digest_runtime.work_once(root, job_id=job['job_id']))
 原本地 heartbeat 继续暂停；不恢复它来代替 Dot，也不修改飞书、Pi、共学和旧 Release 管道。正常采集与未变化缺口安静，仅榜单完成、失败、实质缺口变化或需要用户处理时通知。结果交付到此 Dot 对话；本地原任务作为交接入口。准确报告“材料已准备／Dot 已收到／云端单轮已运行／定时已保存／已观察到定时运行”，未完成的步骤不能合并称为部署成功。
 
 ## 本次实际记录
+
+2026-10-10，北京时间：主控按用户“你去测试一下”继续原云端任务。代码`a587897b934013e333f299b4d7db4a8febea631d`，Python3.12.14，状态`/workspace/ai-notes-digest-state-trial-20261008`；真实开始日期2026-10-10、目标日榜2026-10-09。状态配置和提示词与Linux checkout仅CRLF/LF不同，完整内容经两端分别检查相同，原字节保持。当天轮换OpenAI／Google／Show HN成功3失败0，新增20候选／20观察并入库读回；Google窗口外零新增。生成初筛19输入、17有效decision，7个入选ID中两个没有decision，应用以`shortlist must retain one reason for every screened candidate`拒绝。1模型请求／0重试，3,729输入＋2,222输出＝5,951 tokens；不把HTTP/JSON成功算生成成功，不把未完成筛选算零条合格。原output及错误保留，未深核／评分／复核／成文，无新文章或草稿；输出达到预算但没有finish_reason，不断言截断。另有初筛许可理由偏离excluded.v1，后续应纠正执行而不是恢复许可专项核验。
+
+主控下载原完整JSON并核对SHA-256`48d9e593994210f266acf1f2d408f6baf1a6b37442faf56b053151993560efc9`，本地`work/dot-cloud-trial-20261010/cloud-single-trial-receipt.json`，云端Library`libfile_8f354591a6d081919c759fd9fdf7ec4c`。运行后48批／307观察／169入选／22归档／3草稿；云端审计原归档／入选／草稿业务字段及原文章／清单／索引保持。现有ingest自动schema2→3，先备份再写入，未手工迁移；原三个legacy_untracked草稿JSON、smoke账本及旧失败回执保持。11:34同任务新Python进程重复验收通过，同payload复用原job、worker idle、attempts1，计数／请求／usage／原error/result／outbox及808状态文件／89历史文件hash保持。主控下载完整post-readback JSON并直接比较前后快照，Library`libfile_df52523991d08191bd7d483f541a0ee1`，本地同目录`post-readback-final.json`；首次只读诊断查错表发生在再入队前，零动作，原错误保持，改正确查询后完成。不冒充新容器持久化；outbox失败通知pending，不伪造ack。原本地自动化PAUSED，scheduler_calls=0，未恢复或新建定时。详情及证据边界见[实测报告](../DIGEST_DOT_CLOUD_TRIAL_2026-10-10.md)。
 
 2026-10-09 17:38，北京时间：按用户“上传到 GitHub 仓库，然后让 Dot 下载”的直接要求，在公开仓库发布 `digest-backup-20261006` Release（prerelease，非 latest），附件为原 `digest-dot-20261006-234016.zip`，7,722,087 bytes，SHA-256 `b1c91cc78427d40492152fdb8b88befbc63e7dd773d14c77ab9ee23394fedba6`。下载地址：[原 ZIP](https://github.com/qiuC123/ai-notes/releases/download/digest-backup-20261006/digest-dot-20261006-234016.zip)。701 个载荷和 manifest 完整匹配，ZIP CRC、SQLite 均通过，47／287／169／22／3一致；静态检查未发现真实用户凭据或明确无关业务资料，未读取引用的私密文件。GitHub 元数据大小和 digest 一致；主控不带账号凭据实际下载 HTTP 200，逐字节大小及 SHA 相同，检查后移除临时下载副本。原 ZIP 未改。审计、Release 元数据与下载回执保留于忽略目录 `work/digest-github-transfer-20261009/`。
 
