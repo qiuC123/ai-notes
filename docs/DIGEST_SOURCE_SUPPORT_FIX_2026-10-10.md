@@ -19,3 +19,9 @@
 独立审查已修复并复测：RSS日期跨段、丢失精确日期信息、缩减预算时不能保留匹配item三个实际边界问题。新旧schema默认行为及旧冻结请求恢复有回归覆盖。当前云端实际评分改善、试稿质量、通知与持久化仍待验收，不能因代码或离线检查通过宣布运营。
 
 一次有界云端验收以 [执行交接](handoffs/2026-10-10-source-support-v19-validation.md) 为准，不重复旧失败任务或v18合同。
+
+## 云端执行脚本故障
+
+云端已更新到 `80d813b`，289个文件与Git blob一致，六项输入hash通过。但外部观察器仍断言旧 `screen-v18-complete-decisions`，在调用实际ModelClient前拒绝新 `screen-v19-source-support`。本轮job为failed／attempts1，0 API、0账本请求、0 usage，没有新文章。完整私密包已下载、ZIP CRC及SHA核对通过；原根及v18根保持，重复work为idle。这不构成新模型质量结果。
+
+本机用包内实际观察器与真实新冻结请求，在无HTTP环境验证仅将阶段比较改为 `new_frozen['request']['stage']`：原guard拒绝，修复后只转发一次，第二次初筛仍拒绝。按[执行脚本修复交接](handoffs/2026-10-10-source-support-v19-executor-repair.md)保留失败根，只在新隔离根继续原19项的首次付费验证；仍为37总额、付费重试0，原自动化PAUSED。
