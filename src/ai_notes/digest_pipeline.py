@@ -274,7 +274,12 @@ def _ensure_screen_recoverable(root, job):
 
 def _screen_request(compact, policy, kind, deep_limit):
     """Build a new triage contract; frozen requests keep their original shape."""
-    material = {'cards':compact,'deep_limit':deep_limit,'ranking_type':kind,
+    source_support = policy.get('source_support_contract') == selection.SOURCE_SUPPORT_CONTRACT
+    # Historical discovery reasons can contain an old verdict or excluded
+    # review criteria. Keep them in records, not in a fresh triage request.
+    cards = [{key:copy.deepcopy(value) for key,value in card.items() if key != 'reason'}
+             for card in compact] if source_support else compact
+    material = {'cards':cards,'deep_limit':deep_limit,'ranking_type':kind,
                 'screen_output_contract':SCREEN_OUTPUT_CONTRACT}
     context = policy.get('reader_context')
     position = policy.get('editorial_position')
@@ -340,9 +345,13 @@ def _screen_request(compact, policy, kind, deep_limit):
             'decisions':{'type':'array', 'items':decision,
                          'minItems':len(compact), 'maxItems':len(compact)}},
         'required':['selected_ids','decisions'], 'additionalProperties':False}
-    if policy.get('source_support_contract') == selection.SOURCE_SUPPORT_CONTRACT:
+    if source_support:
         material['source_support_contract'] = selection.SOURCE_SUPPORT_CONTRACT
-    return dict(stage='screen-v19-source-support' if 'source_support_contract' in material else 'screen-v18-complete-decisions', system=system, material=material,
+        system += (' The cards contain unverified discovery descriptions, not previous selection verdicts. '
+                   'Make this round\'s shortlist and each decision reason from the described purpose and value '
+                   'to the publication audience. Do not invent earlier verdicts or reuse historical review criteria; '
+                   'original-source verification follows only for the shortlisted candidates.')
+    return dict(stage='screen-v20-discovery-context' if source_support else 'screen-v18-complete-decisions', system=system, material=material,
                 output_schema=schema, max_output_tokens=min(16384, 1024 + len(compact)*256))
 
 
